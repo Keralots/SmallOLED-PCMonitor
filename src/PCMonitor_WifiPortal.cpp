@@ -102,11 +102,11 @@ MarioState mario_state = MARIO_IDLE;
 // Digit targeting
 int target_x_positions[4];
 int target_digit_index[4];
+int target_digit_values[4];  // Store the target value for each digit
 int num_targets = 0;
 int current_target_index = 0;
 int last_minute = -1;
 bool animation_triggered = false;
-bool time_already_advanced = false;
 
 // Jump physics
 float jump_velocity = 0;
@@ -151,6 +151,7 @@ void updateMarioAnimation(struct tm* timeinfo);
 void drawMario(int x, int y, bool facingRight, int frame, bool jumping);
 void calculateTargetDigits(int hour, int min);
 void advanceDisplayedTime();
+void updateSpecificDigit(int digitIndex, int newValue);
 void updateDigitBounce();
 void triggerDigitBounce(int digitIndex);
 void drawTimeWithBounce();
@@ -866,36 +867,66 @@ void advanceDisplayedTime() {
   time_overridden = true;
 }
 
+void updateSpecificDigit(int digitIndex, int newValue) {
+  // Update the specific digit in displayed_hour or displayed_min
+  // digitIndex corresponds to DIGIT_X array: 0=hour tens, 1=hour ones, 3=min tens, 4=min ones
+  int hour_tens = displayed_hour / 10;
+  int hour_ones = displayed_hour % 10;
+  int min_tens = displayed_min / 10;
+  int min_ones = displayed_min % 10;
+
+  if (digitIndex == 0) {
+    hour_tens = newValue;
+    displayed_hour = hour_tens * 10 + hour_ones;
+  } else if (digitIndex == 1) {
+    hour_ones = newValue;
+    displayed_hour = hour_tens * 10 + hour_ones;
+  } else if (digitIndex == 3) {
+    min_tens = newValue;
+    displayed_min = min_tens * 10 + min_ones;
+  } else if (digitIndex == 4) {
+    min_ones = newValue;
+    displayed_min = min_tens * 10 + min_ones;
+  }
+
+  time_overridden = true;
+}
+
 void calculateTargetDigits(int hour, int min) {
   num_targets = 0;
-  
+
   int next_min = (min + 1) % 60;
   int next_hour = hour;
   if (next_min == 0) {
     next_hour = (hour + 1) % 24;
   }
-  
+
   int curr_digits[4] = {hour / 10, hour % 10, min / 10, min % 10};
   int next_digits[4] = {next_hour / 10, next_hour % 10, next_min / 10, next_min % 10};
-  
-  if (curr_digits[3] != next_digits[3]) {
-    target_x_positions[num_targets] = DIGIT_X[4] + 9;
-    target_digit_index[num_targets] = 4;
-    num_targets++;
-  }
-  if (curr_digits[2] != next_digits[2]) {
-    target_x_positions[num_targets] = DIGIT_X[3] + 9;
-    target_digit_index[num_targets] = 3;
+
+  // Add targets from LEFT to RIGHT (hour first, then minutes)
+  if (curr_digits[0] != next_digits[0]) {
+    target_x_positions[num_targets] = DIGIT_X[0] + 9;
+    target_digit_index[num_targets] = 0;
+    target_digit_values[num_targets] = next_digits[0];
     num_targets++;
   }
   if (curr_digits[1] != next_digits[1]) {
     target_x_positions[num_targets] = DIGIT_X[1] + 9;
     target_digit_index[num_targets] = 1;
+    target_digit_values[num_targets] = next_digits[1];
     num_targets++;
   }
-  if (curr_digits[0] != next_digits[0]) {
-    target_x_positions[num_targets] = DIGIT_X[0] + 9;
-    target_digit_index[num_targets] = 0;
+  if (curr_digits[2] != next_digits[2]) {
+    target_x_positions[num_targets] = DIGIT_X[3] + 9;
+    target_digit_index[num_targets] = 3;
+    target_digit_values[num_targets] = next_digits[2];
+    num_targets++;
+  }
+  if (curr_digits[3] != next_digits[3]) {
+    target_x_positions[num_targets] = DIGIT_X[4] + 9;
+    target_digit_index[num_targets] = 4;
+    target_digit_values[num_targets] = next_digits[3];
     num_targets++;
   }
 }
@@ -918,7 +949,6 @@ void updateMarioAnimation(struct tm* timeinfo) {
   
   if (seconds >= 55 && !animation_triggered && mario_state == MARIO_IDLE) {
     animation_triggered = true;
-    time_already_advanced = false;
     calculateTargetDigits(displayed_hour, displayed_min);
     if (num_targets > 0) {
       current_target_index = 0;
@@ -965,27 +995,26 @@ void updateMarioAnimation(struct tm* timeinfo) {
       {
         jump_velocity += GRAVITY;
         mario_jump_y += jump_velocity;
-        
+
         int mario_head_y = mario_base_y + (int)mario_jump_y - MARIO_HEAD_OFFSET;
-        
+
         if (!digit_bounce_triggered && mario_head_y <= DIGIT_BOTTOM) {
           digit_bounce_triggered = true;
           triggerDigitBounce(target_digit_index[current_target_index]);
-          
-          if (!time_already_advanced) {
-            advanceDisplayedTime();
-            time_already_advanced = true;
-          }
-          
+
+          // Update only the specific digit that Mario just hit
+          updateSpecificDigit(target_digit_index[current_target_index],
+                             target_digit_values[current_target_index]);
+
           jump_velocity = 2.0;
         }
-        
+
         if (mario_jump_y >= 0) {
           mario_jump_y = 0;
           jump_velocity = 0;
-          
+
           current_target_index++;
-          
+
           if (current_target_index < num_targets) {
             mario_state = MARIO_WALKING;
             mario_facing_right = (target_x_positions[current_target_index] > mario_x);
