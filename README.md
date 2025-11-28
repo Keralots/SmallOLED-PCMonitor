@@ -6,12 +6,16 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 ## Features
 
-- Real-time PC stats display (CPU, RAM, GPU temperature, disk usage, pump/fan speed)
-- Animated Mario clock when PC is offline (or choose standard/large clock styles)
-- WiFi configuration portal for easy setup
-- Web-based settings interface
-- Configurable timezone and date formats
-- Optimized for minimal CPU usage on PC
+- **Dual Display Modes:**
+  - **PC Online**: Real-time stats (CPU, RAM, GPU temp, disk usage, fan/pump speed)
+  - **PC Offline**: Animated clock (Mario, Standard, or Large styles)
+- **Web Configuration Portal**: Customize all settings via browser
+  - Clock styles and time/date formats
+  - Timezone and daylight saving
+  - **Customizable display labels** (rename "PUMP" to "FAN", "COOLER", etc.)
+- **WiFi Portal**: Easy first-time setup without code changes
+- **Optimized Performance**: Minimal CPU usage on PC (<1%)
+- **Persistent Settings**: All preferences saved to ESP32 flash memory
 
 ## Hardware Requirements
 
@@ -66,15 +70,21 @@ For detailed instructions, see [release/v1.0.0/FLASH_INSTRUCTIONS.md](release/v1
 5. Configure your WiFi credentials
 6. The ESP32 will connect and display its IP address on the OLED
 
-#### Web Configuration
-Once connected to WiFi, access the configuration page:
+#### Web Configuration Portal
+Once connected to WiFi, access the full configuration page:
 1. Open a browser and navigate to the ESP32's IP address (shown on OLED)
-2. Configure:
-   - Clock style (Mario animation, Standard, or Large)
-   - Timezone (GMT offset)
-   - Daylight saving time
+2. **Clock Settings:**
+   - Idle clock style (Mario animation, Standard, or Large)
    - Time format (12/24 hour)
    - Date format (DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD)
+3. **Timezone:**
+   - GMT offset (-12 to +14 hours)
+   - Daylight saving time toggle
+4. **Display Labels (NEW!):**
+   - Customize labels shown on OLED when PC is online
+   - Fan/Pump label (e.g., "PUMP", "FAN", "COOLER")
+   - CPU, RAM, GPU, and Disk labels
+   - Perfect for personalizing your setup!
 
 ### 2. PC Stats Sender (Python)
 
@@ -123,31 +133,57 @@ The OLED will display:
 - **PC Offline**: Animated clock (Mario jumps to update the time at each minute change)
 
 ### Display Modes
+
+**When PC is Online (receiving stats):**
+- Real-time monitoring display with customizable labels
+- Shows CPU usage/temp, RAM usage, GPU temp, Disk usage, Fan/Pump speed
+- Progress bars for visual representation
+- Automatically switches when PC sends data
+
+**When PC is Offline (idle mode):**
 - **Mario Clock**: Animated pixel Mario that jumps to "hit" digits when time changes
-- **Standard Clock**: Simple centered clock with date and day
-- **Large Clock**: Extra-large time display
+- **Standard Clock**: Simple centered clock with date and day of week
+- **Large Clock**: Extra-large time display with date
 
-### Sensor Configuration
-The Python script monitors:
+Change clock style anytime via the web configuration portal!
+
+### Customizing Display Labels
+
+**Via Web Portal (Recommended):**
+1. Open ESP32's IP address in browser
+2. Go to "Display Labels" section
+3. Change labels to match your setup:
+   - "PUMP" → "FAN" or "COOLER"
+   - Customize CPU, RAM, GPU, Disk labels too
+4. Save settings - changes apply immediately!
+
+### Customizing Monitored Sensors
+
+The Python script monitors these sensors (customize in [pc_stats_monitor.py](pc_stats_monitor.py)):
 - **CPU Usage**: Overall percentage
-- **CPU Temperature**: CPU Package sensor
+- **CPU Temperature**: CPU Package sensor *(change sensor name in script)*
 - **RAM Usage**: Percentage and GB used/total
-- **GPU Temperature**: GPU Core sensor
+- **GPU Temperature**: GPU Core sensor *(change sensor name in script)*
 - **Disk Usage**: C: drive percentage
-- **Fan Speed**: Pump Fan RPM (customize in script)
+- **Fan/Pump Speed**: Pump Fan RPM *(change sensor name in script)*
 
-To monitor different sensors, modify the sensor names in [pc_stats_monitor.py](.claude/pc_stats_monitor.py):
+To monitor different sensors, edit the sensor names in [pc_stats_monitor.py](pc_stats_monitor.py):
 ```python
-# Lines 35-44
+# Lines 43-56 - Customize these for your system:
 if sensor.SensorType == 'Fan' and sensor.Name == 'Pump Fan':
-    # Change 'Pump Fan' to your fan's name
+    # Change 'Pump Fan' to match your fan name
+    # Examples: 'Fan #1', 'CPU Fan', 'Case Fan #2'
 
 elif sensor.SensorType == 'Temperature' and sensor.Name == 'CPU Package':
-    # Change 'CPU Package' to your CPU sensor name
+    # Change 'CPU Package' to your CPU temp sensor
+    # Examples: 'CPU Core #1', 'CPU (Tctl/Tdie)'
 
 elif sensor.SensorType == 'Temperature' and sensor.Name == 'GPU Core':
-    # Change 'GPU Core' to your GPU sensor name
+    # Change 'GPU Core' to your GPU temp sensor
+    # Examples: 'GPU Temperature', 'GPU Hot Spot'
 ```
+
+**Tip:** Open LibreHardwareMonitor to see all available sensor names for your system!
 
 ## Troubleshooting
 

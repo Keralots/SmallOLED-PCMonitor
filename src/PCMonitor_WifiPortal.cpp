@@ -60,6 +60,11 @@ struct Settings {
   bool daylightSaving;   // Daylight saving time
   bool use24Hour;        // 24-hour format
   int dateFormat;        // 0 = DD/MM/YYYY, 1 = MM/DD/YYYY, 2 = YYYY-MM-DD
+  char fanLabel[16];     // Custom label for fan/pump (e.g., "PUMP", "FAN", "COOLER")
+  char cpuLabel[16];     // Custom label for CPU
+  char ramLabel[16];     // Custom label for RAM
+  char gpuLabel[16];     // Custom label for GPU
+  char diskLabel[16];    // Custom label for Disk
 };
 
 Settings settings;
@@ -248,14 +253,38 @@ void loadSettings() {
   settings.daylightSaving = preferences.getBool("dst", true); // Default: true
   settings.use24Hour = preferences.getBool("use24Hour", true); // Default: 24h
   settings.dateFormat = preferences.getInt("dateFormat", 0);  // Default: DD/MM/YYYY
+
+  // Load custom labels with defaults
+  String fanLbl = preferences.getString("fanLabel", "PUMP");
+  String cpuLbl = preferences.getString("cpuLabel", "CPU");
+  String ramLbl = preferences.getString("ramLabel", "RAM");
+  String gpuLbl = preferences.getString("gpuLabel", "GPU");
+  String diskLbl = preferences.getString("diskLabel", "DISK");
+
+  strncpy(settings.fanLabel, fanLbl.c_str(), 15);
+  strncpy(settings.cpuLabel, cpuLbl.c_str(), 15);
+  strncpy(settings.ramLabel, ramLbl.c_str(), 15);
+  strncpy(settings.gpuLabel, gpuLbl.c_str(), 15);
+  strncpy(settings.diskLabel, diskLbl.c_str(), 15);
+  settings.fanLabel[15] = '\0';
+  settings.cpuLabel[15] = '\0';
+  settings.ramLabel[15] = '\0';
+  settings.gpuLabel[15] = '\0';
+  settings.diskLabel[15] = '\0';
+
   preferences.end();
-  
+
   Serial.println("Settings loaded:");
   Serial.print("  Clock Style: "); Serial.println(settings.clockStyle);
   Serial.print("  GMT Offset: "); Serial.println(settings.gmtOffset);
   Serial.print("  DST: "); Serial.println(settings.daylightSaving ? "Yes" : "No");
   Serial.print("  24-Hour: "); Serial.println(settings.use24Hour ? "Yes" : "No");
   Serial.print("  Date Format: "); Serial.println(settings.dateFormat);
+  Serial.print("  Fan Label: "); Serial.println(settings.fanLabel);
+  Serial.print("  CPU Label: "); Serial.println(settings.cpuLabel);
+  Serial.print("  RAM Label: "); Serial.println(settings.ramLabel);
+  Serial.print("  GPU Label: "); Serial.println(settings.gpuLabel);
+  Serial.print("  Disk Label: "); Serial.println(settings.diskLabel);
 }
 
 void saveSettings() {
@@ -265,8 +294,13 @@ void saveSettings() {
   preferences.putBool("dst", settings.daylightSaving);
   preferences.putBool("use24Hour", settings.use24Hour);
   preferences.putInt("dateFormat", settings.dateFormat);
+  preferences.putString("fanLabel", settings.fanLabel);
+  preferences.putString("cpuLabel", settings.cpuLabel);
+  preferences.putString("ramLabel", settings.ramLabel);
+  preferences.putString("gpuLabel", settings.gpuLabel);
+  preferences.putString("diskLabel", settings.diskLabel);
   preferences.end();
-  
+
   Serial.println("Settings saved!");
 }
 
@@ -354,14 +388,34 @@ void handleRoot() {
 
   html += R"rawliteral(
         </select>
-        
+
         <label for="dst">Daylight Saving Time</label>
         <select name="dst" id="dst">
           <option value="1" )rawliteral" + String(settings.daylightSaving ? "selected" : "") + R"rawliteral(>Enabled (+1 hour)</option>
           <option value="0" )rawliteral" + String(!settings.daylightSaving ? "selected" : "") + R"rawliteral(>Disabled</option>
         </select>
       </div>
-      
+
+      <div class="card">
+        <h3>&#128195; Display Labels</h3>
+        <p style="color: #888; font-size: 14px; margin-top: 0;">Customize labels shown on OLED when PC stats are displayed</p>
+
+        <label for="fanLabel">Fan/Pump Label</label>
+        <input type="text" name="fanLabel" id="fanLabel" value=")rawliteral" + String(settings.fanLabel) + R"rawliteral(" maxlength="15" placeholder="PUMP, FAN, COOLER">
+
+        <label for="cpuLabel">CPU Label</label>
+        <input type="text" name="cpuLabel" id="cpuLabel" value=")rawliteral" + String(settings.cpuLabel) + R"rawliteral(" maxlength="15" placeholder="CPU, PROCESSOR">
+
+        <label for="ramLabel">RAM Label</label>
+        <input type="text" name="ramLabel" id="ramLabel" value=")rawliteral" + String(settings.ramLabel) + R"rawliteral(" maxlength="15" placeholder="RAM, MEMORY">
+
+        <label for="gpuLabel">GPU Label</label>
+        <input type="text" name="gpuLabel" id="gpuLabel" value=")rawliteral" + String(settings.gpuLabel) + R"rawliteral(" maxlength="15" placeholder="GPU, GRAPHICS">
+
+        <label for="diskLabel">Disk Label</label>
+        <input type="text" name="diskLabel" id="diskLabel" value=")rawliteral" + String(settings.diskLabel) + R"rawliteral(" maxlength="15" placeholder="DISK, STORAGE, SSD">
+      </div>
+
       <button type="submit" class="save-btn">&#128190; Save Settings</button>
     </form>
     
@@ -397,7 +451,44 @@ void handleSave() {
   if (server.hasArg("dateFormat")) {
     settings.dateFormat = server.arg("dateFormat").toInt();
   }
-  
+
+  // Save custom labels
+  if (server.hasArg("fanLabel")) {
+    String fanLbl = server.arg("fanLabel");
+    if (fanLbl.length() > 0) {
+      strncpy(settings.fanLabel, fanLbl.c_str(), 15);
+      settings.fanLabel[15] = '\0';
+    }
+  }
+  if (server.hasArg("cpuLabel")) {
+    String cpuLbl = server.arg("cpuLabel");
+    if (cpuLbl.length() > 0) {
+      strncpy(settings.cpuLabel, cpuLbl.c_str(), 15);
+      settings.cpuLabel[15] = '\0';
+    }
+  }
+  if (server.hasArg("ramLabel")) {
+    String ramLbl = server.arg("ramLabel");
+    if (ramLbl.length() > 0) {
+      strncpy(settings.ramLabel, ramLbl.c_str(), 15);
+      settings.ramLabel[15] = '\0';
+    }
+  }
+  if (server.hasArg("gpuLabel")) {
+    String gpuLbl = server.arg("gpuLabel");
+    if (gpuLbl.length() > 0) {
+      strncpy(settings.gpuLabel, gpuLbl.c_str(), 15);
+      settings.gpuLabel[15] = '\0';
+    }
+  }
+  if (server.hasArg("diskLabel")) {
+    String diskLbl = server.arg("diskLabel");
+    if (diskLbl.length() > 0) {
+      strncpy(settings.diskLabel, diskLbl.c_str(), 15);
+      settings.diskLabel[15] = '\0';
+    }
+  }
+
   saveSettings();
   applyTimezone();
   
@@ -588,56 +679,66 @@ void parseStats(const char* json) {
 
 void displayStats() {
   display.setTextSize(1);
-  
+
+  // Fan/Pump line
   display.setCursor(0, 0);
-  display.print("PUMP:");
+  display.print(settings.fanLabel);
+  display.print(":");
   display.print(stats.fan_speed);
   display.print("RPM");
-  
+
   display.setCursor(85, 0);
   display.print(stats.timestamp);
-  
+
+  // RAM line
   display.setCursor(0, 14);
-  display.print("RAM: ");
+  display.print(settings.ramLabel);
+  display.print(": ");
   display.print((int)stats.ram_percent);
   display.print("%");
-  
+
   int ram_bar = (int)(stats.ram_percent * 0.6);
   display.drawRect(70, 14, 58, 8, SSD1306_WHITE);
   if (ram_bar > 0) {
     display.fillRect(71, 15, ram_bar, 6, SSD1306_WHITE);
   }
-  
+
+  // CPU line
   display.setCursor(0, 28);
-  display.print("CPU: ");
+  display.print(settings.cpuLabel);
+  display.print(": ");
   display.print((int)stats.cpu_percent);
   display.print("% ");
   display.print(stats.cpu_temp);
   display.print("C");
-  
+
   int cpu_bar = (int)(stats.cpu_percent * 0.6);
   display.drawRect(70, 28, 58, 8, SSD1306_WHITE);
   if (cpu_bar > 0) {
     display.fillRect(71, 29, cpu_bar, 6, SSD1306_WHITE);
   }
-  
+
+  // GPU line
   display.setCursor(0, 42);
-  display.print("GPU: ");
+  display.print(settings.gpuLabel);
+  display.print(": ");
   display.print(stats.gpu_temp);
   display.print("C");
-  
+
   int gpu_bar = map(stats.gpu_temp, 0, 100, 0, 56);
   gpu_bar = constrain(gpu_bar, 0, 56);
   display.drawRect(70, 42, 58, 8, SSD1306_WHITE);
   if (gpu_bar > 0) {
     display.fillRect(71, 43, gpu_bar, 6, SSD1306_WHITE);
   }
-  
+
+  // Disk line
   display.setCursor(0, 56);
-  display.print("DISK:");
+  display.print(settings.diskLabel);
+  display.print(":");
   display.print((int)stats.disk_percent);
   display.print("%");
-  
+
   int disk_bar = (int)(stats.disk_percent * 0.56);
   display.drawRect(70, 56, 58, 8, SSD1306_WHITE);
   if (disk_bar > 0) {

@@ -138,8 +138,15 @@ For complete setup instructions, see the main [README](../../README.md).
 
 **Version**: 1.0.0
 **Build Date**: 2025-11-28
-**Firmware Size**: ~954 KB (71% flash usage)
+**Firmware Size**: ~957 KB (71.5% flash usage)
 **RAM Usage**: ~40 KB (12.6% RAM usage)
+
+**Features in this version:**
+- Customizable display labels (PUMP/FAN/etc.)
+- Web configuration portal for all settings
+- Dual display modes (PC online stats / offline clock)
+- Three clock styles (Mario, Standard, Large)
+- Persistent settings saved to flash
 
 ## Source Code
 

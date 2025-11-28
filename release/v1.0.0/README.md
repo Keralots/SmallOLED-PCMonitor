@@ -62,5 +62,15 @@ For issues or questions, please open an issue on GitHub.
 - **Version**: 1.0.0
 - **Release Date**: 2025-11-28
 - **Chip**: ESP32-C3
-- **Flash Usage**: 71.1% (932,550 bytes)
-- **RAM Usage**: 12.6% (41,316 bytes)
+- **Flash Usage**: 71.5% (936,816 bytes)
+- **RAM Usage**: 12.6% (41,396 bytes)
+
+## Changelog
+
+**v1.0.0 (2025-11-28)**
+- Customizable display labels via web interface
+- Dual display modes (PC online/offline)
+- Three clock styles (Mario, Standard, Large)
+- Web configuration portal for all settings
+- Persistent settings in flash memory
+- WiFi portal for easy setup

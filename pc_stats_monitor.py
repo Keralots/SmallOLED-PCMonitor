@@ -16,30 +16,41 @@ BROADCAST_INTERVAL = 3  # Increased to 3 seconds for even less CPU usage
 
 # Sensor identifiers (will be populated at startup)
 sensor_ids = {
-    'pump': None,
+    'fan': None,  # Can be pump, case fan, CPU fan, etc.
     'cpu_temp': None,
     'gpu_temp': None
 }
 
 def initialize_sensors():
-    """Find sensor identifiers once at startup"""
+    """Find sensor identifiers once at startup
+
+    CUSTOMIZE THESE SENSOR NAMES FOR YOUR SYSTEM:
+    - Change 'Pump Fan' to match your fan name (e.g., 'Fan #1', 'CPU Fan', 'Case Fan')
+    - Change 'CPU Package' to match your CPU temp sensor
+    - Change 'GPU Core' to match your GPU temp sensor
+
+    Open LibreHardwareMonitor to see available sensor names for your system.
+    """
     print("Scanning for sensors...")
-    
+
     try:
         import wmi
         w = wmi.WMI(namespace="root\\LibreHardwareMonitor")
         sensors = w.Sensor()
-        
+
         # Find our specific sensors and save their identifiers
         for sensor in sensors:
+            # Fan/Pump sensor - CUSTOMIZE THIS NAME FOR YOUR SYSTEM
             if sensor.SensorType == 'Fan' and sensor.Name == 'Pump Fan':
-                sensor_ids['pump'] = sensor.Identifier
-                print(f"✓ Pump Fan ID: {sensor.Identifier}")
-            
+                sensor_ids['fan'] = sensor.Identifier
+                print(f"✓ Fan/Pump ID: {sensor.Identifier}")
+
+            # CPU Temperature - CUSTOMIZE THIS NAME FOR YOUR SYSTEM
             elif sensor.SensorType == 'Temperature' and sensor.Name == 'CPU Package':
                 sensor_ids['cpu_temp'] = sensor.Identifier
                 print(f"✓ CPU Temp ID: {sensor.Identifier}")
-            
+
+            # GPU Temperature - CUSTOMIZE THIS NAME FOR YOUR SYSTEM
             elif sensor.SensorType == 'Temperature' and sensor.Name == 'GPU Core':
                 sensor_ids['gpu_temp'] = sensor.Identifier
                 print(f"✓ GPU Temp ID: {sensor.Identifier}")
@@ -64,22 +75,22 @@ def get_sensor_values():
     try:
         import wmi
         w = wmi.WMI(namespace="root\\LibreHardwareMonitor")
-        
+
         # Get only the sensors we need - no iteration through hundreds
-        pump_speed = get_sensor_value(w, sensor_ids['pump']) if sensor_ids['pump'] else None
+        fan_speed = get_sensor_value(w, sensor_ids['fan']) if sensor_ids['fan'] else None
         cpu_temp = get_sensor_value(w, sensor_ids['cpu_temp']) if sensor_ids['cpu_temp'] else None
         gpu_temp = get_sensor_value(w, sensor_ids['gpu_temp']) if sensor_ids['gpu_temp'] else None
-        
-        return pump_speed, cpu_temp, gpu_temp
-        
+
+        return fan_speed, cpu_temp, gpu_temp
+
     except Exception as e:
         return None, None, None
 
 def get_system_stats():
     """Collect system statistics"""
     # Get hardware sensors
-    pump_speed, cpu_temp, gpu_temp = get_sensor_values()
-    
+    fan_speed, cpu_temp, gpu_temp = get_sensor_values()
+
     # Get system stats (minimal CPU usage)
     stats = {
         'timestamp': datetime.now().strftime('%H:%M'),
@@ -90,7 +101,7 @@ def get_system_stats():
         'disk_percent': round(psutil.disk_usage('C:\\').percent, 1),
         'cpu_temp': cpu_temp,
         'gpu_temp': gpu_temp,
-        'fan_speed': pump_speed,
+        'fan_speed': fan_speed,  # Can be pump, case fan, CPU fan, etc.
         'status': 'online'
     }
     return stats
@@ -100,7 +111,7 @@ def send_stats(sock, stats):
     try:
         message = json.dumps(stats).encode('utf-8')
         sock.sendto(message, (ESP32_IP, UDP_PORT))
-        print(f"[{stats['timestamp']}] CPU {stats['cpu_percent']}% | RAM {stats['ram_percent']}% | Pump {stats['fan_speed'] or 'N/A'}")
+        print(f"[{stats['timestamp']}] CPU {stats['cpu_percent']}% | RAM {stats['ram_percent']}% | Fan {stats['fan_speed'] or 'N/A'} RPM")
     except Exception as e:
         print(f"Error: {e}")
 
