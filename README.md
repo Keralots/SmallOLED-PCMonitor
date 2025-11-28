@@ -1,6 +1,6 @@
 # PC Stats Monitor - ESP32 OLED Display
 
-https://www.youtube.com/shorts/t2W5wxtOph8
+[![Youtube Video](https://github.com/user-attachments/assets/d5232fde-a2ae-46ae-b4b4-74f2164f222e)](https://www.youtube.com/watch?v=D6zZIyOvWjY)
 
 3D Printable case:
 https://makerworld.com/en/models/2051935
