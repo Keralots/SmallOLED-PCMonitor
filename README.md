@@ -26,10 +26,28 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 ### 1. ESP32 Firmware
 
-#### Prerequisites
+#### Option A: Pre-built Binary (Easy - No Compilation Needed)
+
+**Download the latest release**: [v1.0.0](release/v1.0.0/)
+
+Quick flash using the automated scripts:
+- **Windows**: Run `flash.bat` and follow prompts
+- **Linux/Mac**: Run `./flash.sh` and follow prompts
+
+Or flash manually with esptool (single file - easiest!):
+```bash
+pip install esptool
+esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-complete.bin
+```
+
+For detailed instructions, see [release/v1.0.0/FLASH_INSTRUCTIONS.md](release/v1.0.0/FLASH_INSTRUCTIONS.md)
+
+#### Option B: Build from Source
+
+**Prerequisites:**
 - [PlatformIO](https://platformio.org/) (or Arduino IDE)
 
-#### Installation
+**Installation:**
 1. Clone this repository
 2. Open the project in PlatformIO
 3. Connect your ESP32 via USB
