@@ -5,6 +5,13 @@
 3D Printable case:
 https://makerworld.com/en/models/2051935
 
+Be aware that there are different sizes of the same OLED screen on aliexpress.
+Im using this one (do not purchase dual color, it won't work):
+https://aliexpress.com/item/1005006262908701.html
+
+ESP32-C3 SuperMini:
+https://aliexpress.com/item/1005008988143743.html
+
 A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on a small OLED screen using ESP32 and a companion Python script.
 
 ## Features
