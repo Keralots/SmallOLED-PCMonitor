@@ -2,6 +2,9 @@
 
 https://www.youtube.com/shorts/t2W5wxtOph8
 
+3D Printable case:
+https://makerworld.com/en/models/2051935
+
 A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on a small OLED screen using ESP32 and a companion Python script.
 
 ## Features
