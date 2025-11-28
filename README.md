@@ -1,5 +1,5 @@
 # PC Stats Monitor - ESP32 OLED Display
-
+https://www.youtube.com/shorts/t2W5wxtOph8
 A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on a small OLED screen using ESP32 and a companion Python script.
 
 ## Features
