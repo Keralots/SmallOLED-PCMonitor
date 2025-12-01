@@ -28,9 +28,9 @@ def get_linux_temperatures():
         temps = psutil.sensors_temperatures()
         # CPU
         for key in temps:
-            if "coretemp" in key or "cpu" in key or 'k10temp':
+            if "coretemp" in key or "cpu" in key or 'k10temp' in key:
                 for entry in temps[key]:
-                    if entry.label.lower() in ["package id 0", "core 0", "cpu"] or entry.label == "":
+                    if entry.label.lower() in ["package id 0", "core 0", "cpu", "tctl"] or entry.label == "":
                         cpu_temp = int(entry.current)
                         break
             # GPU (NVIDIA)
