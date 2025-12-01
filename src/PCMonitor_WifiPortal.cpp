@@ -22,7 +22,6 @@
 
 #include <WiFi.h>
 #include <WiFiManager.h>
-#include <WiFiUDP.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <Wire.h>
