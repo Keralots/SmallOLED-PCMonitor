@@ -116,9 +116,12 @@ Once connected to WiFi, access the full configuration page:
    ```bash
    pip install psutil pywin32
    ```
-
+   For linux:
+   ```bash
+   pip install psutil
+   ```
 2. Configure the script:
-   - Open [pc_stats_monitor.py](pc_stats_monitor.py)
+   - Open [pc_stats_monitor.py](pc_stats_monitor.py) for windows systems or [pc_stats_monitor_linux.py](pc_stats_monitor_linux.py) for linux systems
    - Change the `ESP32_IP` to match your ESP32's IP address (displayed on OLED):
      ```python
      ESP32_IP = "192.168.0.163"  # Change this to your ESP32 IP
@@ -129,7 +132,7 @@ Once connected to WiFi, access the full configuration page:
    python pc_stats_monitor.py
    ```
 
-#### Running at Startup (Optional)
+#### Running at Startup (Windows - Optional)
 To automatically start monitoring when Windows boots:
 1. Press `Win + R`, type `shell:startup`, press Enter
 2. Create a shortcut to the Python script
