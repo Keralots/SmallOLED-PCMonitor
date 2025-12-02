@@ -64,6 +64,14 @@ struct Settings {
   char ramLabel[16];     // Custom label for RAM
   char gpuLabel[16];     // Custom label for GPU
   char diskLabel[16];    // Custom label for Disk
+
+  // Visibility toggles
+  bool showFan;          // Show/hide fan metric
+  bool showCPU;          // Show/hide CPU metric
+  bool showRAM;          // Show/hide RAM metric
+  bool showGPU;          // Show/hide GPU metric
+  bool showDisk;         // Show/hide disk metric
+  bool showClock;        // Show/hide timestamp in metrics display
 };
 
 Settings settings;
@@ -271,6 +279,14 @@ void loadSettings() {
   settings.gpuLabel[15] = '\0';
   settings.diskLabel[15] = '\0';
 
+  // Load visibility settings (default: true for all)
+  settings.showFan = preferences.getBool("showFan", true);
+  settings.showCPU = preferences.getBool("showCPU", true);
+  settings.showRAM = preferences.getBool("showRAM", true);
+  settings.showGPU = preferences.getBool("showGPU", true);
+  settings.showDisk = preferences.getBool("showDisk", true);
+  settings.showClock = preferences.getBool("showClock", true);
+
   preferences.end();
 
   Serial.println("Settings loaded:");
@@ -284,6 +300,13 @@ void loadSettings() {
   Serial.print("  RAM Label: "); Serial.println(settings.ramLabel);
   Serial.print("  GPU Label: "); Serial.println(settings.gpuLabel);
   Serial.print("  Disk Label: "); Serial.println(settings.diskLabel);
+  Serial.println("Visibility:");
+  Serial.print("  Fan: "); Serial.println(settings.showFan ? "Yes" : "No");
+  Serial.print("  CPU: "); Serial.println(settings.showCPU ? "Yes" : "No");
+  Serial.print("  RAM: "); Serial.println(settings.showRAM ? "Yes" : "No");
+  Serial.print("  GPU: "); Serial.println(settings.showGPU ? "Yes" : "No");
+  Serial.print("  Disk: "); Serial.println(settings.showDisk ? "Yes" : "No");
+  Serial.print("  Clock: "); Serial.println(settings.showClock ? "Yes" : "No");
 }
 
 void saveSettings() {
@@ -298,6 +321,15 @@ void saveSettings() {
   preferences.putString("ramLabel", settings.ramLabel);
   preferences.putString("gpuLabel", settings.gpuLabel);
   preferences.putString("diskLabel", settings.diskLabel);
+
+  // Save visibility settings
+  preferences.putBool("showFan", settings.showFan);
+  preferences.putBool("showCPU", settings.showCPU);
+  preferences.putBool("showRAM", settings.showRAM);
+  preferences.putBool("showGPU", settings.showGPU);
+  preferences.putBool("showDisk", settings.showDisk);
+  preferences.putBool("showClock", settings.showClock);
+
   preferences.end();
 
   Serial.println("Settings saved!");
@@ -396,23 +428,45 @@ void handleRoot() {
       </div>
 
       <div class="card">
-        <h3>&#128195; Display Labels</h3>
-        <p style="color: #888; font-size: 14px; margin-top: 0;">Customize labels shown on OLED when PC stats are displayed</p>
+        <h3 style="text-align: left;">&#128195; Display Labels</h3>
+        <p style="color: #888; font-size: 14px; margin-top: 0; text-align: left;">Customize labels and visibility for metrics shown on OLED</p>
 
-        <label for="fanLabel">Fan/Pump Label</label>
-        <input type="text" name="fanLabel" id="fanLabel" value=")rawliteral" + String(settings.fanLabel) + R"rawliteral(" maxlength="15" placeholder="PUMP, FAN, COOLER">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+          <input type="checkbox" name="showFan" id="showFan" value="1" )rawliteral" + String(settings.showFan ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
+          <label for="fanLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Fan/Pump</label>
+          <input type="text" name="fanLabel" id="fanLabel" value=")rawliteral" + String(settings.fanLabel) + R"rawliteral(" maxlength="15" placeholder="PUMP, FAN" style="flex: 1; margin: 0; margin-left: 10px;">
+        </div>
 
-        <label for="cpuLabel">CPU Label</label>
-        <input type="text" name="cpuLabel" id="cpuLabel" value=")rawliteral" + String(settings.cpuLabel) + R"rawliteral(" maxlength="15" placeholder="CPU, PROCESSOR">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+          <input type="checkbox" name="showCPU" id="showCPU" value="1" )rawliteral" + String(settings.showCPU ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
+          <label for="cpuLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">CPU</label>
+          <input type="text" name="cpuLabel" id="cpuLabel" value=")rawliteral" + String(settings.cpuLabel) + R"rawliteral(" maxlength="15" placeholder="CPU" style="flex: 1; margin: 0; margin-left: 10px;">
+        </div>
 
-        <label for="ramLabel">RAM Label</label>
-        <input type="text" name="ramLabel" id="ramLabel" value=")rawliteral" + String(settings.ramLabel) + R"rawliteral(" maxlength="15" placeholder="RAM, MEMORY">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+          <input type="checkbox" name="showRAM" id="showRAM" value="1" )rawliteral" + String(settings.showRAM ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
+          <label for="ramLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">RAM</label>
+          <input type="text" name="ramLabel" id="ramLabel" value=")rawliteral" + String(settings.ramLabel) + R"rawliteral(" maxlength="15" placeholder="RAM" style="flex: 1; margin: 0; margin-left: 10px;">
+        </div>
 
-        <label for="gpuLabel">GPU Label</label>
-        <input type="text" name="gpuLabel" id="gpuLabel" value=")rawliteral" + String(settings.gpuLabel) + R"rawliteral(" maxlength="15" placeholder="GPU, GRAPHICS">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+          <input type="checkbox" name="showGPU" id="showGPU" value="1" )rawliteral" + String(settings.showGPU ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
+          <label for="gpuLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">GPU</label>
+          <input type="text" name="gpuLabel" id="gpuLabel" value=")rawliteral" + String(settings.gpuLabel) + R"rawliteral(" maxlength="15" placeholder="GPU" style="flex: 1; margin: 0; margin-left: 10px;">
+        </div>
 
-        <label for="diskLabel">Disk Label</label>
-        <input type="text" name="diskLabel" id="diskLabel" value=")rawliteral" + String(settings.diskLabel) + R"rawliteral(" maxlength="15" placeholder="DISK, STORAGE, SSD">
+        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+          <input type="checkbox" name="showDisk" id="showDisk" value="1" )rawliteral" + String(settings.showDisk ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
+          <label for="diskLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Disk</label>
+          <input type="text" name="diskLabel" id="diskLabel" value=")rawliteral" + String(settings.diskLabel) + R"rawliteral(" maxlength="15" placeholder="DISK" style="flex: 1; margin: 0; margin-left: 10px;">
+        </div>
+
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #333;">
+
+        <div style="display: flex; align-items: center;">
+          <input type="checkbox" name="showClock" id="showClock" value="1" )rawliteral" + String(settings.showClock ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
+          <label for="showClock" style="margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Show Clock/Time in metrics display</label>
+        </div>
       </div>
 
       <button type="submit" class="save-btn">&#128190; Save Settings</button>
@@ -450,6 +504,14 @@ void handleSave() {
   if (server.hasArg("dateFormat")) {
     settings.dateFormat = server.arg("dateFormat").toInt();
   }
+
+  // Save visibility checkboxes (unchecked = not present in POST data)
+  settings.showFan = server.hasArg("showFan");
+  settings.showCPU = server.hasArg("showCPU");
+  settings.showRAM = server.hasArg("showRAM");
+  settings.showGPU = server.hasArg("showGPU");
+  settings.showDisk = server.hasArg("showDisk");
+  settings.showClock = server.hasArg("showClock");
 
   // Save custom labels
   if (server.hasArg("fanLabel")) {
@@ -678,70 +740,111 @@ void parseStats(const char* json) {
 
 void displayStats() {
   display.setTextSize(1);
+  int currentY = 0;  // Start at top
+  const int LINE_HEIGHT = 14;  // Spacing between metrics
 
-  // Fan/Pump line
-  display.setCursor(0, 0);
-  display.print(settings.fanLabel);
-  display.print(":");
-  display.print(stats.fan_speed);
-  display.print("RPM");
-
-  display.setCursor(85, 0);
-  display.print(stats.timestamp);
-
-  // RAM line
-  display.setCursor(0, 14);
-  display.print(settings.ramLabel);
-  display.print(": ");
-  display.print((int)stats.ram_percent);
-  display.print("%");
-
-  int ram_bar = (int)(stats.ram_percent * 0.6);
-  display.drawRect(70, 14, 58, 8, SSD1306_WHITE);
-  if (ram_bar > 0) {
-    display.fillRect(71, 15, ram_bar, 6, SSD1306_WHITE);
+  // Clock display (if enabled and Fan is hidden, show centered)
+  if (settings.showClock && !settings.showFan) {
+    display.setCursor(48, currentY);  // Centered position for "HH:MM" (5 chars)
+    display.print(stats.timestamp);
+    currentY += LINE_HEIGHT;
   }
 
-  // CPU line
-  display.setCursor(0, 28);
-  display.print(settings.cpuLabel);
-  display.print(": ");
-  display.print((int)stats.cpu_percent);
-  display.print("% ");
-  display.print(stats.cpu_temp);
-  display.print("C");
+  // Fan/Pump
+  if (settings.showFan) {
+    display.setCursor(0, currentY);
+    display.print(settings.fanLabel);
+    display.print(":");
+    display.print(stats.fan_speed);
+    display.print("RPM");
 
-  int cpu_bar = (int)(stats.cpu_percent * 0.6);
-  display.drawRect(70, 28, 58, 8, SSD1306_WHITE);
-  if (cpu_bar > 0) {
-    display.fillRect(71, 29, cpu_bar, 6, SSD1306_WHITE);
+    // Conditionally show timestamp (clock) on Fan line
+    if (settings.showClock) {
+      display.setCursor(85, currentY);
+      display.print(stats.timestamp);
+    }
+
+    currentY += LINE_HEIGHT;
   }
 
-  // GPU line
-  display.setCursor(0, 42);
-  display.print(settings.gpuLabel);
-  display.print(": ");
-  display.print(stats.gpu_temp);
-  display.print("C");
+  // RAM with progress bar
+  if (settings.showRAM) {
+    display.setCursor(0, currentY);
+    display.print(settings.ramLabel);
+    display.print(": ");
+    display.print((int)stats.ram_percent);
+    display.print("%");
 
-  int gpu_bar = map(stats.gpu_temp, 0, 100, 0, 56);
-  gpu_bar = constrain(gpu_bar, 0, 56);
-  display.drawRect(70, 42, 58, 8, SSD1306_WHITE);
-  if (gpu_bar > 0) {
-    display.fillRect(71, 43, gpu_bar, 6, SSD1306_WHITE);
+    int ram_bar = (int)(stats.ram_percent * 0.6);
+    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+    if (ram_bar > 0) {
+      display.fillRect(71, currentY + 1, ram_bar, 6, SSD1306_WHITE);
+    }
+
+    currentY += LINE_HEIGHT;
   }
 
-  // Disk line
-  display.setCursor(0, 56);
-  display.print(settings.diskLabel);
-  display.print(":");
-  display.print((int)stats.disk_percent);
-  display.print("%");
+  // CPU with progress bar
+  if (settings.showCPU) {
+    display.setCursor(0, currentY);
+    display.print(settings.cpuLabel);
+    display.print(": ");
+    display.print((int)stats.cpu_percent);
+    display.print("% ");
+    display.print(stats.cpu_temp);
+    display.print("C");
 
-  int disk_bar = (int)(stats.disk_percent * 0.56);
-  display.drawRect(70, 56, 58, 8, SSD1306_WHITE);
-  if (disk_bar > 0) {
-    display.fillRect(71, 57, disk_bar, 6, SSD1306_WHITE);
+    int cpu_bar = (int)(stats.cpu_percent * 0.6);
+    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+    if (cpu_bar > 0) {
+      display.fillRect(71, currentY + 1, cpu_bar, 6, SSD1306_WHITE);
+    }
+
+    currentY += LINE_HEIGHT;
+  }
+
+  // GPU with progress bar
+  if (settings.showGPU) {
+    display.setCursor(0, currentY);
+    display.print(settings.gpuLabel);
+    display.print(": ");
+    display.print(stats.gpu_temp);
+    display.print("C");
+
+    int gpu_bar = map(stats.gpu_temp, 0, 100, 0, 56);
+    gpu_bar = constrain(gpu_bar, 0, 56);
+    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+    if (gpu_bar > 0) {
+      display.fillRect(71, currentY + 1, gpu_bar, 6, SSD1306_WHITE);
+    }
+
+    currentY += LINE_HEIGHT;
+  }
+
+  // Disk with progress bar
+  if (settings.showDisk) {
+    display.setCursor(0, currentY);
+    display.print(settings.diskLabel);
+    display.print(":");
+    display.print((int)stats.disk_percent);
+    display.print("%");
+
+    int disk_bar = (int)(stats.disk_percent * 0.56);
+    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+    if (disk_bar > 0) {
+      display.fillRect(71, currentY + 1, disk_bar, 6, SSD1306_WHITE);
+    }
+
+    currentY += LINE_HEIGHT;
+  }
+
+  // Edge case: If no metrics are shown, display message
+  if (!settings.showFan && !settings.showCPU && !settings.showRAM &&
+      !settings.showGPU && !settings.showDisk) {
+    display.setCursor(0, 24);
+    display.print("No metrics");
+    display.setCursor(0, 36);
+    display.print("selected");
   }
 }
 
