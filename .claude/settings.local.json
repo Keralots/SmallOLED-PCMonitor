@@ -11,7 +11,8 @@
       "Bash(chmod:*)",
       "Bash(esptool.py:*)",
       "Bash(python -m esptool:*)",
-      "Bash(python merge_bins.py:*)"
+      "Bash(python merge_bins.py:*)",
+      "Bash(\"C:\\Users\\rafal\\.platformio\\penv\\Scripts\\platformio.exe\" run)"
     ],
     "deny": [],
     "ask": []
