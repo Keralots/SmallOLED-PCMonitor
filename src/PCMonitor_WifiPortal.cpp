@@ -221,7 +221,11 @@ void setup() {
   Serial.println("WiFi Connected!");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
-  
+
+  // Set WiFi TX power to maximum for better range
+  WiFi.setTxPower(WIFI_POWER_19_5dBm);  // Maximum: 19.5 dBm (~89 mW)
+  Serial.println("WiFi TX Power set to maximum (19.5 dBm)");
+
   // Apply timezone and start NTP
   applyTimezone();
   Serial.println("NTP time synchronized");
