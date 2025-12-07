@@ -5,7 +5,7 @@
 3D Printable case:
 https://makerworld.com/en/models/2051935
 
-Be aware that there are different sizes of the same OLED screen on aliexpress.
+Be aware that there are different sizes of the same SSD1306 OLED screen on aliexpress.
 Im using this one "Original" version (do not purchase dual color, it won't work): 
 https://aliexpress.com/item/1005006262908701.html
 
@@ -106,28 +106,38 @@ Once connected to WiFi, access the full configuration page:
 - **Python 3.7+**
 - **LibreHardwareMonitor** (for hardware sensor monitoring)
 
+#### Installing Python:
+For windows download [e.g. this version](https://www.python.org/ftp/python/3.14.2/python-3.14.2-amd64.exe)
+Check both checkboxes on installation screen (to use admin rights and add python.exe to PATH)
+<img width="654" height="414" alt="Screenshot 2025-12-07 132252" src="https://github.com/user-attachments/assets/07d958e6-9776-4981-8971-c11d7d23d59a" />
+At the end of installation, if asked to remove characters limit for path, agree on it.
+
 #### Installing LibreHardwareMonitor
 1. Download from [LibreHardwareMonitor Releases](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases)
 2. Extract and run `LibreHardwareMonitor.exe` as Administrator
-3. Keep it running in the background (minimize to system tray)
+3. Check following options. Fisr 4 from the top:
+<img width="442" height="627" alt="Screenshot 2025-12-07 132802" src="https://github.com/user-attachments/assets/983e41c4-9854-4d59-8ccc-4779315444d0" />
+
 
 #### Python Script Setup
-1. Install required Python packages:
+1. open CMD or powershell/terminal as admin.
+2. Install required Python packages:
    ```bash
    pip install psutil pywin32
+   pip install wmi pywin32
    ```
    For linux:
    ```bash
    pip install psutil
    ```
-2. Configure the script:
+3. Configure the script:
    - Open [pc_stats_monitor.py](pc_stats_monitor.py) for windows systems or [pc_stats_monitor_linux.py](pc_stats_monitor_linux.py) for linux systems
    - Change the `ESP32_IP` to match your ESP32's IP address (displayed on OLED):
      ```python
      ESP32_IP = "192.168.0.163"  # Change this to your ESP32 IP
      ```
 
-3. Run the script:
+4. Run the script:
    ```bash
    python pc_stats_monitor.py
    ```
