@@ -18,7 +18,7 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 - **Dual Display Modes:**
   - **PC Online**: Real-time stats (CPU, RAM, GPU temp, disk usage, fan/pump speed)
-  - **PC Offline**: Animated clock (Mario, Standard, or Large styles)
+  - **PC Offline**: Animated clock (Mario, Space Invaders, Standard, or Large styles)
 - **Web Configuration Portal**: Customize all settings via browser
   - Clock styles and time/date formats
   - Timezone and daylight saving

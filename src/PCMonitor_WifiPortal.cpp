@@ -54,7 +54,7 @@ const char* ntpServer = "pool.ntp.org";
 
 // ========== Settings (loaded from flash) ==========
 struct Settings {
-  int clockStyle;        // 0 = Mario, 1 = Standard, 2 = Large
+  int clockStyle;        // 0 = Mario, 1 = Standard, 2 = Large, 3 = Space Invaders (Jumping), 4 = Space Invaders (Sliding)
   int gmtOffset;         // GMT offset in hours (-12 to +14)
   bool daylightSaving;   // Daylight saving time
   bool use24Hour;        // 24-hour format
@@ -141,7 +141,100 @@ const float DIGIT_BOUNCE_POWER = -3.5;
 const float DIGIT_GRAVITY = 0.6;
 
 const int DIGIT_X[5] = {19, 37, 55, 73, 91};
-const int TIME_Y = 26;
+const int TIME_Y = 26;  // Mario and standard clocks use this position
+
+// ========== Space Invader Animation Variables (Clock Style 3 - Sliding) ==========
+enum InvaderState {
+  INVADER_PATROL,
+  INVADER_SLIDING,
+  INVADER_SHOOTING,
+  INVADER_EXPLODING_DIGIT,
+  INVADER_MOVING_NEXT,
+  INVADER_RETURNING
+};
+
+// Invader fragment (same structure as ShipFragment)
+struct InvaderFragment {
+  float x, y;
+  float vx, vy;
+  bool active;
+};
+
+float invader_x = 64;                    // Horizontal position
+const float invader_y = 56;              // Fixed Y position (always at bottom)
+int invader_anim_frame = 0;              // Sprite animation frame
+int invader_patrol_direction = 1;        // 1 = right, -1 = left
+InvaderState invader_state = INVADER_PATROL;
+
+// Timing
+unsigned long last_invader_update = 0;
+unsigned long last_invader_sprite_toggle = 0;
+
+// Movement constants
+const float INVADER_PATROL_SPEED = 0.5;       // Slow patrol drift
+const float INVADER_SLIDE_SPEED = 2.5;        // Fast slide to target
+const int INVADER_PATROL_LEFT = 15;           // Left boundary
+const int INVADER_PATROL_RIGHT = 113;         // Right boundary
+
+// Laser system
+struct Laser {
+  float x, y;
+  float length;
+  bool active;
+  int target_digit_idx;
+};
+
+// Invader uses same laser and fragment systems as ship
+Laser invader_laser = {0, 0, false, 0, -1};
+const float LASER_EXTEND_SPEED = 4.0;
+const float LASER_MAX_LENGTH = 30.0;
+
+#define MAX_INVADER_FRAGMENTS 16
+InvaderFragment invader_fragments[MAX_INVADER_FRAGMENTS] = {0};
+const float INVADER_FRAG_GRAVITY = 0.5;
+const float INVADER_FRAG_SPEED = 2.0;
+int invader_explosion_timer = 0;
+const int INVADER_EXPLOSION_DURATION = 25;
+
+// ========== Space Ship Animation Variables (Clock Style 4) ==========
+enum ShipState {
+  SHIP_PATROL,
+  SHIP_SLIDING,
+  SHIP_SHOOTING,
+  SHIP_EXPLODING_DIGIT,
+  SHIP_MOVING_NEXT,
+  SHIP_RETURNING
+};
+
+// Ship fragment (same structure as InvaderFragment)
+struct ShipFragment {
+  float x, y;
+  float vx, vy;
+  bool active;
+};
+
+float ship_x = 64;                    // Horizontal position
+const float ship_y = 56;              // Fixed Y position (always at bottom)
+int ship_anim_frame = 0;              // Sprite animation frame
+int ship_patrol_direction = 1;        // 1 = right, -1 = left
+ShipState ship_state = SHIP_PATROL;
+
+// Timing
+unsigned long last_ship_update = 0;
+unsigned long last_ship_sprite_toggle = 0;
+const int SHIP_ANIM_SPEED = 50;            // 50ms = 20 FPS
+const int SHIP_SPRITE_TOGGLE_SPEED = 200;  // Slow retro animation
+
+// Movement constants
+const float SHIP_PATROL_SPEED = 0.5;       // Slow patrol drift
+const float SHIP_SLIDE_SPEED = 2.5;        // Fast slide to target
+const int SHIP_PATROL_LEFT = 15;           // Left boundary
+const int SHIP_PATROL_RIGHT = 113;         // Right boundary
+
+// Ship uses same laser and fragment systems as invader
+Laser ship_laser = {0, 0, 0, false, -1};
+ShipFragment ship_fragments[MAX_INVADER_FRAGMENTS] = {0};
+int ship_explosion_timer = 0;
 
 // ========== WiFiManager ==========
 WiFiManager wifiManager;
@@ -172,6 +265,40 @@ void configModeCallback(WiFiManager *myWiFiManager);
 void saveConfigCallback();
 void parseStats(const char* json);
 void displayStats();
+void displayClockWithInvader();
+void updateInvaderAnimation(struct tm* timeinfo);
+void handleInvaderPatrolState();
+void handleInvaderSlidingState();
+void handleInvaderShootingState();
+void handleInvaderExplodingState();
+void handleInvaderMovingNextState();
+void handleInvaderReturningState();
+void drawInvader(int x, int y, int frame);
+void drawInvaderLaser(Laser* laser);
+void updateInvaderLaser();
+void fireInvaderLaser(int target_digit_idx);
+void spawnInvaderExplosion(int digitIndex);
+void updateInvaderFragments();
+void drawInvaderFragments();
+bool allInvaderFragmentsInactive();
+InvaderFragment* findFreeInvaderFragment();
+void displayClockWithShip();
+void updateShipAnimation(struct tm* timeinfo);
+void handleShipPatrolState();
+void handleShipSlidingState();
+void handleShipShootingState();
+void handleShipExplodingState();
+void handleShipMovingNextState();
+void handleShipReturningState();
+void drawShip(int x, int y, int frame);
+void drawShipLaser(Laser* laser);
+void updateShipLaser();
+void fireShipLaser(int target_digit_idx);
+void spawnShipExplosion(int digitIndex);
+void updateShipFragments();
+void drawShipFragments();
+bool allShipFragmentsInactive();
+ShipFragment* findFreeShipFragment();
 
 void setup() {
   Serial.begin(115200);
@@ -391,6 +518,8 @@ void handleRoot() {
           <option value="0" )rawliteral" + String(settings.clockStyle == 0 ? "selected" : "") + R"rawliteral(>Mario Animation</option>
           <option value="1" )rawliteral" + String(settings.clockStyle == 1 ? "selected" : "") + R"rawliteral(>Standard Clock</option>
           <option value="2" )rawliteral" + String(settings.clockStyle == 2 ? "selected" : "") + R"rawliteral(>Large Clock</option>
+          <option value="3" )rawliteral" + String(settings.clockStyle == 3 ? "selected" : "") + R"rawliteral(>Space Invader</option>
+          <option value="4" )rawliteral" + String(settings.clockStyle == 4 ? "selected" : "") + R"rawliteral(>Space Ship</option>
         </select>
         
         <label for="use24Hour">Time Format</label>
@@ -556,13 +685,21 @@ void handleSave() {
 
   saveSettings();
   applyTimezone();
-  
+
   // Reset Mario animation state when switching modes
   mario_state = MARIO_IDLE;
   mario_x = -15;
   animation_triggered = false;
   time_overridden = false;
   last_minute = -1;
+
+  // Reset Space Invader animation state when switching modes
+  invader_state = INVADER_PATROL;
+  invader_x = 64;  // Center of screen (invader_y is const at 56)
+
+  // Reset Space Ship animation state when switching modes
+  ship_state = SHIP_PATROL;
+  ship_x = 64;  // Center of screen
   
   String html = R"rawliteral(
 <!DOCTYPE html>
@@ -707,8 +844,12 @@ void loop() {
       displayClockWithMario();
     } else if (settings.clockStyle == 1) {
       displayStandardClock();
-    } else {
+    } else if (settings.clockStyle == 2) {
       displayLargeClock();
+    } else if (settings.clockStyle == 3) {
+      displayClockWithInvader();
+    } else if (settings.clockStyle == 4) {
+      displayClockWithShip();
     }
   }
   
@@ -1112,26 +1253,27 @@ void calculateTargetDigits(int hour, int min) {
   int next_digits[4] = {next_hour / 10, next_hour % 10, next_min / 10, next_min % 10};
 
   // Add targets from LEFT to RIGHT (hour first, then minutes)
+  // Text size 3 digits are 15px wide (5*3), center is at +7
   if (curr_digits[0] != next_digits[0]) {
-    target_x_positions[num_targets] = DIGIT_X[0] + 9;
+    target_x_positions[num_targets] = DIGIT_X[0] + 7;
     target_digit_index[num_targets] = 0;
     target_digit_values[num_targets] = next_digits[0];
     num_targets++;
   }
   if (curr_digits[1] != next_digits[1]) {
-    target_x_positions[num_targets] = DIGIT_X[1] + 9;
+    target_x_positions[num_targets] = DIGIT_X[1] + 7;
     target_digit_index[num_targets] = 1;
     target_digit_values[num_targets] = next_digits[1];
     num_targets++;
   }
   if (curr_digits[2] != next_digits[2]) {
-    target_x_positions[num_targets] = DIGIT_X[3] + 9;
+    target_x_positions[num_targets] = DIGIT_X[3] + 7;
     target_digit_index[num_targets] = 3;
     target_digit_values[num_targets] = next_digits[2];
     num_targets++;
   }
   if (curr_digits[3] != next_digits[3]) {
-    target_x_positions[num_targets] = DIGIT_X[4] + 9;
+    target_x_positions[num_targets] = DIGIT_X[4] + 7;
     target_digit_index[num_targets] = 4;
     target_digit_values[num_targets] = next_digits[3];
     num_targets++;
@@ -1248,10 +1390,10 @@ void updateMarioAnimation(struct tm* timeinfo) {
 
 void drawMario(int x, int y, bool facingRight, int frame, bool jumping) {
   if (x < -10 || x > SCREEN_WIDTH + 10) return;
-  
+
   int sx = x - 4;
   int sy = y - 10;
-  
+
   if (jumping) {
     display.fillRect(sx + 2, sy, 4, 3, SSD1306_WHITE);
     display.fillRect(sx + 2, sy + 3, 4, 3, SSD1306_WHITE);
@@ -1268,9 +1410,9 @@ void drawMario(int x, int y, bool facingRight, int frame, bool jumping) {
     } else {
       display.drawPixel(sx + 1, sy + 1, SSD1306_WHITE);
     }
-    
+
     display.fillRect(sx + 2, sy + 3, 4, 3, SSD1306_WHITE);
-    
+
     if (facingRight) {
       display.drawPixel(sx + 1, sy + 4, SSD1306_WHITE);
       display.drawPixel(sx + 6, sy + 3 + (frame % 2), SSD1306_WHITE);
@@ -1278,7 +1420,7 @@ void drawMario(int x, int y, bool facingRight, int frame, bool jumping) {
       display.drawPixel(sx + 6, sy + 4, SSD1306_WHITE);
       display.drawPixel(sx + 1, sy + 3 + (frame % 2), SSD1306_WHITE);
     }
-    
+
     if (frame == 0) {
       display.fillRect(sx + 2, sy + 6, 2, 3, SSD1306_WHITE);
       display.fillRect(sx + 4, sy + 6, 2, 3, SSD1306_WHITE);
@@ -1287,4 +1429,773 @@ void drawMario(int x, int y, bool facingRight, int frame, bool jumping) {
       display.fillRect(sx + 5, sy + 6, 2, 3, SSD1306_WHITE);
     }
   }
+}
+
+// ========== Space Invader Animation Functions (Clock Style 3 - Sliding) ==========
+
+// Draw Space Invaders alien sprite (11x11 pixels, classic invader design)
+void drawInvader(int x, int y, int frame) {
+  // Bounds check
+  if (x < -12 || x > SCREEN_WIDTH + 12) return;
+  if (y < -10 || y > SCREEN_HEIGHT + 10) return;
+
+  int sx = x - 5;
+  int sy = y - 4;
+
+  // Antennae
+  display.drawPixel(sx + 2, sy, SSD1306_WHITE);
+  display.drawPixel(sx + 8, sy, SSD1306_WHITE);
+
+  // Head
+  display.fillRect(sx + 3, sy + 1, 5, 1, SSD1306_WHITE);
+
+  // Body
+  display.fillRect(sx + 2, sy + 2, 7, 1, SSD1306_WHITE);
+  display.fillRect(sx + 1, sy + 3, 9, 1, SSD1306_WHITE);
+
+  // Eyes
+  display.fillRect(sx, sy + 4, 3, 1, SSD1306_WHITE);
+  display.drawPixel(sx + 5, sy + 4, SSD1306_WHITE);
+  display.fillRect(sx + 8, sy + 4, 3, 1, SSD1306_WHITE);
+
+  // Mouth
+  display.fillRect(sx, sy + 5, 11, 1, SSD1306_WHITE);
+
+  // Legs (frame-dependent)
+  if (frame == 0) {
+    // Legs down
+    display.drawPixel(sx + 1, sy + 6, SSD1306_WHITE);
+    display.fillRect(sx + 4, sy + 6, 3, 1, SSD1306_WHITE);
+    display.drawPixel(sx + 9, sy + 6, SSD1306_WHITE);
+    display.fillRect(sx, sy + 7, 2, 1, SSD1306_WHITE);
+    display.drawPixel(sx + 5, sy + 7, SSD1306_WHITE);
+    display.fillRect(sx + 9, sy + 7, 2, 1, SSD1306_WHITE);
+  } else {
+    // Legs up
+    display.fillRect(sx + 2, sy + 6, 7, 1, SSD1306_WHITE);
+    display.drawPixel(sx + 1, sy + 7, SSD1306_WHITE);
+    display.drawPixel(sx + 9, sy + 7, SSD1306_WHITE);
+    display.fillRect(sx, sy + 8, 2, 1, SSD1306_WHITE);
+    display.fillRect(sx + 9, sy + 8, 2, 1, SSD1306_WHITE);
+  }
+}
+
+// Handle patrol state - slow left-right drift
+void handleInvaderPatrolState() {
+  invader_x += INVADER_PATROL_SPEED * invader_patrol_direction;
+
+  // Reverse direction at boundaries
+  if (invader_x <= INVADER_PATROL_LEFT) {
+    invader_x = INVADER_PATROL_LEFT;
+    invader_patrol_direction = 1;
+  } else if (invader_x >= INVADER_PATROL_RIGHT) {
+    invader_x = INVADER_PATROL_RIGHT;
+    invader_patrol_direction = -1;
+  }
+}
+
+// Handle sliding to target position - fast horizontal movement
+void handleInvaderSlidingState() {
+  float target_x = target_x_positions[current_target_index];
+
+  // Slide horizontally to target
+  if (abs(invader_x - target_x) > 1.0) {
+    if (invader_x < target_x) {
+      invader_x += INVADER_SLIDE_SPEED;
+      if (invader_x > target_x) invader_x = target_x;
+    } else {
+      invader_x -= INVADER_SLIDE_SPEED;
+      if (invader_x < target_x) invader_x = target_x;
+    }
+  } else {
+    // Reached target position - start shooting
+    invader_x = target_x;
+    invader_state = INVADER_SHOOTING;
+    fireInvaderLaser(target_digit_index[current_target_index]);
+  }
+}
+
+// Handle shooting state - laser update handles transition
+void handleInvaderShootingState() {
+  // Laser update handles transition to EXPLODING_DIGIT
+}
+
+// Handle exploding state - move away quickly after 5 frames
+void handleInvaderExplodingState() {
+  invader_explosion_timer++;
+  // Move away quickly - don't wait for explosion to finish
+  if (invader_explosion_timer >= 5) {
+    current_target_index++;
+    if (current_target_index < num_targets) {
+      invader_state = INVADER_MOVING_NEXT;
+    } else {
+      invader_state = INVADER_RETURNING;
+    }
+  }
+}
+
+// Handle moving to next target - slide to next digit
+void handleInvaderMovingNextState() {
+  float target_x = target_x_positions[current_target_index];
+
+  if (abs(invader_x - target_x) > 1.0) {
+    if (invader_x < target_x) {
+      invader_x += INVADER_SLIDE_SPEED;
+      if (invader_x > target_x) invader_x = target_x;
+    } else {
+      invader_x -= INVADER_SLIDE_SPEED;
+      if (invader_x < target_x) invader_x = target_x;
+    }
+  } else {
+    invader_x = target_x;
+    invader_state = INVADER_SHOOTING;
+    fireInvaderLaser(target_digit_index[current_target_index]);
+  }
+}
+
+// Handle returning to patrol - slide back to center
+void handleInvaderReturningState() {
+  float center_x = 64;
+
+  if (abs(invader_x - center_x) > 1.0) {
+    if (invader_x < center_x) {
+      invader_x += INVADER_PATROL_SPEED;
+      if (invader_x > center_x) invader_x = center_x;
+    } else {
+      invader_x -= INVADER_PATROL_SPEED;
+      if (invader_x < center_x) invader_x = center_x;
+    }
+  } else {
+    invader_x = center_x;
+    invader_state = INVADER_PATROL;
+    time_overridden = false;  // Allow time to resync
+  }
+}
+
+// Draw invader laser beam (upward)
+void drawInvaderLaser(Laser* laser) {
+  if (!laser->active) return;
+
+  // Vertical laser beam shooting UPWARD
+  for (int i = 0; i < (int)laser->length; i += 2) {
+    int ly = (int)laser->y - i;  // Subtract to go upward
+    if (ly >= 0 && ly < SCREEN_HEIGHT) {
+      display.drawPixel((int)laser->x, ly, SSD1306_WHITE);
+      display.drawPixel((int)laser->x + 1, ly, SSD1306_WHITE);
+    }
+  }
+
+  // Impact flash at end (top of beam)
+  int end_y = (int)(laser->y - laser->length);
+  if (end_y >= 0 && end_y < SCREEN_HEIGHT) {
+    display.drawPixel((int)laser->x - 1, end_y, SSD1306_WHITE);
+    display.drawPixel((int)laser->x + 2, end_y, SSD1306_WHITE);
+  }
+}
+
+// Update invader laser
+void updateInvaderLaser() {
+  if (!invader_laser.active) return;
+
+  invader_laser.length += LASER_EXTEND_SPEED;
+
+  // Check if reached digit (bottom of time digits)
+  const int INVADER_TIME_Y = 16;
+  int digit_bottom_y = INVADER_TIME_Y + 24;
+  int laser_end_y = invader_laser.y - invader_laser.length;
+
+  if (laser_end_y <= digit_bottom_y) {
+    invader_laser.active = false;
+    spawnInvaderExplosion(invader_laser.target_digit_idx);
+    updateSpecificDigit(target_digit_index[current_target_index],
+                       target_digit_values[current_target_index]);
+    invader_explosion_timer = 0;
+    invader_state = INVADER_EXPLODING_DIGIT;
+  }
+
+  if (invader_laser.length > LASER_MAX_LENGTH) {
+    invader_laser.length = LASER_MAX_LENGTH;
+  }
+}
+
+// Fire invader laser
+void fireInvaderLaser(int target_digit_idx) {
+  invader_laser.x = invader_x;
+  invader_laser.y = invader_y - 4;  // Start from top of invader
+  invader_laser.length = 0;
+  invader_laser.active = true;
+  invader_laser.target_digit_idx = target_digit_idx;
+}
+
+// Spawn invader explosion fragments
+void spawnInvaderExplosion(int digitIndex) {
+  const int INVADER_TIME_Y = 16;
+  int digit_x = DIGIT_X[digitIndex] + 9;
+  int digit_y = INVADER_TIME_Y + 12;
+
+  int frag_count = 10;
+  float angle_step = (2 * PI) / frag_count;
+
+  for (int i = 0; i < frag_count; i++) {
+    InvaderFragment* f = findFreeInvaderFragment();
+    if (!f) break;
+
+    float angle = i * angle_step + random(-30, 30) / 100.0;
+    float speed = INVADER_FRAG_SPEED + random(-50, 50) / 100.0;
+
+    f->x = digit_x + random(-4, 4);
+    f->y = digit_y + random(-6, 6);
+    f->vx = cos(angle) * speed;
+    f->vy = sin(angle) * speed - 1.0;
+    f->active = true;
+  }
+}
+
+// Update invader fragments
+void updateInvaderFragments() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (invader_fragments[i].active) {
+      invader_fragments[i].vy += INVADER_FRAG_GRAVITY;
+      invader_fragments[i].x += invader_fragments[i].vx;
+      invader_fragments[i].y += invader_fragments[i].vy;
+
+      if (invader_fragments[i].y > 70 ||
+          invader_fragments[i].x < -5 ||
+          invader_fragments[i].x > 133) {
+        invader_fragments[i].active = false;
+      }
+    }
+  }
+}
+
+// Draw invader fragments
+void drawInvaderFragments() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (invader_fragments[i].active) {
+      display.fillRect((int)invader_fragments[i].x,
+                      (int)invader_fragments[i].y, 2, 2, SSD1306_WHITE);
+    }
+  }
+}
+
+// Check if all invader fragments are inactive
+bool allInvaderFragmentsInactive() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (invader_fragments[i].active) return false;
+  }
+  return true;
+}
+
+// Find free invader fragment
+InvaderFragment* findFreeInvaderFragment() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (!invader_fragments[i].active) return &invader_fragments[i];
+  }
+  return nullptr;
+}
+
+// Main invader animation update
+void updateInvaderAnimation(struct tm* timeinfo) {
+  unsigned long currentMillis = millis();
+
+  const int INVADER_ANIM_SPEED = 50;  // 50ms = 20 FPS
+  const int SPRITE_TOGGLE_SPEED = 200;  // Slow retro animation
+
+  if (currentMillis - last_invader_update < INVADER_ANIM_SPEED) return;
+  last_invader_update = currentMillis;
+
+  int seconds = timeinfo->tm_sec;
+  int current_minute = timeinfo->tm_min;
+
+  // Reset trigger
+  if (current_minute != last_minute) {
+    last_minute = current_minute;
+    animation_triggered = false;
+  }
+
+  // Toggle sprite
+  if (currentMillis - last_invader_sprite_toggle >= SPRITE_TOGGLE_SPEED) {
+    invader_anim_frame = 1 - invader_anim_frame;
+    last_invader_sprite_toggle = currentMillis;
+  }
+
+  // Trigger at 55 seconds - transition from PATROL to SLIDING
+  if (seconds >= 55 && !animation_triggered && invader_state == INVADER_PATROL) {
+    animation_triggered = true;
+    time_overridden = true;
+    calculateTargetDigits(displayed_hour, displayed_min);
+
+    if (num_targets > 0) {
+      current_target_index = 0;
+      invader_state = INVADER_SLIDING;
+    }
+  }
+
+  updateInvaderFragments();
+  updateInvaderLaser();
+
+  switch (invader_state) {
+    case INVADER_PATROL:
+      handleInvaderPatrolState();
+      break;
+    case INVADER_SLIDING:
+      handleInvaderSlidingState();
+      break;
+    case INVADER_SHOOTING:
+      handleInvaderShootingState();
+      break;
+    case INVADER_EXPLODING_DIGIT:
+      handleInvaderExplodingState();
+      break;
+    case INVADER_MOVING_NEXT:
+      handleInvaderMovingNextState();
+      break;
+    case INVADER_RETURNING:
+      handleInvaderReturningState();
+      break;
+  }
+}
+
+// Display clock with invader animation
+void displayClockWithInvader() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)) {
+    display.setTextSize(1);
+    display.setCursor(20, 28);
+    display.print("Time Error");
+    return;
+  }
+
+  // Update animation FIRST so time advances before drawing
+  updateInvaderAnimation(&timeinfo);
+
+  // Time management (same as ship)
+  if (!time_overridden) {
+    displayed_hour = timeinfo.tm_hour;
+    displayed_min = timeinfo.tm_min;
+  }
+
+  // Reset time_overridden when real time catches up AND invader is in PATROL state
+  if (time_overridden && timeinfo.tm_hour == displayed_hour &&
+      timeinfo.tm_min == displayed_min && invader_state == INVADER_PATROL) {
+    time_overridden = false;
+  }
+
+  // Date (at top, Y=4)
+  display.setTextSize(1);
+  char dateStr[12];
+  switch (settings.dateFormat) {
+    case 0: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mday,
+                    timeinfo.tm_mon + 1, timeinfo.tm_year + 1900); break;
+    case 1: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mon + 1,
+                    timeinfo.tm_mday, timeinfo.tm_year + 1900); break;
+    case 2: sprintf(dateStr, "%04d-%02d-%02d", timeinfo.tm_year + 1900,
+                    timeinfo.tm_mon + 1, timeinfo.tm_mday); break;
+  }
+  display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
+  display.print(dateStr);
+
+  // Time digits (Invader uses Y=16, same as ship)
+  const int INVADER_TIME_Y = 16;
+  display.setTextSize(3);
+  char digits[5];
+  digits[0] = '0' + (displayed_hour / 10);
+  digits[1] = '0' + (displayed_hour % 10);
+  digits[2] = ':';
+  digits[3] = '0' + (displayed_min / 10);
+  digits[4] = '0' + (displayed_min % 10);
+
+  for (int i = 0; i < 5; i++) {
+    display.setCursor(DIGIT_X[i], INVADER_TIME_Y);
+    display.print(digits[i]);
+  }
+
+  // Render invader (ALWAYS visible - either patrolling or attacking)
+  drawInvader((int)invader_x, (int)invader_y, invader_anim_frame);
+
+  // Render laser if active
+  if (invader_laser.active) {
+    drawInvaderLaser(&invader_laser);
+  }
+
+  // Render explosion fragments
+  drawInvaderFragments();
+}
+
+
+// ========== Space Ship Animation Functions (Clock Style 4) ==========
+
+// Draw Space Invaders ship sprite (11x7 pixels, classic ship design)
+void drawShip(int x, int y, int frame) {
+  // Bounds check
+  if (x < -12 || x > SCREEN_WIDTH + 12) return;
+  if (y < -10 || y > SCREEN_HEIGHT + 10) return;
+
+  int sx = x - 5;
+  int sy = y - 3;
+
+  // Top point
+  display.drawPixel(sx + 5, sy, SSD1306_WHITE);
+
+  // Upper body
+  display.fillRect(sx + 4, sy + 1, 3, 1, SSD1306_WHITE);
+  display.fillRect(sx + 3, sy + 2, 5, 1, SSD1306_WHITE);
+
+  // Main body
+  display.fillRect(sx + 1, sy + 3, 9, 1, SSD1306_WHITE);
+  display.fillRect(sx, sy + 4, 11, 1, SSD1306_WHITE);
+
+  // Wings - animate between two frames for thruster effect
+  if (frame == 0) {
+    // Wings down
+    display.fillRect(sx, sy + 5, 3, 1, SSD1306_WHITE);
+    display.fillRect(sx + 8, sy + 5, 3, 1, SSD1306_WHITE);
+    display.drawPixel(sx, sy + 6, SSD1306_WHITE);
+    display.drawPixel(sx + 10, sy + 6, SSD1306_WHITE);
+  } else {
+    // Wings up (thruster pulse)
+    display.fillRect(sx + 1, sy + 5, 2, 1, SSD1306_WHITE);
+    display.fillRect(sx + 8, sy + 5, 2, 1, SSD1306_WHITE);
+    display.drawPixel(sx + 1, sy + 6, SSD1306_WHITE);
+    display.drawPixel(sx + 9, sy + 6, SSD1306_WHITE);
+  }
+}
+
+// Handle patrol state - slow left-right drift
+void handleShipPatrolState() {
+  ship_x += SHIP_PATROL_SPEED * ship_patrol_direction;
+
+  // Reverse direction at boundaries
+  if (ship_x <= SHIP_PATROL_LEFT) {
+    ship_x = SHIP_PATROL_LEFT;
+    ship_patrol_direction = 1;
+  } else if (ship_x >= SHIP_PATROL_RIGHT) {
+    ship_x = SHIP_PATROL_RIGHT;
+    ship_patrol_direction = -1;
+  }
+}
+
+// Handle sliding to target position - fast horizontal movement
+void handleShipSlidingState() {
+  float target_x = target_x_positions[current_target_index];
+
+  // Slide horizontally to target
+  if (abs(ship_x - target_x) > 1.0) {
+    if (ship_x < target_x) {
+      ship_x += SHIP_SLIDE_SPEED;
+      if (ship_x > target_x) ship_x = target_x;
+    } else {
+      ship_x -= SHIP_SLIDE_SPEED;
+      if (ship_x < target_x) ship_x = target_x;
+    }
+  } else {
+    // Reached target position - start shooting
+    ship_x = target_x;
+    ship_state = SHIP_SHOOTING;
+    fireShipLaser(target_digit_index[current_target_index]);
+  }
+}
+
+// Handle shooting state - laser update handles transition
+void handleShipShootingState() {
+  // Laser update handles transition to EXPLODING_DIGIT
+}
+
+// Handle exploding state - move away quickly after 5 frames
+void handleShipExplodingState() {
+  ship_explosion_timer++;
+  // Move away quickly - don't wait for explosion to finish
+  if (ship_explosion_timer >= 5) {
+    current_target_index++;
+    if (current_target_index < num_targets) {
+      ship_state = SHIP_MOVING_NEXT;
+    } else {
+      ship_state = SHIP_RETURNING;
+    }
+  }
+}
+
+// Handle moving to next target - slide to next digit
+void handleShipMovingNextState() {
+  float target_x = target_x_positions[current_target_index];
+
+  if (abs(ship_x - target_x) > 1.0) {
+    if (ship_x < target_x) {
+      ship_x += SHIP_SLIDE_SPEED;
+      if (ship_x > target_x) ship_x = target_x;
+    } else {
+      ship_x -= SHIP_SLIDE_SPEED;
+      if (ship_x < target_x) ship_x = target_x;
+    }
+  } else {
+    ship_x = target_x;
+    ship_state = SHIP_SHOOTING;
+    fireShipLaser(target_digit_index[current_target_index]);
+  }
+}
+
+// Handle returning to patrol - slide back to center
+void handleShipReturningState() {
+  float center_x = 64;
+
+  if (abs(ship_x - center_x) > 1.0) {
+    if (ship_x < center_x) {
+      ship_x += SHIP_PATROL_SPEED;
+      if (ship_x > center_x) ship_x = center_x;
+    } else {
+      ship_x -= SHIP_PATROL_SPEED;
+      if (ship_x < center_x) ship_x = center_x;
+    }
+  } else {
+    ship_x = center_x;
+    ship_state = SHIP_PATROL;
+    time_overridden = false;  // Allow time to resync
+  }
+}
+
+// Draw ship laser beam (upward)
+void drawShipLaser(Laser* laser) {
+  if (!laser->active) return;
+
+  // Vertical laser beam shooting UPWARD
+  for (int i = 0; i < (int)laser->length; i += 2) {
+    int ly = (int)laser->y - i;  // Subtract to go upward
+    if (ly >= 0 && ly < SCREEN_HEIGHT) {
+      display.drawPixel((int)laser->x, ly, SSD1306_WHITE);
+      display.drawPixel((int)laser->x + 1, ly, SSD1306_WHITE);
+    }
+  }
+
+  // Impact flash at end (top of beam)
+  int end_y = (int)(laser->y - laser->length);
+  if (end_y >= 0 && end_y < SCREEN_HEIGHT) {
+    display.drawPixel((int)laser->x - 1, end_y, SSD1306_WHITE);
+    display.drawPixel((int)laser->x + 2, end_y, SSD1306_WHITE);
+  }
+}
+
+// Update ship laser
+void updateShipLaser() {
+  if (!ship_laser.active) return;
+
+  ship_laser.length += LASER_EXTEND_SPEED;
+
+  // Check if reached digit (bottom of time digits)
+  const int SHIP_TIME_Y = 16;
+  int digit_bottom_y = SHIP_TIME_Y + 24;
+  int laser_end_y = ship_laser.y - ship_laser.length;
+
+  if (laser_end_y <= digit_bottom_y) {
+    ship_laser.active = false;
+    spawnShipExplosion(ship_laser.target_digit_idx);
+    updateSpecificDigit(target_digit_index[current_target_index],
+                       target_digit_values[current_target_index]);
+    ship_explosion_timer = 0;
+    ship_state = SHIP_EXPLODING_DIGIT;
+  }
+
+  if (ship_laser.length > LASER_MAX_LENGTH) {
+    ship_laser.length = LASER_MAX_LENGTH;
+  }
+}
+
+// Fire ship laser
+void fireShipLaser(int target_digit_idx) {
+  ship_laser.x = ship_x;
+  ship_laser.y = ship_y - 3;  // Start from top of ship
+  ship_laser.length = 0;
+  ship_laser.active = true;
+  ship_laser.target_digit_idx = target_digit_idx;
+}
+
+// Spawn ship explosion fragments
+void spawnShipExplosion(int digitIndex) {
+  const int SHIP_TIME_Y = 16;
+  int digit_x = DIGIT_X[digitIndex] + 9;
+  int digit_y = SHIP_TIME_Y + 12;
+
+  int frag_count = 10;
+  float angle_step = (2 * PI) / frag_count;
+
+  for (int i = 0; i < frag_count; i++) {
+    ShipFragment* f = findFreeShipFragment();
+    if (!f) break;
+
+    float angle = i * angle_step + random(-30, 30) / 100.0;
+    float speed = INVADER_FRAG_SPEED + random(-50, 50) / 100.0;
+
+    f->x = digit_x + random(-4, 4);
+    f->y = digit_y + random(-6, 6);
+    f->vx = cos(angle) * speed;
+    f->vy = sin(angle) * speed - 1.0;
+    f->active = true;
+  }
+}
+
+// Update ship fragments
+void updateShipFragments() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (ship_fragments[i].active) {
+      ship_fragments[i].vy += INVADER_FRAG_GRAVITY;
+      ship_fragments[i].x += ship_fragments[i].vx;
+      ship_fragments[i].y += ship_fragments[i].vy;
+
+      if (ship_fragments[i].y > 70 ||
+          ship_fragments[i].x < -5 ||
+          ship_fragments[i].x > 133) {
+        ship_fragments[i].active = false;
+      }
+    }
+  }
+}
+
+// Draw ship fragments
+void drawShipFragments() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (ship_fragments[i].active) {
+      display.fillRect((int)ship_fragments[i].x,
+                      (int)ship_fragments[i].y, 2, 2, SSD1306_WHITE);
+    }
+  }
+}
+
+// Check if all ship fragments are inactive
+bool allShipFragmentsInactive() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (ship_fragments[i].active) return false;
+  }
+  return true;
+}
+
+// Find free ship fragment
+ShipFragment* findFreeShipFragment() {
+  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+    if (!ship_fragments[i].active) return &ship_fragments[i];
+  }
+  return nullptr;
+}
+
+// Main ship animation update
+void updateShipAnimation(struct tm* timeinfo) {
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - last_ship_update < SHIP_ANIM_SPEED) return;
+  last_ship_update = currentMillis;
+
+  int seconds = timeinfo->tm_sec;
+  int current_minute = timeinfo->tm_min;
+
+  // Reset trigger
+  if (current_minute != last_minute) {
+    last_minute = current_minute;
+    animation_triggered = false;
+  }
+
+  // Toggle sprite
+  if (currentMillis - last_ship_sprite_toggle >= SHIP_SPRITE_TOGGLE_SPEED) {
+    ship_anim_frame = 1 - ship_anim_frame;
+    last_ship_sprite_toggle = currentMillis;
+  }
+
+  // Trigger at 55 seconds - transition from PATROL to SLIDING
+  if (seconds >= 55 && !animation_triggered && ship_state == SHIP_PATROL) {
+    animation_triggered = true;
+    time_overridden = true;
+    calculateTargetDigits(displayed_hour, displayed_min);
+
+    if (num_targets > 0) {
+      current_target_index = 0;
+      ship_state = SHIP_SLIDING;
+    }
+  }
+
+  updateShipFragments();
+  updateShipLaser();
+
+  switch (ship_state) {
+    case SHIP_PATROL:
+      handleShipPatrolState();
+      break;
+    case SHIP_SLIDING:
+      handleShipSlidingState();
+      break;
+    case SHIP_SHOOTING:
+      handleShipShootingState();
+      break;
+    case SHIP_EXPLODING_DIGIT:
+      handleShipExplodingState();
+      break;
+    case SHIP_MOVING_NEXT:
+      handleShipMovingNextState();
+      break;
+    case SHIP_RETURNING:
+      handleShipReturningState();
+      break;
+  }
+}
+
+// Display clock with ship animation
+void displayClockWithShip() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)) {
+    display.setTextSize(1);
+    display.setCursor(20, 28);
+    display.print("Time Error");
+    return;
+  }
+
+  // Update animation FIRST so time advances before drawing
+  updateShipAnimation(&timeinfo);
+
+  // Time management (same as invader)
+  if (!time_overridden) {
+    displayed_hour = timeinfo.tm_hour;
+    displayed_min = timeinfo.tm_min;
+  }
+
+  // Reset time_overridden when real time catches up AND ship is in PATROL state
+  if (time_overridden && timeinfo.tm_hour == displayed_hour &&
+      timeinfo.tm_min == displayed_min && ship_state == SHIP_PATROL) {
+    time_overridden = false;
+  }
+
+  // Date (at top, Y=4)
+  display.setTextSize(1);
+  char dateStr[12];
+  switch (settings.dateFormat) {
+    case 0: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mday,
+                    timeinfo.tm_mon + 1, timeinfo.tm_year + 1900); break;
+    case 1: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mon + 1,
+                    timeinfo.tm_mday, timeinfo.tm_year + 1900); break;
+    case 2: sprintf(dateStr, "%04d-%02d-%02d", timeinfo.tm_year + 1900,
+                    timeinfo.tm_mon + 1, timeinfo.tm_mday); break;
+  }
+  display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
+  display.print(dateStr);
+
+  // Time digits (Ship uses Y=16, same as invader)
+  const int SHIP_TIME_Y = 16;
+  display.setTextSize(3);
+  char digits[5];
+  digits[0] = '0' + (displayed_hour / 10);
+  digits[1] = '0' + (displayed_hour % 10);
+  digits[2] = ':';
+  digits[3] = '0' + (displayed_min / 10);
+  digits[4] = '0' + (displayed_min % 10);
+
+  for (int i = 0; i < 5; i++) {
+    display.setCursor(DIGIT_X[i], SHIP_TIME_Y);
+    display.print(digits[i]);
+  }
+
+  // Render ship (ALWAYS visible - either patrolling or attacking)
+  drawShip((int)ship_x, (int)ship_y, ship_anim_frame);
+
+  // Render laser if active
+  if (ship_laser.active) {
+    drawShipLaser(&ship_laser);
+  }
+
+  // Render explosion fragments
+  drawShipFragments();
 }
