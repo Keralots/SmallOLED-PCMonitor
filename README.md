@@ -116,7 +116,8 @@ At the end of installation, if asked to remove characters limit for path, agree 
 #### Installing LibreHardwareMonitor
 1. Download from [LibreHardwareMonitor Releases](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases)
 2. Extract and run `LibreHardwareMonitor.exe` as Administrator
-3. Check following options. Fisr 4 from the top:
+3. Windows defender may block if from running. This is false/positive, just add it to exception.
+4. Check following options. Fisr 4 from the top:
 <img width="442" height="627" alt="Screenshot 2025-12-07 132802" src="https://github.com/user-attachments/assets/983e41c4-9854-4d59-8ccc-4779315444d0" />
 
 
