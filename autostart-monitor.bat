@@ -1,0 +1,1 @@
+powershell.exe -command "& {Start-Process -FilePath "C:\script\pc_stats_monitor.py" -WindowStyle hidden}"
