@@ -44,13 +44,13 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 #### Option A: Pre-built Binary (Easy - No Compilation Needed)
 
-**Download the latest release**: [v1.1.1](release/v1.1.1/)
+**Download the latest release**: [v1.2.0](release/v1.2.0/)
 
 **Easiest Method - Web Flasher (No Installation Required!):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
 2. Connect your ESP32-C3 via USB. If it constantly connects/disconnects, hold the **BOOT** button, connect to USB while still holding it, then release after connecting. Alternatively, hold **BOOT**, press **RESET** while holding **BOOT**, then release both buttons.
 3. Click **"Connect"** and select your port
-4. Click **"Choose File"** and select `firmware-v1.1.1.bin`
+4. Click **"Choose File"** and select `firmware-v1.2.0.bin`
 5. Set **Flash Address** to `0x0`
 6. Click **"Program"** and wait ~30 seconds
 7. Done! 🎉
