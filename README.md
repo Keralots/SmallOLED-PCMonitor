@@ -144,9 +144,12 @@ At the end of installation, if asked to remove characters limit for path, agree 
 
 #### Running at Startup (Windows - Optional)
 To automatically start monitoring when Windows boots:
-1. Press `Win + R`, type `shell:startup`, press Enter
-2. Create a shortcut to the Python script
-3. Or use Task Scheduler for running as administrator
+1. Copy `autostart-monitor.bat` file exacly to: C:\script\autostart-monitor.bat
+2. Copy `pc_stats_monitor.py` file exacly to C:\script\pc_stats_monitor.py
+3. Press `Win + R`, type `shell:startup`, press Enter
+4. Create a shortcut to `autostart-monitor.bat` (drag and drop should create a shortcut as well)
+   
+6. Or use Task Scheduler for running as administrator
 
 ## Usage
 
