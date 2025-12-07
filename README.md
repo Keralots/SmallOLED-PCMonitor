@@ -110,6 +110,7 @@ Once connected to WiFi, access the full configuration page:
 For windows download [e.g. this version](https://www.python.org/ftp/python/3.14.2/python-3.14.2-amd64.exe)
 Check both checkboxes on installation screen (to use admin rights and add python.exe to PATH)
 <img width="654" height="414" alt="Screenshot 2025-12-07 132252" src="https://github.com/user-attachments/assets/07d958e6-9776-4981-8971-c11d7d23d59a" />
+
 At the end of installation, if asked to remove characters limit for path, agree on it.
 
 #### Installing LibreHardwareMonitor
@@ -117,6 +118,7 @@ At the end of installation, if asked to remove characters limit for path, agree 
 2. Extract and run `LibreHardwareMonitor.exe` as Administrator
 3. Check following options. Fisr 4 from the top:
 <img width="442" height="627" alt="Screenshot 2025-12-07 132802" src="https://github.com/user-attachments/assets/983e41c4-9854-4d59-8ccc-4779315444d0" />
+
 
 
 #### Python Script Setup
