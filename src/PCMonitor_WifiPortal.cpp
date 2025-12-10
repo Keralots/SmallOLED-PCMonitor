@@ -29,10 +29,17 @@
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <esp_task_wdt.h>
 
 // ========== WiFi Portal Configuration ==========
 const char* AP_NAME = "PCMonitor-Setup";
 const char* AP_PASSWORD = "monitor123";
+
+// ========== Optional Hardcoded WiFi (for modules with faulty AP) ==========
+// Leave blank ("") to use WiFiManager portal (default behavior)
+// Set your WiFi credentials here to bypass WiFiManager:
+const char* HARDCODED_SSID = "";        // Your WiFi network name
+const char* HARDCODED_PASSWORD = "";    // Your WiFi password
 
 // ========== UDP Configuration ==========
 WiFiUDP udp;
@@ -93,6 +100,10 @@ struct PCStats {
 PCStats stats;
 unsigned long lastReceived = 0;
 const unsigned long TIMEOUT = 6000;
+bool ntpSynced = false;  // Track NTP sync status
+unsigned long wifiDisconnectTime = 0;  // Track WiFi disconnect time
+const unsigned long WIFI_RECONNECT_TIMEOUT = 30000;  // 30s before restart
+bool displayAvailable = false;  // Track if display is working
 
 // ========== Mario Animation Variables ==========
 float mario_x = -15;
@@ -263,6 +274,7 @@ void drawTimeWithBounce();
 void applyTimezone();
 void configModeCallback(WiFiManager *myWiFiManager);
 void saveConfigCallback();
+bool connectManualWiFi(const char* ssid, const char* password);
 void parseStats(const char* json);
 void displayStats();
 void displayClockWithInvader();
@@ -303,89 +315,268 @@ ShipFragment* findFreeShipFragment();
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  
-  Serial.println("\n========================================");
-  Serial.println("PC Stats Monitor - Web Config Version");
-  Serial.println("========================================");
-  
+
+  // Serial.println("\n========================================");
+  // Serial.println("PC Stats Monitor - Web Config Version");
+  // Serial.println("========================================");
+
   // Load settings from flash
   loadSettings();
-  
+
   Wire.begin(SDA_PIN, SCL_PIN);
-  
-  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-    Serial.println("ERROR: Display initialization failed!");
-    while(1);
+
+  // Attempt display initialization with retries
+  // Serial.println("Initializing display...");
+  for (int attempt = 0; attempt < 3; attempt++) {
+    if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+      displayAvailable = true;
+      // Serial.println("Display initialized successfully");
+      break;
+    }
+    // Serial.printf("Display init failed (attempt %d/3)\n", attempt + 1);
+    delay(500);
   }
-  
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setTextSize(1);
-  display.setCursor(10, 20);
-  display.println("PC Monitor");
-  display.setCursor(10, 35);
-  display.println("Starting...");
-  display.display();
-  
-  wifiManager.setConfigPortalTimeout(180);
-  wifiManager.setAPCallback(configModeCallback);
-  wifiManager.setSaveConfigCallback(saveConfigCallback);
-  
-  Serial.println("Attempting WiFi connection...");
-  
-  if (!wifiManager.autoConnect(AP_NAME, AP_PASSWORD)) {
-    Serial.println("Failed to connect and hit timeout");
+
+  if (!displayAvailable) {
+    Serial.println("WARNING: Display not available, continuing without display");
+  } else {
     display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
     display.setCursor(10, 20);
-    display.println("WiFi Timeout!");
+    display.println("PC Monitor");
     display.setCursor(10, 35);
-    display.println("Restarting...");
+    display.println("Starting...");
     display.display();
-    delay(3000);
-    ESP.restart();
   }
-  
+
+  // Check if hardcoded WiFi credentials are provided
+  bool useManualWiFi = (strlen(HARDCODED_SSID) > 0);
+
+  if (useManualWiFi) {
+    // Use manual WiFi connection (for modules with faulty AP)
+    Serial.println("\n*** USING HARDCODED WIFI CREDENTIALS ***");
+
+    if (!connectManualWiFi(HARDCODED_SSID, HARDCODED_PASSWORD)) {
+      Serial.println("Manual WiFi connection failed!");
+      Serial.println("Falling back to WiFiManager portal...");
+      useManualWiFi = false;  // Fall back to WiFiManager
+    }
+  }
+
+  if (!useManualWiFi) {
+    // Use WiFiManager portal (default behavior)
+    // Serial.println("\n\n========== WIFI MANAGER SETUP ==========");
+    wifiManager.setConnectTimeout(30);
+    // Serial.println("Connect timeout set to 30s");
+
+    wifiManager.setConfigPortalTimeout(180);
+    // Serial.println("Portal timeout set to 180s");
+
+    wifiManager.setAPCallback(configModeCallback);
+    wifiManager.setSaveConfigCallback(saveConfigCallback);
+    wifiManager.setDebugOutput(false);  // Disable verbose WiFiManager debug output
+    // Serial.println("Callbacks registered, debug enabled");
+
+    // Serial.println("\nCalling autoConnect...");
+    // Serial.flush();
+
+    if (!wifiManager.autoConnect(AP_NAME, AP_PASSWORD)) {
+      Serial.println("Failed to connect and hit timeout");
+      if (displayAvailable) {
+        display.clearDisplay();
+        display.setCursor(10, 20);
+        display.println("WiFi Timeout!");
+        display.setCursor(10, 35);
+        display.println("Restarting...");
+        display.display();
+      }
+      delay(3000);
+      ESP.restart();
+    }
+  }
+
   Serial.println("WiFi Connected!");
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
   // Set WiFi TX power to maximum for better range
   WiFi.setTxPower(WIFI_POWER_19_5dBm);  // Maximum: 19.5 dBm (~89 mW)
-  Serial.println("WiFi TX Power set to maximum (19.5 dBm)");
+  // Serial.println("WiFi TX Power set to maximum (19.5 dBm)");
 
-  // Apply timezone and start NTP
+  // Apply timezone and start NTP (async operation)
   applyTimezone();
-  Serial.println("NTP time synchronized");
-  
+  // Serial.println("NTP sync initiated...");
+  ntpSynced = false;
+
+  // Display sync status
+  if (displayAvailable) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(10, 20);
+    display.println("Syncing time...");
+    display.display();
+  }
+
+  // Attempt initial sync with short retries (max 1 second total)
+  struct tm timeinfo;
+  for (int i = 0; i < 10; i++) {
+    if (getLocalTime(&timeinfo, 100)) {
+      ntpSynced = true;
+      Serial.println("NTP time synchronized successfully");
+      break;
+    }
+    delay(100);
+  }
+
+  if (!ntpSynced) {
+    // Serial.println("NTP sync pending, will retry in background");
+  }
+
+  // Configure hardware watchdog timer (15 seconds)
+  // NOTE: Enabled AFTER WiFi config portal to allow time for user setup
+  esp_task_wdt_init(15, true);  // 15s timeout, panic on timeout
+  esp_task_wdt_add(NULL);       // Add current task
+  // Serial.println("Watchdog enabled (15s)");
+
   // Start UDP listener
   udp.begin(UDP_PORT);
-  Serial.print("UDP listening on port ");
-  Serial.println(UDP_PORT);
-  
+  // Serial.print("UDP listening on port ");
+  // Serial.println(UDP_PORT);
+
   // Setup web server for configuration
   setupWebServer();
-  Serial.println("Web server started on port 80");
-  
+  // Serial.println("Web server started on port 80");
+
   // Show IP address for 5 seconds
-  displayConnected();
-  delay(5000);
-  
-  Serial.println("Setup complete!");
-  Serial.println("========================================");
+  if (displayAvailable) {
+    displayConnected();
+    delay(5000);
+  }
+
+  // Serial.println("Setup complete!");
+  // Serial.println("========================================");
 }
 
 void configModeCallback(WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  displaySetupInstructions();
+  Serial.println("Config mode entered");
+  Serial.println(WiFi.softAPIP());
+
+  if (displayAvailable) {
+    displaySetupInstructions();
+  }
 }
 
 void saveConfigCallback() {
-  Serial.println("Config saved");
-  displayConnecting();
+  // Serial.println("Config saved");
+  if (displayAvailable) {
+    displayConnecting();
+  }
+}
+
+// Connect to WiFi using hardcoded credentials (no WiFiManager)
+bool connectManualWiFi(const char* ssid, const char* password) {
+  // Serial.println("\n========== MANUAL WIFI CONNECTION ==========");
+  // Serial.print("Connecting to: ");
+  // Serial.println(ssid);
+
+  if (displayAvailable) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(10, 20);
+    display.println("Connecting to");
+    display.setCursor(10, 35);
+    display.println(ssid);
+    display.display();
+  }
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
+
+  int attempts = 0;
+  int maxAttempts = 30;  // 30 seconds timeout (30 x 1000ms)
+
+  while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
+    delay(1000);
+    attempts++;
+    // Serial.print(".");
+
+    // Update display with progress
+    if (displayAvailable && attempts % 5 == 0) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(10, 20);
+      display.println("Connecting...");
+      display.setCursor(10, 35);
+      display.print("Attempt: ");
+      display.print(attempts);
+      display.print("/");
+      display.println(maxAttempts);
+      display.display();
+    }
+  }
+
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("WiFi Connected!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
+    return true;
+  } else {
+    Serial.println("WiFi Connection Failed!");
+    return false;
+  }
 }
 
 void loadSettings() {
-  preferences.begin("pcmonitor", true);  // Read-only
+  // Try to open preferences namespace (create if doesn't exist)
+  if (!preferences.begin("pcmonitor", false)) {  // Read-write mode to create if needed
+    Serial.println("WARNING: Failed to open preferences, using defaults");
+    // Initialize with defaults
+    settings.clockStyle = 0;
+    settings.gmtOffset = 1;
+    settings.daylightSaving = true;
+    settings.use24Hour = true;
+    settings.dateFormat = 0;
+    strncpy(settings.fanLabel, "PUMP", 15);
+    strncpy(settings.cpuLabel, "CPU", 15);
+    strncpy(settings.ramLabel, "RAM", 15);
+    strncpy(settings.gpuLabel, "GPU", 15);
+    strncpy(settings.diskLabel, "DISK", 15);
+    settings.showFan = true;
+    settings.showCPU = true;
+    settings.showRAM = true;
+    settings.showGPU = true;
+    settings.showDisk = true;
+    settings.showClock = true;
+    Serial.println("Settings initialized with defaults");
+    return;
+  }
+
+  // Check if this is a fresh namespace (no settings saved yet)
+  if (!preferences.isKey("clockStyle")) {
+    Serial.println("Fresh preferences namespace detected, initializing with defaults...");
+    // Write defaults to NVS
+    preferences.putInt("clockStyle", 0);
+    preferences.putInt("gmtOffset", 1);
+    preferences.putBool("dst", true);
+    preferences.putBool("use24Hour", true);
+    preferences.putInt("dateFormat", 0);
+    preferences.putString("fanLabel", "PUMP");
+    preferences.putString("cpuLabel", "CPU");
+    preferences.putString("ramLabel", "RAM");
+    preferences.putString("gpuLabel", "GPU");
+    preferences.putString("diskLabel", "DISK");
+    preferences.putBool("showFan", true);
+    preferences.putBool("showCPU", true);
+    preferences.putBool("showRAM", true);
+    preferences.putBool("showGPU", true);
+    preferences.putBool("showDisk", true);
+    preferences.putBool("showClock", true);
+    Serial.println("Default settings written to NVS");
+  }
+
   settings.clockStyle = preferences.getInt("clockStyle", 0);  // Default: Mario
   settings.gmtOffset = preferences.getInt("gmtOffset", 1);    // Default: GMT+1
   settings.daylightSaving = preferences.getBool("dst", true); // Default: true
@@ -420,24 +611,24 @@ void loadSettings() {
 
   preferences.end();
 
-  Serial.println("Settings loaded:");
-  Serial.print("  Clock Style: "); Serial.println(settings.clockStyle);
-  Serial.print("  GMT Offset: "); Serial.println(settings.gmtOffset);
-  Serial.print("  DST: "); Serial.println(settings.daylightSaving ? "Yes" : "No");
-  Serial.print("  24-Hour: "); Serial.println(settings.use24Hour ? "Yes" : "No");
-  Serial.print("  Date Format: "); Serial.println(settings.dateFormat);
-  Serial.print("  Fan Label: "); Serial.println(settings.fanLabel);
-  Serial.print("  CPU Label: "); Serial.println(settings.cpuLabel);
-  Serial.print("  RAM Label: "); Serial.println(settings.ramLabel);
-  Serial.print("  GPU Label: "); Serial.println(settings.gpuLabel);
-  Serial.print("  Disk Label: "); Serial.println(settings.diskLabel);
-  Serial.println("Visibility:");
-  Serial.print("  Fan: "); Serial.println(settings.showFan ? "Yes" : "No");
-  Serial.print("  CPU: "); Serial.println(settings.showCPU ? "Yes" : "No");
-  Serial.print("  RAM: "); Serial.println(settings.showRAM ? "Yes" : "No");
-  Serial.print("  GPU: "); Serial.println(settings.showGPU ? "Yes" : "No");
-  Serial.print("  Disk: "); Serial.println(settings.showDisk ? "Yes" : "No");
-  Serial.print("  Clock: "); Serial.println(settings.showClock ? "Yes" : "No");
+  // Serial.println("Settings loaded:");
+  // Serial.print("  Clock Style: "); Serial.println(settings.clockStyle);
+  // Serial.print("  GMT Offset: "); Serial.println(settings.gmtOffset);
+  // Serial.print("  DST: "); Serial.println(settings.daylightSaving ? "Yes" : "No");
+  // Serial.print("  24-Hour: "); Serial.println(settings.use24Hour ? "Yes" : "No");
+  // Serial.print("  Date Format: "); Serial.println(settings.dateFormat);
+  // Serial.print("  Fan Label: "); Serial.println(settings.fanLabel);
+  // Serial.print("  CPU Label: "); Serial.println(settings.cpuLabel);
+  // Serial.print("  RAM Label: "); Serial.println(settings.ramLabel);
+  // Serial.print("  GPU Label: "); Serial.println(settings.gpuLabel);
+  // Serial.print("  Disk Label: "); Serial.println(settings.diskLabel);
+  // Serial.println("Visibility:");
+  // Serial.print("  Fan: "); Serial.println(settings.showFan ? "Yes" : "No");
+  // Serial.print("  CPU: "); Serial.println(settings.showCPU ? "Yes" : "No");
+  // Serial.print("  RAM: "); Serial.println(settings.showRAM ? "Yes" : "No");
+  // Serial.print("  GPU: "); Serial.println(settings.showGPU ? "Yes" : "No");
+  // Serial.print("  Disk: "); Serial.println(settings.showDisk ? "Yes" : "No");
+  // Serial.print("  Clock: "); Serial.println(settings.showClock ? "Yes" : "No");
 }
 
 void saveSettings() {
@@ -470,6 +661,19 @@ void applyTimezone() {
   long gmtOffset_sec = settings.gmtOffset * 3600;
   int dstOffset_sec = settings.daylightSaving ? 3600 : 0;
   configTime(gmtOffset_sec, dstOffset_sec, ntpServer);
+}
+
+// Helper function to get time with short timeout
+bool getTimeWithTimeout(struct tm* timeinfo, unsigned long timeout_ms = 100) {
+  if (!ntpSynced) {
+    if (getLocalTime(timeinfo, timeout_ms)) {
+      ntpSynced = true;
+      Serial.println("NTP successfully synchronized");
+      return true;
+    }
+    return false;
+  }
+  return getLocalTime(timeinfo, timeout_ms);
 }
 
 void setupWebServer() {
@@ -814,14 +1018,46 @@ void displayConnected() {
 }
 
 void loop() {
+  // Feed watchdog to prevent reset
+  esp_task_wdt_reset();
+
   // Handle web server requests
   server.handleClient();
-  
+
+  // WiFi connection management with reconnection logic
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi disconnected, restarting...");
-    ESP.restart();
+    if (wifiDisconnectTime == 0) {
+      wifiDisconnectTime = millis();
+      Serial.println("WiFi disconnected, attempting reconnection...");
+      WiFi.reconnect();
+    }
+
+    // Check if reconnection timeout exceeded
+    if (millis() - wifiDisconnectTime > WIFI_RECONNECT_TIMEOUT) {
+      Serial.println("WiFi reconnection failed, restarting...");
+      ESP.restart();
+    }
+
+    // Show reconnection status (blink every 500ms)
+    if (displayAvailable && (millis() / 500) % 2 == 0) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(10, 20);
+      display.println("WiFi Lost");
+      display.setCursor(10, 35);
+      display.println("Reconnecting...");
+      display.display();
+    }
+
+    return;  // Skip normal processing while reconnecting
+  } else {
+    // WiFi connected - reset disconnect timer
+    if (wifiDisconnectTime != 0) {
+      Serial.println("WiFi reconnected successfully!");
+      wifiDisconnectTime = 0;
+    }
   }
-  
+
   int packetSize = udp.parsePacket();
   if (packetSize) {
     char buffer[512];
@@ -834,26 +1070,29 @@ void loop() {
   }
   
   stats.online = (millis() - lastReceived) < TIMEOUT;
-  
-  display.clearDisplay();
-  
-  if (stats.online) {
-    displayStats();
-  } else {
-    if (settings.clockStyle == 0) {
-      displayClockWithMario();
-    } else if (settings.clockStyle == 1) {
-      displayStandardClock();
-    } else if (settings.clockStyle == 2) {
-      displayLargeClock();
-    } else if (settings.clockStyle == 3) {
-      displayClockWithInvader();
-    } else if (settings.clockStyle == 4) {
-      displayClockWithShip();
+
+  if (displayAvailable) {
+    display.clearDisplay();
+
+    if (stats.online) {
+      displayStats();
+    } else {
+      if (settings.clockStyle == 0) {
+        displayClockWithMario();
+      } else if (settings.clockStyle == 1) {
+        displayStandardClock();
+      } else if (settings.clockStyle == 2) {
+        displayLargeClock();
+      } else if (settings.clockStyle == 3) {
+        displayClockWithInvader();
+      } else if (settings.clockStyle == 4) {
+        displayClockWithShip();
+      }
     }
+
+    display.display();
   }
-  
-  display.display();
+
   delay(30);
 }
 
@@ -996,10 +1235,14 @@ void displayStats() {
 // ========== Standard Clock Display ==========
 void displayStandardClock() {
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)) {
+  if(!getTimeWithTimeout(&timeinfo)) {
     display.setTextSize(1);
     display.setCursor(20, 28);
-    display.print("Time Error");
+    if (!ntpSynced) {
+      display.print("Syncing time...");
+    } else {
+      display.print("Time Error");
+    }
     return;
   }
   
@@ -1063,10 +1306,14 @@ void displayStandardClock() {
 // ========== Large Clock Display ==========
 void displayLargeClock() {
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)) {
+  if(!getTimeWithTimeout(&timeinfo)) {
     display.setTextSize(1);
     display.setCursor(20, 28);
-    display.print("Time Error");
+    if (!ntpSynced) {
+      display.print("Syncing time...");
+    } else {
+      display.print("Time Error");
+    }
     return;
   }
   
@@ -1157,10 +1404,14 @@ void drawTimeWithBounce() {
 
 void displayClockWithMario() {
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)) {
+  if(!getTimeWithTimeout(&timeinfo)) {
     display.setTextSize(1);
     display.setCursor(20, 28);
-    display.print("Time Error");
+    if (!ntpSynced) {
+      display.print("Syncing time...");
+    } else {
+      display.print("Time Error");
+    }
     return;
   }
   
@@ -1759,10 +2010,14 @@ void updateInvaderAnimation(struct tm* timeinfo) {
 // Display clock with invader animation
 void displayClockWithInvader() {
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)) {
+  if(!getTimeWithTimeout(&timeinfo)) {
     display.setTextSize(1);
     display.setCursor(20, 28);
-    display.print("Time Error");
+    if (!ntpSynced) {
+      display.print("Syncing time...");
+    } else {
+      display.print("Time Error");
+    }
     return;
   }
 
@@ -2137,10 +2392,14 @@ void updateShipAnimation(struct tm* timeinfo) {
 // Display clock with ship animation
 void displayClockWithShip() {
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)) {
+  if(!getTimeWithTimeout(&timeinfo)) {
     display.setTextSize(1);
     display.setCursor(20, 28);
-    display.print("Time Error");
+    if (!ntpSynced) {
+      display.print("Syncing time...");
+    } else {
+      display.print("Time Error");
+    }
     return;
   }
 
