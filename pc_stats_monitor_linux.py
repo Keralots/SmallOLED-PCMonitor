@@ -9,44 +9,54 @@ import time
 import json
 from datetime import datetime
 import platform
+import glob
 
 # Configuration
 ESP32_IP = "192.168.1.197"  # Change to your ESP32 IP address
 UDP_PORT = 4210
 BROADCAST_INTERVAL = 3  # Increased to 3 seconds for even less CPU usage
 
-
-
 def get_linux_temperatures():
-    """Get CPU and GPU temperatures on Linux using psutil and /sys/class/thermal"""
+    """Get CPU and GPU temperatures and fan speed on Linux using psutil"""
     cpu_temp = None
     gpu_temp = None
     fan_speed = None
 
-    # Try psutil.sensors_temperatures()
+    # --- 1. Get Temperatures (CPU/GPU) ---
     if hasattr(psutil, "sensors_temperatures"):
         temps = psutil.sensors_temperatures()
-        # CPU
+        
+        # CPU Temp Logic
         for key in temps:
-            if "coretemp" in key or "cpu" in key or 'k10temp' in key:
+            # Look for common CPU keys like 'coretemp', 'k10temp', 'cpu-thermal'
+            if "coretemp" in key.lower() or "k10temp" in key.lower() or "cpu" in key.lower():
                 for entry in temps[key]:
-                    if entry.label.lower() in ["package id 0", "core 0", "cpu", "tctl"] or entry.label == "":
+                    # Often the 'Package id 0' or 'Tctl' label has the main reading
+                    if "package" in entry.label.lower() or "tctl" in entry.label.lower() or entry.label == "":
                         cpu_temp = int(entry.current)
                         break
-            # GPU (NVIDIA)
-            if "nvidia" in key or "gpu" in key:
+                if cpu_temp is not None:
+                    break
+
+        # GPU Temp Logic (NVIDIA via psutil if available)
+        for key in temps:
+            if "nvidia" in key.lower() or "gpu" in key.lower():
                 for entry in temps[key]:
                     gpu_temp = int(entry.current)
                     break
-    # Try reading fan speed from /sys/class/hwmon
-    try:
-        import glob
-        for hwmon in glob.glob("/sys/class/hwmon/hwmon*/fan*_input"):
-            with open(hwmon) as f:
-                fan_speed = int(f.read().strip())
+                if gpu_temp is not None:
+                    break
+                    
+    # --- 2. Get Fan Speed ---
+    if hasattr(psutil, "sensors_fans"):
+        fans = psutil.sensors_fans()
+        for key in fans:
+            # Iterate through all fan entries and pick the first detected speed
+            if fans[key]:
+                # This usually picks up "fan1_input" or similar from the system
+                fan_speed = int(fans[key][0].current)
                 break
-    except Exception:
-        pass
+    
     return fan_speed, cpu_temp, gpu_temp
 
 def get_sensor_values():
