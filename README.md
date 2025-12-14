@@ -12,6 +12,13 @@ https://aliexpress.com/item/1005006262908701.html
 ESP32-C3 SuperMini:
 https://aliexpress.com/item/1005008988143743.html
 
+I have noticed that some of the cheap ESP32-C3 boards have WiFi related issues on hardware level. After some additional implementations to the code in attempt to fix issues (v1.2.1), some of those issues cannot be fixed as they are on hardware level.
+What has helped a bit: Resoldering anthenna to improve connectivity with board, a small capacitor like 220uF or even 10uF between 3.3v and GND pins.
+Some of those faluty boards have anthenna too close to other components. Like in this example (left side with 3.5mm gap is better)
+
+<img width="791" height="200" alt="image" src="https://github.com/user-attachments/assets/0a624a91-db2b-45b0-b637-f3556f7561fb" />
+
+
 A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on a small OLED screen using ESP32 and a companion Python script.
 
 ## Features
