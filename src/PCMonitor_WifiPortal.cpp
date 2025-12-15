@@ -59,6 +59,31 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // ========== NTP Time Configuration ==========
 const char* ntpServer = "pool.ntp.org";
 
+// ========== Dynamic Metrics System (v2.0) ==========
+#define MAX_METRICS 12
+#define METRIC_NAME_LEN 11  // 10 chars + null terminator
+#define METRIC_UNIT_LEN 5   // 4 chars + null terminator
+
+struct Metric {
+  uint8_t id;                     // 1-12
+  char name[METRIC_NAME_LEN];     // "CPU%", "FAN1", etc. (from Python)
+  char label[METRIC_NAME_LEN];    // Custom label (user editable)
+  char unit[METRIC_UNIT_LEN];     // "%", "C", "RPM", etc.
+  int value;                      // Sensor value
+  bool visible;                   // User-configured visibility
+  uint8_t displayOrder;           // Display position (0-11)
+  uint8_t companionId;            // ID of companion metric (0 = none, 1-12 = metric ID)
+};
+
+struct MetricData {
+  Metric metrics[MAX_METRICS];
+  uint8_t count;                  // Actual number of metrics received
+  char timestamp[6];              // "HH:MM"
+  bool online;                    // Connection status
+};
+
+MetricData metricData;
+
 // ========== Settings (loaded from flash) ==========
 struct Settings {
   int clockStyle;        // 0 = Mario, 1 = Standard, 2 = Large, 3 = Space Invaders (Jumping), 4 = Space Invaders (Sliding)
@@ -66,24 +91,32 @@ struct Settings {
   bool daylightSaving;   // Daylight saving time
   bool use24Hour;        // 24-hour format
   int dateFormat;        // 0 = DD/MM/YYYY, 1 = MM/DD/YYYY, 2 = YYYY-MM-DD
-  char fanLabel[16];     // Custom label for fan/pump (e.g., "PUMP", "FAN", "COOLER")
-  char cpuLabel[16];     // Custom label for CPU
-  char ramLabel[16];     // Custom label for RAM
-  char gpuLabel[16];     // Custom label for GPU
-  char diskLabel[16];    // Custom label for Disk
 
-  // Visibility toggles
-  bool showFan;          // Show/hide fan metric
-  bool showCPU;          // Show/hide CPU metric
-  bool showRAM;          // Show/hide RAM metric
-  bool showGPU;          // Show/hide GPU metric
-  bool showDisk;         // Show/hide disk metric
+  // Display layout mode
+  int displayLayout;     // 0 = Progress Bars (legacy), 1 = Compact Grid
+
+  // Clock positioning
+  int clockPosition;     // 0 = Center, 1 = Left, 2 = Right
+
+  // Dynamic metric visibility
+  bool metricVisibility[MAX_METRICS];  // Index = metric ID - 1
+
+  // Custom metric labels
+  char metricLabels[MAX_METRICS][METRIC_NAME_LEN];  // Custom display names
+
+  // Metric display order
+  uint8_t metricOrder[MAX_METRICS];  // Display position for each metric
+
+  // Companion metrics (pair metrics on same line)
+  uint8_t metricCompanions[MAX_METRICS];  // Companion metric ID (0 = none)
+
+  // Clock toggle
   bool showClock;        // Show/hide timestamp in metrics display
 };
 
 Settings settings;
 
-// ========== PC Stats Structure ==========
+// ========== Legacy PC Stats Structure (for backward compatibility) ==========
 struct PCStats {
   float cpu_percent;
   float ram_percent;
@@ -97,7 +130,7 @@ struct PCStats {
   bool online;
 };
 
-PCStats stats;
+PCStats stats;  // Keep for backward compatibility with old Python script
 unsigned long lastReceived = 0;
 const unsigned long TIMEOUT = 6000;
 bool ntpSynced = false;  // Track NTP sync status
@@ -257,6 +290,9 @@ void setupWebServer();
 void handleRoot();
 void handleSave();
 void handleReset();
+void handleMetricsAPI();
+void trimTrailingSpaces(char* str);
+void convertCaretToSpaces(char* str);
 void displaySetupInstructions();
 void displayConnecting();
 void displayConnected();
@@ -441,8 +477,13 @@ void setup() {
 
   // Start UDP listener
   udp.begin(UDP_PORT);
-  // Serial.print("UDP listening on port ");
-  // Serial.println(UDP_PORT);
+  Serial.print("UDP listening on port ");
+  Serial.println(UDP_PORT);
+
+  // Initialize metricData
+  metricData.count = 0;
+  metricData.online = false;
+  Serial.println("Waiting for PC stats data...");
 
   // Setup web server for configuration
   setupWebServer();
@@ -539,17 +580,16 @@ void loadSettings() {
     settings.daylightSaving = true;
     settings.use24Hour = true;
     settings.dateFormat = 0;
-    strncpy(settings.fanLabel, "PUMP", 15);
-    strncpy(settings.cpuLabel, "CPU", 15);
-    strncpy(settings.ramLabel, "RAM", 15);
-    strncpy(settings.gpuLabel, "GPU", 15);
-    strncpy(settings.diskLabel, "DISK", 15);
-    settings.showFan = true;
-    settings.showCPU = true;
-    settings.showRAM = true;
-    settings.showGPU = true;
-    settings.showDisk = true;
+    settings.displayLayout = 0;  // Progress bars by default
+    settings.clockPosition = 0;  // Center by default
     settings.showClock = true;
+    // All metrics visible by default
+    for (int i = 0; i < MAX_METRICS; i++) {
+      settings.metricVisibility[i] = true;
+      settings.metricLabels[i][0] = '\0';  // Empty = use Python name
+      settings.metricOrder[i] = i;  // Default order
+      settings.metricCompanions[i] = 0;  // No companion by default
+    }
     Serial.println("Settings initialized with defaults");
     return;
   }
@@ -563,17 +603,23 @@ void loadSettings() {
     preferences.putBool("dst", true);
     preferences.putBool("use24Hour", true);
     preferences.putInt("dateFormat", 0);
-    preferences.putString("fanLabel", "PUMP");
-    preferences.putString("cpuLabel", "CPU");
-    preferences.putString("ramLabel", "RAM");
-    preferences.putString("gpuLabel", "GPU");
-    preferences.putString("diskLabel", "DISK");
-    preferences.putBool("showFan", true);
-    preferences.putBool("showCPU", true);
-    preferences.putBool("showRAM", true);
-    preferences.putBool("showGPU", true);
-    preferences.putBool("showDisk", true);
+    preferences.putInt("displayLayout", 0);
+    preferences.putInt("clockPos", 0);  // Center
     preferences.putBool("showClock", true);
+
+    // Initialize all metrics as visible
+    bool defaultVis[MAX_METRICS];
+    uint8_t defaultOrder[MAX_METRICS];
+    uint8_t defaultCompanions[MAX_METRICS];
+    for (int i = 0; i < MAX_METRICS; i++) {
+      defaultVis[i] = true;
+      defaultOrder[i] = i;
+      defaultCompanions[i] = 0;  // No companion
+    }
+    preferences.putBytes("metricVis", defaultVis, MAX_METRICS);
+    preferences.putBytes("metricOrd", defaultOrder, MAX_METRICS);
+    preferences.putBytes("metricComp", defaultCompanions, MAX_METRICS);
+
     Serial.println("Default settings written to NVS");
   }
 
@@ -582,53 +628,73 @@ void loadSettings() {
   settings.daylightSaving = preferences.getBool("dst", true); // Default: true
   settings.use24Hour = preferences.getBool("use24Hour", true); // Default: 24h
   settings.dateFormat = preferences.getInt("dateFormat", 0);  // Default: DD/MM/YYYY
-
-  // Load custom labels with defaults
-  String fanLbl = preferences.getString("fanLabel", "PUMP");
-  String cpuLbl = preferences.getString("cpuLabel", "CPU");
-  String ramLbl = preferences.getString("ramLabel", "RAM");
-  String gpuLbl = preferences.getString("gpuLabel", "GPU");
-  String diskLbl = preferences.getString("diskLabel", "DISK");
-
-  strncpy(settings.fanLabel, fanLbl.c_str(), 15);
-  strncpy(settings.cpuLabel, cpuLbl.c_str(), 15);
-  strncpy(settings.ramLabel, ramLbl.c_str(), 15);
-  strncpy(settings.gpuLabel, gpuLbl.c_str(), 15);
-  strncpy(settings.diskLabel, diskLbl.c_str(), 15);
-  settings.fanLabel[15] = '\0';
-  settings.cpuLabel[15] = '\0';
-  settings.ramLabel[15] = '\0';
-  settings.gpuLabel[15] = '\0';
-  settings.diskLabel[15] = '\0';
-
-  // Load visibility settings (default: true for all)
-  settings.showFan = preferences.getBool("showFan", true);
-  settings.showCPU = preferences.getBool("showCPU", true);
-  settings.showRAM = preferences.getBool("showRAM", true);
-  settings.showGPU = preferences.getBool("showGPU", true);
-  settings.showDisk = preferences.getBool("showDisk", true);
+  settings.displayLayout = preferences.getInt("displayLayout", 0);  // Default: Progress bars
+  settings.clockPosition = preferences.getInt("clockPos", 0);  // Default: Center
   settings.showClock = preferences.getBool("showClock", true);
+
+  // Load metric visibility array
+  size_t visSize = preferences.getBytesLength("metricVis");
+  if (visSize == MAX_METRICS) {
+    preferences.getBytes("metricVis", settings.metricVisibility, MAX_METRICS);
+    Serial.println("Loaded metric visibility from NVS");
+  } else {
+    // Default all visible if not found (fresh install or upgrade from v1.0)
+    Serial.println("Initializing metricVisibility to all visible (upgrade/fresh install)");
+    for (int i = 0; i < MAX_METRICS; i++) {
+      settings.metricVisibility[i] = true;
+    }
+    // Save defaults to NVS
+    preferences.putBytes("metricVis", settings.metricVisibility, MAX_METRICS);
+    if (!preferences.isKey("displayLayout")) {
+      preferences.putInt("displayLayout", settings.displayLayout);
+    }
+  }
+
+  // Load metric display order
+  size_t orderSize = preferences.getBytesLength("metricOrd");
+  if (orderSize == MAX_METRICS) {
+    preferences.getBytes("metricOrd", settings.metricOrder, MAX_METRICS);
+    Serial.println("Loaded metric order from NVS");
+  } else {
+    // Default sequential order if not found
+    Serial.println("Initializing metric order to default (0-11)");
+    for (int i = 0; i < MAX_METRICS; i++) {
+      settings.metricOrder[i] = i;
+    }
+    preferences.putBytes("metricOrd", settings.metricOrder, MAX_METRICS);
+  }
+
+  // Load companion metrics
+  size_t companionSize = preferences.getBytesLength("metricComp");
+  if (companionSize == MAX_METRICS) {
+    preferences.getBytes("metricComp", settings.metricCompanions, MAX_METRICS);
+    Serial.println("Loaded metric companions from NVS");
+  } else {
+    // Default no companions if not found
+    Serial.println("Initializing companions to none (0)");
+    for (int i = 0; i < MAX_METRICS; i++) {
+      settings.metricCompanions[i] = 0;
+    }
+    preferences.putBytes("metricComp", settings.metricCompanions, MAX_METRICS);
+  }
+
+  // Load custom metric labels
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String key = "label" + String(i);
+    String label = preferences.getString(key.c_str(), "");
+    if (label.length() > 0) {
+      strncpy(settings.metricLabels[i], label.c_str(), METRIC_NAME_LEN - 1);
+      settings.metricLabels[i][METRIC_NAME_LEN - 1] = '\0';
+    } else {
+      settings.metricLabels[i][0] = '\0';  // Empty = use Python name
+    }
+  }
 
   preferences.end();
 
-  // Serial.println("Settings loaded:");
-  // Serial.print("  Clock Style: "); Serial.println(settings.clockStyle);
-  // Serial.print("  GMT Offset: "); Serial.println(settings.gmtOffset);
-  // Serial.print("  DST: "); Serial.println(settings.daylightSaving ? "Yes" : "No");
-  // Serial.print("  24-Hour: "); Serial.println(settings.use24Hour ? "Yes" : "No");
-  // Serial.print("  Date Format: "); Serial.println(settings.dateFormat);
-  // Serial.print("  Fan Label: "); Serial.println(settings.fanLabel);
-  // Serial.print("  CPU Label: "); Serial.println(settings.cpuLabel);
-  // Serial.print("  RAM Label: "); Serial.println(settings.ramLabel);
-  // Serial.print("  GPU Label: "); Serial.println(settings.gpuLabel);
-  // Serial.print("  Disk Label: "); Serial.println(settings.diskLabel);
-  // Serial.println("Visibility:");
-  // Serial.print("  Fan: "); Serial.println(settings.showFan ? "Yes" : "No");
-  // Serial.print("  CPU: "); Serial.println(settings.showCPU ? "Yes" : "No");
-  // Serial.print("  RAM: "); Serial.println(settings.showRAM ? "Yes" : "No");
-  // Serial.print("  GPU: "); Serial.println(settings.showGPU ? "Yes" : "No");
-  // Serial.print("  Disk: "); Serial.println(settings.showDisk ? "Yes" : "No");
-  // Serial.print("  Clock: "); Serial.println(settings.showClock ? "Yes" : "No");
+  Serial.println("Settings loaded (v2.0)");
+  Serial.print("Display Layout: ");
+  Serial.println(settings.displayLayout == 0 ? "Progress Bars" : "Compact Grid");
 }
 
 void saveSettings() {
@@ -638,23 +704,32 @@ void saveSettings() {
   preferences.putBool("dst", settings.daylightSaving);
   preferences.putBool("use24Hour", settings.use24Hour);
   preferences.putInt("dateFormat", settings.dateFormat);
-  preferences.putString("fanLabel", settings.fanLabel);
-  preferences.putString("cpuLabel", settings.cpuLabel);
-  preferences.putString("ramLabel", settings.ramLabel);
-  preferences.putString("gpuLabel", settings.gpuLabel);
-  preferences.putString("diskLabel", settings.diskLabel);
-
-  // Save visibility settings
-  preferences.putBool("showFan", settings.showFan);
-  preferences.putBool("showCPU", settings.showCPU);
-  preferences.putBool("showRAM", settings.showRAM);
-  preferences.putBool("showGPU", settings.showGPU);
-  preferences.putBool("showDisk", settings.showDisk);
+  preferences.putInt("displayLayout", settings.displayLayout);
+  preferences.putInt("clockPos", settings.clockPosition);
   preferences.putBool("showClock", settings.showClock);
+
+  // Save metric visibility array
+  preferences.putBytes("metricVis", settings.metricVisibility, MAX_METRICS);
+
+  // Save metric display order
+  preferences.putBytes("metricOrd", settings.metricOrder, MAX_METRICS);
+
+  // Save metric companions
+  preferences.putBytes("metricComp", settings.metricCompanions, MAX_METRICS);
+
+  // Save custom metric labels
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String key = "label" + String(i);
+    if (settings.metricLabels[i][0] != '\0') {
+      preferences.putString(key.c_str(), settings.metricLabels[i]);
+    } else {
+      preferences.remove(key.c_str());  // Remove if empty
+    }
+  }
 
   preferences.end();
 
-  Serial.println("Settings saved!");
+  Serial.println("Settings saved (v2.0)!");
 }
 
 void applyTimezone() {
@@ -680,7 +755,30 @@ void setupWebServer() {
   server.on("/", handleRoot);
   server.on("/save", HTTP_POST, handleSave);
   server.on("/reset", handleReset);
+  server.on("/metrics", handleMetricsAPI);  // New API endpoint
   server.begin();
+}
+
+// API endpoint to return current metrics as JSON
+void handleMetricsAPI() {
+  String json = "{\"metrics\":[";
+
+  for (int i = 0; i < metricData.count; i++) {
+    Metric& m = metricData.metrics[i];
+
+    if (i > 0) json += ",";
+    json += "{\"id\":" + String(m.id) +
+            ",\"name\":\"" + String(m.name) + "\"" +
+            ",\"label\":\"" + String(m.label) + "\"" +
+            ",\"unit\":\"" + String(m.unit) + "\"" +
+            ",\"visible\":" + String(m.visible ? "true" : "false") +
+            ",\"displayOrder\":" + String(m.displayOrder) +
+            ",\"companionId\":" + String(m.companionId) + "}";
+  }
+
+  json += "]}";
+
+  server.send(200, "application/json", json);
 }
 
 void handleRoot() {
@@ -765,38 +863,46 @@ void handleRoot() {
       </div>
 
       <div class="card">
-        <h3 style="text-align: left;">&#128195; Display Labels</h3>
-        <p style="color: #888; font-size: 14px; margin-top: 0; text-align: left;">Customize labels and visibility for metrics shown on OLED</p>
+        <h3 style="text-align: left;">&#128202; Display Layout</h3>
+        <label for="displayLayout">Metrics Display Style</label>
+        <select name="displayLayout" id="displayLayout">
+          <option value="0" )rawliteral" + String(settings.displayLayout == 0 ? "selected" : "") + R"rawliteral(>Progress Bars (4-5 metrics)</option>
+          <option value="1" )rawliteral" + String(settings.displayLayout == 1 ? "selected" : "") + R"rawliteral(>Compact Grid (10-12 metrics)</option>
+        </select>
+        <p style="color: #888; font-size: 12px; margin-top: 10px;">
+          Compact mode shows more metrics without progress bars
+        </p>
 
-        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-          <input type="checkbox" name="showFan" id="showFan" value="1" )rawliteral" + String(settings.showFan ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
-          <label for="fanLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Fan/Pump</label>
-          <input type="text" name="fanLabel" id="fanLabel" value=")rawliteral" + String(settings.fanLabel) + R"rawliteral(" maxlength="15" placeholder="PUMP, FAN" style="flex: 1; margin: 0; margin-left: 10px;">
+        <label for="clockPosition" style="margin-top: 15px; display: block;">Clock Position (Compact Grid Only)</label>
+        <select name="clockPosition" id="clockPosition">
+          <option value="0" )rawliteral" + String(settings.clockPosition == 0 ? "selected" : "") + R"rawliteral(>Center (Top)</option>
+          <option value="1" )rawliteral" + String(settings.clockPosition == 1 ? "selected" : "") + R"rawliteral(>Left Column</option>
+          <option value="2" )rawliteral" + String(settings.clockPosition == 2 ? "selected" : "") + R"rawliteral(>Right Column</option>
+        </select>
+        <p style="color: #888; font-size: 12px; margin-top: 10px;">
+          Position clock to optimize space for metrics
+        </p>
+      </div>
+
+      <div class="card">
+        <h3 style="text-align: left;">&#128195; Visible Metrics</h3>
+        <p style="color: #888; font-size: 14px; margin-top: 0; text-align: left;">
+          Select which metrics to show on OLED
+        </p>
+
+        <p style="color: #888; font-size: 12px; margin-top: 10px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #00d4ff;">
+          <strong>&#128161; Tip:</strong> Use <code style="background: #1e293b; padding: 2px 6px; border-radius: 3px;">^</code> character for spacing.<br>
+          Example: <code style="background: #1e293b; padding: 2px 6px; border-radius: 3px;">CPU^^</code> displays as <code style="background: #1e293b; padding: 2px 6px; border-radius: 3px;">CPU:  45C</code> (2 spaces after colon)
+        </p>
+
+        <div id="metricsContainer">
+          <p style="color: #888;">Loading metrics...</p>
         </div>
 
-        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-          <input type="checkbox" name="showCPU" id="showCPU" value="1" )rawliteral" + String(settings.showCPU ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
-          <label for="cpuLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">CPU</label>
-          <input type="text" name="cpuLabel" id="cpuLabel" value=")rawliteral" + String(settings.cpuLabel) + R"rawliteral(" maxlength="15" placeholder="CPU" style="flex: 1; margin: 0; margin-left: 10px;">
-        </div>
-
-        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-          <input type="checkbox" name="showRAM" id="showRAM" value="1" )rawliteral" + String(settings.showRAM ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
-          <label for="ramLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">RAM</label>
-          <input type="text" name="ramLabel" id="ramLabel" value=")rawliteral" + String(settings.ramLabel) + R"rawliteral(" maxlength="15" placeholder="RAM" style="flex: 1; margin: 0; margin-left: 10px;">
-        </div>
-
-        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-          <input type="checkbox" name="showGPU" id="showGPU" value="1" )rawliteral" + String(settings.showGPU ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
-          <label for="gpuLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">GPU</label>
-          <input type="text" name="gpuLabel" id="gpuLabel" value=")rawliteral" + String(settings.gpuLabel) + R"rawliteral(" maxlength="15" placeholder="GPU" style="flex: 1; margin: 0; margin-left: 10px;">
-        </div>
-
-        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-          <input type="checkbox" name="showDisk" id="showDisk" value="1" )rawliteral" + String(settings.showDisk ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
-          <label for="diskLabel" style="display: inline-block; width: 90px; margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Disk</label>
-          <input type="text" name="diskLabel" id="diskLabel" value=")rawliteral" + String(settings.diskLabel) + R"rawliteral(" maxlength="15" placeholder="DISK" style="flex: 1; margin: 0; margin-left: 10px;">
-        </div>
+        <p style="color: #888; font-size: 12px; margin-top: 15px;">
+          <strong>Note:</strong> Metrics are configured in Python script.<br>
+          Select up to 12 in pc_stats_monitor_v2.py
+        </p>
 
         <hr style="margin: 20px 0; border: none; border-top: 1px solid #333;">
 
@@ -804,6 +910,121 @@ void handleRoot() {
           <input type="checkbox" name="showClock" id="showClock" value="1" )rawliteral" + String(settings.showClock ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;">
           <label for="showClock" style="margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Show Clock/Time in metrics display</label>
         </div>
+
+        <script>
+          let metricsData = [];
+
+          function renderMetrics() {
+            const container = document.getElementById('metricsContainer');
+            container.innerHTML = '';
+
+            // Sort metrics by displayOrder
+            const sortedMetrics = [...metricsData].sort((a, b) => a.displayOrder - b.displayOrder);
+
+            sortedMetrics.forEach((metric, index) => {
+              const div = document.createElement('div');
+              div.style.cssText = 'background: #0f172a; padding: 12px; margin-bottom: 8px; border-radius: 6px; border: 1px solid #334155;';
+
+              const checked = metric.visible ? 'checked' : '';
+
+              // Build companion dropdown options
+              let companionOptions = '<option value="0">None</option>';
+              metricsData.forEach(m => {
+                if (m.id !== metric.id) {
+                  const selected = (metric.companionId === m.id) ? 'selected' : '';
+                  companionOptions += `<option value="${m.id}" ${selected}>${m.name} (${m.unit})</option>`;
+                }
+              });
+
+              div.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                  <input type="checkbox" name="metric_${metric.id}" id="metric_${metric.id}"
+                         value="1" ${checked} style="width: 20px; height: 20px; margin: 0;">
+                  <label for="metric_${metric.id}" style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0;">
+                    ${metric.name} (${metric.unit})
+                  </label>
+                  <div style="display: flex; gap: 4px;">
+                    <button type="button" onclick="moveUp(${metric.id})"
+                            style="background: #1e293b; color: #00d4ff; border: 1px solid #334155;
+                                   padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 16px;"
+                            ${index === 0 ? 'disabled' : ''}>&#9650;</button>
+                    <button type="button" onclick="moveDown(${metric.id})"
+                            style="background: #1e293b; color: #00d4ff; border: 1px solid #334155;
+                                   padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 16px;"
+                            ${index === sortedMetrics.length - 1 ? 'disabled' : ''}>&#9660;</button>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
+                  <label style="color: #888; font-size: 12px; min-width: 80px; margin: 0;">Custom Label:</label>
+                  <input type="text" name="label_${metric.id}"
+                         value="${metric.label}" maxlength="10" placeholder="${metric.name}"
+                         style="flex: 1; padding: 6px; background: #16213e; border: 1px solid #334155;
+                                color: #eee; border-radius: 4px; font-size: 13px;">
+                  <input type="hidden" name="order_${metric.id}" value="${metric.displayOrder}">
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <label style="color: #888; font-size: 12px; min-width: 80px; margin: 0;">Pair with:</label>
+                  <select name="companion_${metric.id}"
+                          style="flex: 1; padding: 6px; background: #16213e; border: 1px solid #334155;
+                                 color: #eee; border-radius: 4px; font-size: 13px;">
+                    ${companionOptions}
+                  </select>
+                </div>
+              `;
+
+              container.appendChild(div);
+            });
+          }
+
+          function moveUp(metricId) {
+            // Sort metrics by current displayOrder
+            const sortedMetrics = [...metricsData].sort((a, b) => a.displayOrder - b.displayOrder);
+
+            // Find metric's position in sorted array
+            const currentIndex = sortedMetrics.findIndex(m => m.id === metricId);
+            if (currentIndex <= 0) return;  // Already at top
+
+            // Swap with previous metric in sorted array
+            const temp = sortedMetrics[currentIndex].displayOrder;
+            sortedMetrics[currentIndex].displayOrder = sortedMetrics[currentIndex - 1].displayOrder;
+            sortedMetrics[currentIndex - 1].displayOrder = temp;
+
+            renderMetrics();
+          }
+
+          function moveDown(metricId) {
+            // Sort metrics by current displayOrder
+            const sortedMetrics = [...metricsData].sort((a, b) => a.displayOrder - b.displayOrder);
+
+            // Find metric's position in sorted array
+            const currentIndex = sortedMetrics.findIndex(m => m.id === metricId);
+            if (currentIndex < 0 || currentIndex >= sortedMetrics.length - 1) return;  // Already at bottom
+
+            // Swap with next metric in sorted array
+            const temp = sortedMetrics[currentIndex].displayOrder;
+            sortedMetrics[currentIndex].displayOrder = sortedMetrics[currentIndex + 1].displayOrder;
+            sortedMetrics[currentIndex + 1].displayOrder = temp;
+
+            renderMetrics();
+          }
+
+          // Load metrics on page load
+          fetch('/metrics')
+            .then(res => res.json())
+            .then(data => {
+              if (data.metrics && data.metrics.length > 0) {
+                metricsData = data.metrics;
+                renderMetrics();
+              } else {
+                document.getElementById('metricsContainer').innerHTML =
+                  '<p style="color: #ff6666;">No metrics received yet. Start Python script.</p>';
+              }
+            })
+            .catch(err => {
+              document.getElementById('metricsContainer').innerHTML =
+                '<p style="color: #ff6666;">Error loading metrics</p>';
+            });
+        </script>
       </div>
 
       <button type="submit" class="save-btn">&#128190; Save Settings</button>
@@ -842,48 +1063,78 @@ void handleSave() {
     settings.dateFormat = server.arg("dateFormat").toInt();
   }
 
-  // Save visibility checkboxes (unchecked = not present in POST data)
-  settings.showFan = server.hasArg("showFan");
-  settings.showCPU = server.hasArg("showCPU");
-  settings.showRAM = server.hasArg("showRAM");
-  settings.showGPU = server.hasArg("showGPU");
-  settings.showDisk = server.hasArg("showDisk");
+  // Save display layout
+  if (server.hasArg("displayLayout")) {
+    settings.displayLayout = server.arg("displayLayout").toInt();
+  }
+
+  // Save clock position
+  if (server.hasArg("clockPosition")) {
+    settings.clockPosition = server.arg("clockPosition").toInt();
+  }
+
+  // Save clock visibility checkbox
   settings.showClock = server.hasArg("showClock");
 
+  // Save dynamic metric visibility (unchecked = not present in POST data)
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String argName = "metric_" + String(i + 1);
+    settings.metricVisibility[i] = server.hasArg(argName);
+  }
+
   // Save custom labels
-  if (server.hasArg("fanLabel")) {
-    String fanLbl = server.arg("fanLabel");
-    if (fanLbl.length() > 0) {
-      strncpy(settings.fanLabel, fanLbl.c_str(), 15);
-      settings.fanLabel[15] = '\0';
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String labelArg = "label_" + String(i + 1);
+    if (server.hasArg(labelArg)) {
+      String label = server.arg(labelArg);
+      label.trim();
+      if (label.length() > 0) {
+        strncpy(settings.metricLabels[i], label.c_str(), METRIC_NAME_LEN - 1);
+        settings.metricLabels[i][METRIC_NAME_LEN - 1] = '\0';
+      } else {
+        settings.metricLabels[i][0] = '\0';  // Empty = use Python name
+      }
     }
   }
-  if (server.hasArg("cpuLabel")) {
-    String cpuLbl = server.arg("cpuLabel");
-    if (cpuLbl.length() > 0) {
-      strncpy(settings.cpuLabel, cpuLbl.c_str(), 15);
-      settings.cpuLabel[15] = '\0';
+
+  // Save metric display order
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String orderArg = "order_" + String(i + 1);
+    if (server.hasArg(orderArg)) {
+      settings.metricOrder[i] = server.arg(orderArg).toInt();
     }
   }
-  if (server.hasArg("ramLabel")) {
-    String ramLbl = server.arg("ramLabel");
-    if (ramLbl.length() > 0) {
-      strncpy(settings.ramLabel, ramLbl.c_str(), 15);
-      settings.ramLabel[15] = '\0';
+
+  // Save metric companions
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String companionArg = "companion_" + String(i + 1);
+    if (server.hasArg(companionArg)) {
+      settings.metricCompanions[i] = server.arg(companionArg).toInt();
+    } else {
+      settings.metricCompanions[i] = 0;  // No companion
     }
   }
-  if (server.hasArg("gpuLabel")) {
-    String gpuLbl = server.arg("gpuLabel");
-    if (gpuLbl.length() > 0) {
-      strncpy(settings.gpuLabel, gpuLbl.c_str(), 15);
-      settings.gpuLabel[15] = '\0';
-    }
-  }
-  if (server.hasArg("diskLabel")) {
-    String diskLbl = server.arg("diskLabel");
-    if (diskLbl.length() > 0) {
-      strncpy(settings.diskLabel, diskLbl.c_str(), 15);
-      settings.diskLabel[15] = '\0';
+
+  // Apply visibility, labels, order, and companions to current metrics in memory
+  for (int i = 0; i < metricData.count; i++) {
+    Metric& m = metricData.metrics[i];
+    if (m.id > 0 && m.id <= MAX_METRICS) {
+      m.visible = settings.metricVisibility[m.id - 1];
+
+      // Apply custom label if set
+      if (settings.metricLabels[m.id - 1][0] != '\0') {
+        strncpy(m.label, settings.metricLabels[m.id - 1], METRIC_NAME_LEN - 1);
+        m.label[METRIC_NAME_LEN - 1] = '\0';
+      } else {
+        strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
+        m.label[METRIC_NAME_LEN - 1] = '\0';
+      }
+
+      // Apply display order
+      m.displayOrder = settings.metricOrder[m.id - 1];
+
+      // Apply companion metric
+      m.companionId = settings.metricCompanions[m.id - 1];
     }
   }
 
@@ -1060,21 +1311,34 @@ void loop() {
 
   int packetSize = udp.parsePacket();
   if (packetSize) {
-    char buffer[512];
+    char buffer[1024];  // Increased buffer for up to 12 metrics
     int len = udp.read(buffer, sizeof(buffer) - 1);
     if (len > 0) {
       buffer[len] = '\0';
+
+      // Debug: Show packet info
+      Serial.print("UDP packet: ");
+      Serial.print(packetSize);
+      Serial.print(" bytes, read: ");
+      Serial.print(len);
+      Serial.println(" bytes");
+
+      if (packetSize > sizeof(buffer) - 1) {
+        Serial.println("WARNING: Packet truncated! Increase buffer size.");
+      }
+
       parseStats(buffer);
       lastReceived = millis();
     }
   }
   
   stats.online = (millis() - lastReceived) < TIMEOUT;
+  metricData.online = stats.online;  // Sync both for backward compatibility
 
   if (displayAvailable) {
     display.clearDisplay();
 
-    if (stats.online) {
+    if (metricData.online) {
       displayStats();
     } else {
       if (settings.clockStyle == 0) {
@@ -1096,16 +1360,102 @@ void loop() {
   delay(30);
 }
 
-void parseStats(const char* json) {
-  JsonDocument doc;
-  DeserializationError error = deserializeJson(doc, json);
-  
-  if (error) {
-    Serial.print("JSON parse error: ");
-    Serial.println(error.c_str());
-    return;
+// Helper function to trim trailing whitespace (only from Python names, not custom labels)
+void trimTrailingSpaces(char* str) {
+  int len = strlen(str);
+  while (len > 0 && (str[len - 1] == ' ' || str[len - 1] == '\t')) {
+    str[len - 1] = '\0';
+    len--;
   }
-  
+}
+
+// Helper function to convert '^' to spaces in labels for custom spacing
+// Example: "CPU^^" becomes "CPU  " for display alignment
+void convertCaretToSpaces(char* str) {
+  int len = strlen(str);
+  for (int i = 0; i < len; i++) {
+    if (str[i] == '^') {
+      str[i] = ' ';
+    }
+  }
+}
+
+// Helper function to add a legacy metric to the new system
+void addLegacyMetric(uint8_t id, const char* name, int value, const char* unit) {
+  if (metricData.count >= MAX_METRICS) return;
+
+  Metric& m = metricData.metrics[metricData.count];
+  m.id = id;
+  strncpy(m.name, name, METRIC_NAME_LEN - 1);
+  m.name[METRIC_NAME_LEN - 1] = '\0';
+  trimTrailingSpaces(m.name);
+
+  strncpy(m.unit, unit, METRIC_UNIT_LEN - 1);
+  m.unit[METRIC_UNIT_LEN - 1] = '\0';
+  m.value = value;
+
+  // Load visibility from settings (ID-based indexing)
+  if (id > 0 && id <= MAX_METRICS) {
+    m.visible = settings.metricVisibility[id - 1];
+
+    // Apply custom label if set (don't trim - user may want trailing spaces for alignment)
+    if (settings.metricLabels[id - 1][0] != '\0') {
+      strncpy(m.label, settings.metricLabels[id - 1], METRIC_NAME_LEN - 1);
+      m.label[METRIC_NAME_LEN - 1] = '\0';
+      // Convert '^' to spaces for custom alignment
+      convertCaretToSpaces(m.label);
+    } else {
+      strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
+      m.label[METRIC_NAME_LEN - 1] = '\0';
+    }
+
+    m.displayOrder = settings.metricOrder[id - 1];
+
+    // Load companion metric
+    m.companionId = settings.metricCompanions[id - 1];
+  } else {
+    m.visible = true;
+    strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
+    m.label[METRIC_NAME_LEN - 1] = '\0';
+    m.displayOrder = metricData.count;
+    m.companionId = 0;  // No companion for new metrics
+  }
+
+  metricData.count++;
+}
+
+// Parse v1.0 protocol (legacy format)
+void parseStatsV1(JsonDocument& doc) {
+  metricData.count = 0;
+
+  // Map legacy fields to metrics array (using modern ArduinoJson API)
+  if (!doc["cpu_percent"].isNull()) {
+    addLegacyMetric(1, "CPU", (int)doc["cpu_percent"].as<float>(), "%");
+  }
+  if (!doc["ram_percent"].isNull()) {
+    addLegacyMetric(2, "RAM", (int)doc["ram_percent"].as<float>(), "%");
+  }
+  if (!doc["cpu_temp"].isNull()) {
+    addLegacyMetric(3, "CPU_TEMP", doc["cpu_temp"] | 0, "C");
+  }
+  if (!doc["gpu_temp"].isNull()) {
+    addLegacyMetric(4, "GPU_TEMP", doc["gpu_temp"] | 0, "C");
+  }
+  if (!doc["fan_speed"].isNull()) {
+    addLegacyMetric(5, "FAN", doc["fan_speed"] | 0, "RPM");
+  }
+  if (!doc["disk_percent"].isNull()) {
+    addLegacyMetric(6, "DISK", (int)doc["disk_percent"].as<float>(), "%");
+  }
+
+  // Extract timestamp
+  const char* ts = doc["timestamp"];
+  if (ts) {
+    strncpy(metricData.timestamp, ts, 5);
+    metricData.timestamp[5] = '\0';
+  }
+
+  // Also update legacy stats struct for backward compatibility
   stats.cpu_percent = doc["cpu_percent"] | 0.0;
   stats.ram_percent = doc["ram_percent"] | 0.0;
   stats.ram_used_gb = doc["ram_used_gb"] | 0.0;
@@ -1114,121 +1464,370 @@ void parseStats(const char* json) {
   stats.cpu_temp = doc["cpu_temp"] | 0;
   stats.gpu_temp = doc["gpu_temp"] | 0;
   stats.fan_speed = doc["fan_speed"] | 0;
-  
-  const char* ts = doc["timestamp"];
   if (ts) {
     strncpy(stats.timestamp, ts, 5);
     stats.timestamp[5] = '\0';
   }
+  stats.online = true;
+
+  metricData.online = true;
 }
 
-void displayStats() {
+// Parse v2.0 protocol (dynamic metrics)
+void parseStatsV2(JsonDocument& doc) {
+  // Extract timestamp
+  const char* ts = doc["timestamp"];
+  if (ts) {
+    strncpy(metricData.timestamp, ts, 5);
+    metricData.timestamp[5] = '\0';
+  }
+
+  // Extract metrics array
+  JsonArray metricsArray = doc["metrics"];
+  metricData.count = 0;
+
+  for (JsonObject metricObj : metricsArray) {
+    if (metricData.count >= MAX_METRICS) break;
+
+    Metric& m = metricData.metrics[metricData.count];
+
+    m.id = metricObj["id"] | 0;
+
+    const char* name = metricObj["name"];
+    if (name) {
+      strncpy(m.name, name, METRIC_NAME_LEN - 1);
+      m.name[METRIC_NAME_LEN - 1] = '\0';
+      trimTrailingSpaces(m.name);
+    }
+
+    const char* unit = metricObj["unit"];
+    if (unit) {
+      strncpy(m.unit, unit, METRIC_UNIT_LEN - 1);
+      m.unit[METRIC_UNIT_LEN - 1] = '\0';
+    }
+
+    m.value = metricObj["value"] | 0;
+
+    // Load visibility from settings (ID-based indexing)
+    if (m.id > 0 && m.id <= MAX_METRICS) {
+      m.visible = settings.metricVisibility[m.id - 1];
+
+      // Apply custom label if set (empty = use Python name)
+      // Don't trim - user may want trailing spaces for alignment
+      if (settings.metricLabels[m.id - 1][0] != '\0') {
+        strncpy(m.label, settings.metricLabels[m.id - 1], METRIC_NAME_LEN - 1);
+        m.label[METRIC_NAME_LEN - 1] = '\0';
+        // Convert '^' to spaces for custom alignment
+        convertCaretToSpaces(m.label);
+      } else {
+        // No custom label, copy name to label
+        strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
+        m.label[METRIC_NAME_LEN - 1] = '\0';
+      }
+
+      // Load display order
+      m.displayOrder = settings.metricOrder[m.id - 1];
+
+      // Load companion metric
+      m.companionId = settings.metricCompanions[m.id - 1];
+    } else {
+      m.visible = true;  // Default visible for new metrics
+      strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
+      m.label[METRIC_NAME_LEN - 1] = '\0';
+      m.displayOrder = metricData.count;
+      m.companionId = 0;  // No companion for new metrics
+    }
+
+    metricData.count++;
+  }
+
+  metricData.online = true;
+
+  // Debug output
+  Serial.print("Received ");
+  Serial.print(metricData.count);
+  Serial.print(" metrics, ");
+  int visibleCount = 0;
+  for (int i = 0; i < metricData.count; i++) {
+    if (metricData.metrics[i].visible) visibleCount++;
+  }
+  Serial.print(visibleCount);
+  Serial.println(" visible");
+}
+
+// Main parsing function with version detection
+void parseStats(const char* json) {
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, json);
+
+  if (error) {
+    Serial.print("JSON parse error: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // Version detection
+  const char* version = doc["version"];
+  if (version && strcmp(version, "2.0") == 0) {
+    // New dynamic protocol
+    parseStatsV2(doc);
+    Serial.println("Parsed v2.0 protocol");
+  } else {
+    // Legacy fixed protocol (backward compatibility)
+    parseStatsV1(doc);
+    Serial.println("Parsed v1.0 protocol (legacy)");
+  }
+}
+
+// Progress bars layout (legacy, 4-5 metrics)
+void displayStatsProgressBars() {
   display.setTextSize(1);
-  int currentY = 0;  // Start at top
-  const int LINE_HEIGHT = 14;  // Spacing between metrics
+  int currentY = 0;
+  const int LINE_HEIGHT = 14;
 
-  // Clock display (if enabled and Fan is hidden, show centered)
-  if (settings.showClock && !settings.showFan) {
-    display.setCursor(48, currentY);  // Centered position for "HH:MM" (5 chars)
-    display.print(stats.timestamp);
-    currentY += LINE_HEIGHT;
+  // Create sorted array of metric indices by displayOrder
+  int sortedIndices[MAX_METRICS];
+  int sortedCount = 0;
+
+  // Build sorted index array
+  for (int order = 0; order < MAX_METRICS; order++) {
+    for (int i = 0; i < metricData.count; i++) {
+      if (metricData.metrics[i].displayOrder == order && metricData.metrics[i].visible) {
+        sortedIndices[sortedCount++] = i;
+        break;
+      }
+    }
   }
 
-  // Fan/Pump
-  if (settings.showFan) {
-    display.setCursor(0, currentY);
-    display.print(settings.fanLabel);
-    display.print(":");
-    display.print(stats.fan_speed);
-    display.print("RPM");
+  // Dynamic rendering loop with sorted order
+  for (int idx = 0; idx < sortedCount && currentY < 64; idx++) {
+    Metric& m = metricData.metrics[sortedIndices[idx]];
 
-    // Conditionally show timestamp (clock) on Fan line
-    if (settings.showClock) {
+    // Label + Value (use custom label, strip trailing % if present)
+    display.setCursor(0, currentY);
+
+    // Process label: strip trailing '%' and move trailing spaces to after colon
+    char displayLabel[METRIC_NAME_LEN];
+    strncpy(displayLabel, m.label, METRIC_NAME_LEN - 1);
+    displayLabel[METRIC_NAME_LEN - 1] = '\0';
+
+    // Count and remove trailing spaces (to be added after colon)
+    int len = strlen(displayLabel);
+    int trailingSpaces = 0;
+    while (len > 0 && displayLabel[len - 1] == ' ') {
+      trailingSpaces++;
+      displayLabel[len - 1] = '\0';
+      len--;
+    }
+
+    // Strip trailing '%' if present (after removing spaces)
+    if (len > 0 && displayLabel[len - 1] == '%') {
+      displayLabel[len - 1] = '\0';
+    }
+
+    // Display: Label, colon, spaces, value, unit
+    display.print(displayLabel);
+    display.print(":");
+    for (int i = 0; i < trailingSpaces; i++) {
+      display.print(" ");
+    }
+    display.print(m.value);
+    display.print(m.unit);
+
+    // Check for companion metric (display on same line)
+    if (m.companionId > 0) {
+      // Find companion metric by ID
+      for (int c = 0; c < metricData.count; c++) {
+        if (metricData.metrics[c].id == m.companionId) {
+          Metric& companion = metricData.metrics[c];
+          display.print(" ");
+          display.print(companion.value);
+          display.print(companion.unit);
+          break;
+        }
+      }
+    }
+
+    // Show timestamp on first visible metric (if clock enabled)
+    if (idx == 0 && settings.showClock) {
       display.setCursor(85, currentY);
-      display.print(stats.timestamp);
+      display.print(metricData.timestamp);
+    }
+
+    // Progress bar for percentage metrics
+    if (strcmp(m.unit, "%") == 0) {
+      int barWidth = map(m.value, 0, 100, 0, 56);
+      barWidth = constrain(barWidth, 0, 56);
+      display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+      if (barWidth > 0) {
+        display.fillRect(71, currentY + 1, barWidth, 6, SSD1306_WHITE);
+      }
+    } else if (strcmp(m.unit, "C") == 0) {
+      // Temperature bar (0-100C scale)
+      int barWidth = map(m.value, 0, 100, 0, 56);
+      barWidth = constrain(barWidth, 0, 56);
+      display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+      if (barWidth > 0) {
+        display.fillRect(71, currentY + 1, barWidth, 6, SSD1306_WHITE);
+      }
     }
 
     currentY += LINE_HEIGHT;
   }
 
-  // RAM with progress bar
-  if (settings.showRAM) {
-    display.setCursor(0, currentY);
-    display.print(settings.ramLabel);
-    display.print(": ");
-    display.print((int)stats.ram_percent);
-    display.print("%");
-
-    int ram_bar = (int)(stats.ram_percent * 0.6);
-    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
-    if (ram_bar > 0) {
-      display.fillRect(71, currentY + 1, ram_bar, 6, SSD1306_WHITE);
-    }
-
-    currentY += LINE_HEIGHT;
-  }
-
-  // CPU with progress bar
-  if (settings.showCPU) {
-    display.setCursor(0, currentY);
-    display.print(settings.cpuLabel);
-    display.print(": ");
-    display.print((int)stats.cpu_percent);
-    display.print("% ");
-    display.print(stats.cpu_temp);
-    display.print("C");
-
-    int cpu_bar = (int)(stats.cpu_percent * 0.6);
-    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
-    if (cpu_bar > 0) {
-      display.fillRect(71, currentY + 1, cpu_bar, 6, SSD1306_WHITE);
-    }
-
-    currentY += LINE_HEIGHT;
-  }
-
-  // GPU with progress bar
-  if (settings.showGPU) {
-    display.setCursor(0, currentY);
-    display.print(settings.gpuLabel);
-    display.print(": ");
-    display.print(stats.gpu_temp);
-    display.print("C");
-
-    int gpu_bar = map(stats.gpu_temp, 0, 100, 0, 56);
-    gpu_bar = constrain(gpu_bar, 0, 56);
-    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
-    if (gpu_bar > 0) {
-      display.fillRect(71, currentY + 1, gpu_bar, 6, SSD1306_WHITE);
-    }
-
-    currentY += LINE_HEIGHT;
-  }
-
-  // Disk with progress bar
-  if (settings.showDisk) {
-    display.setCursor(0, currentY);
-    display.print(settings.diskLabel);
-    display.print(":");
-    display.print((int)stats.disk_percent);
-    display.print("%");
-
-    int disk_bar = (int)(stats.disk_percent * 0.56);
-    display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
-    if (disk_bar > 0) {
-      display.fillRect(71, currentY + 1, disk_bar, 6, SSD1306_WHITE);
-    }
-
-    currentY += LINE_HEIGHT;
-  }
-
-  // Edge case: If no metrics are shown, display message
-  if (!settings.showFan && !settings.showCPU && !settings.showRAM &&
-      !settings.showGPU && !settings.showDisk) {
+  // No metrics shown edge case
+  if (sortedCount == 0) {
     display.setCursor(0, 24);
     display.print("No metrics");
     display.setCursor(0, 36);
     display.print("selected");
+  }
+}
+
+// Compact grid layout (new, 10-12 metrics)
+void displayStatsCompactGrid() {
+  display.setTextSize(1);
+
+  int COL1_X = 0;
+  int COL2_X = 64;
+  const int ROW_HEIGHT = 10;  // Compact spacing
+
+  // Create sorted array of metric indices by displayOrder
+  int sortedIndices[MAX_METRICS];
+  int sortedCount = 0;
+
+  // Build sorted index array (only visible metrics)
+  for (int order = 0; order < MAX_METRICS; order++) {
+    for (int i = 0; i < metricData.count; i++) {
+      if (metricData.metrics[i].displayOrder == order && metricData.metrics[i].visible) {
+        sortedIndices[sortedCount++] = i;
+        break;
+      }
+    }
+  }
+
+  int startY = 2;
+  int row = 0;
+  int col = 0;
+
+  // Clock positioning: 0=Center, 1=Left, 2=Right
+  if (settings.showClock) {
+    if (settings.clockPosition == 0) {
+      // Center - Clock at top center, metrics below in 2 columns
+      display.setCursor(48, startY);
+      display.print(metricData.timestamp);
+      startY += 12;
+    } else if (settings.clockPosition == 1) {
+      // Left - Clock in left column, metrics start in right column
+      display.setCursor(0, startY);
+      display.print(metricData.timestamp);
+      // Start rendering metrics from right column (col 1)
+      col = 1;
+    } else if (settings.clockPosition == 2) {
+      // Right - Clock in right column, metrics start in left column
+      display.setCursor(64, startY);
+      display.print(metricData.timestamp);
+      // Metrics will flow: left col, then right col (but skip first right position)
+      // We'll handle this by rendering normally
+    }
+  }
+
+  // Render metrics in 2-column grid (sorted by displayOrder)
+  for (int idx = 0; idx < sortedCount; idx++) {
+    Metric& m = metricData.metrics[sortedIndices[idx]];
+
+    // Skip first right column position if clock is on right and this is the first metric
+    if (settings.showClock && settings.clockPosition == 2 && idx == 0) {
+      col = 0;  // Start from left
+      // Clock occupies first right position
+    }
+
+    int x = (col == 0) ? COL1_X : COL2_X;
+    int y = startY + (row * ROW_HEIGHT);
+
+    // Check for overflow
+    if (y + 8 > 64) break;
+
+    display.setCursor(x, y);
+
+    // Process label: strip trailing '%' and move trailing spaces to after colon
+    char displayLabel[METRIC_NAME_LEN];
+    strncpy(displayLabel, m.label, METRIC_NAME_LEN - 1);
+    displayLabel[METRIC_NAME_LEN - 1] = '\0';
+
+    // Count and remove trailing spaces (to be added after colon)
+    int labelLen = strlen(displayLabel);
+    int trailingSpaces = 0;
+    while (labelLen > 0 && displayLabel[labelLen - 1] == ' ') {
+      trailingSpaces++;
+      displayLabel[labelLen - 1] = '\0';
+      labelLen--;
+    }
+
+    // Strip trailing '%' if present (after removing spaces)
+    if (labelLen > 0 && displayLabel[labelLen - 1] == '%') {
+      displayLabel[labelLen - 1] = '\0';
+    }
+
+    // Format: "LABEL: VAL" with spaces after colon if needed
+    char text[40];  // Increased size to accommodate companion metrics
+    char spaces[11] = "";  // Max 10 spaces
+    for (int i = 0; i < trailingSpaces && i < 10; i++) {
+      spaces[i] = ' ';
+      spaces[i + 1] = '\0';
+    }
+
+    if (strcmp(m.unit, "RPM") == 0 && m.value >= 1000) {
+      // RPM with K suffix: "FAN1: 1.2K"
+      snprintf(text, 40, "%s:%s%.1fK", displayLabel, spaces, m.value / 1000.0);
+    } else if (strlen(displayLabel) + trailingSpaces + strlen(m.unit) + 5 > 10) {
+      // Truncate label if too long
+      char shortLabel[6];
+      strncpy(shortLabel, displayLabel, 5);
+      shortLabel[5] = '\0';
+      snprintf(text, 40, "%s:%s%d%s", shortLabel, spaces, m.value, m.unit);
+    } else {
+      // Normal: "CPU: 45%"
+      snprintf(text, 40, "%s:%s%d%s", displayLabel, spaces, m.value, m.unit);
+    }
+
+    // Check for companion metric (append to same line)
+    if (m.companionId > 0) {
+      // Find companion metric by ID
+      for (int c = 0; c < metricData.count; c++) {
+        if (metricData.metrics[c].id == m.companionId) {
+          Metric& companion = metricData.metrics[c];
+          char companionText[15];
+          snprintf(companionText, 15, " %d%s", companion.value, companion.unit);
+          strncat(text, companionText, 40 - strlen(text) - 1);
+          break;
+        }
+      }
+    }
+
+    display.print(text);
+
+    // Move to next cell
+    col++;
+    if (col >= 2) {
+      col = 0;
+      row++;
+    }
+  }
+
+  // No metrics edge case
+  if (sortedCount == 0) {
+    display.setCursor(20, 28);
+    display.print("No metrics");
+  }
+}
+
+// Main display function with layout switching
+void displayStats() {
+  if (settings.displayLayout == 0) {
+    displayStatsProgressBars();  // Legacy layout
+  } else {
+    displayStatsCompactGrid();   // Compact 2-column grid
   }
 }
 
