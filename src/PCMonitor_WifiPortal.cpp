@@ -71,9 +71,9 @@ struct Metric {
   char unit[METRIC_UNIT_LEN];     // "%", "C", "RPM", etc.
   int value;                      // Sensor value
   bool visible;                   // User-configured visibility
-  uint8_t displayOrder;           // Display position (0-19)
+  uint8_t displayOrder;           // Display position (0-19, for sorting in web UI)
   uint8_t companionId;            // ID of companion metric (0 = none, 1-20 = metric ID)
-  uint8_t column;                 // Display column (0 = left, 1 = right)
+  uint8_t position;               // Display position: 0-11 (0=R1-L, 1=R1-R, 2=R2-L, ..., 11=R6-R), 255=None/Hidden
 };
 
 struct MetricData {
@@ -111,8 +111,8 @@ struct Settings {
   // Companion metrics (pair metrics on same line)
   uint8_t metricCompanions[MAX_METRICS];  // Companion metric ID (0 = none)
 
-  // Metric column assignment (for compact grid layout)
-  uint8_t metricColumns[MAX_METRICS];  // 0 = left column, 1 = right column
+  // Metric position assignment (slot-based: 0-11 for Row1-Left to Row6-Right, 255=None)
+  uint8_t metricPositions[MAX_METRICS];  // Display slot position
 
   // Clock toggle
   bool showClock;        // Show/hide timestamp in metrics display
@@ -317,6 +317,7 @@ void saveConfigCallback();
 bool connectManualWiFi(const char* ssid, const char* password);
 void parseStats(const char* json);
 void displayStats();
+void displayMetricCompact(Metric* m);
 void displayClockWithInvader();
 void updateInvaderAnimation(struct tm* timeinfo);
 void handleInvaderPatrolState();
@@ -593,7 +594,7 @@ void loadSettings() {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
       settings.metricOrder[i] = i;  // Default order
       settings.metricCompanions[i] = 0;  // No companion by default
-      settings.metricColumns[i] = i % 2;  // Default: alternate left (0) and right (1)
+      settings.metricPositions[i] = 255;  // Default: None/Hidden (user must assign position)
     }
     Serial.println("Settings initialized with defaults");
     return;
@@ -683,18 +684,18 @@ void loadSettings() {
     preferences.putBytes("metricComp", settings.metricCompanions, MAX_METRICS);
   }
 
-  // Load metric columns
-  size_t columnSize = preferences.getBytesLength("metricCol");
-  if (columnSize == MAX_METRICS) {
-    preferences.getBytes("metricCol", settings.metricColumns, MAX_METRICS);
-    Serial.println("Loaded metric columns from NVS");
+  // Load metric positions
+  size_t posSize = preferences.getBytesLength("metricPos");
+  if (posSize == MAX_METRICS) {
+    preferences.getBytes("metricPos", settings.metricPositions, MAX_METRICS);
+    Serial.println("Loaded metric positions from NVS");
   } else {
-    // Default alternating columns if not found
-    Serial.println("Initializing columns to alternate (0, 1, 0, 1...)");
+    // Default: all positions set to None (255)
+    Serial.println("Initializing positions to None (255)");
     for (int i = 0; i < MAX_METRICS; i++) {
-      settings.metricColumns[i] = i % 2;  // Alternate left (0) and right (1)
+      settings.metricPositions[i] = 255;  // None/Hidden by default
     }
-    preferences.putBytes("metricCol", settings.metricColumns, MAX_METRICS);
+    preferences.putBytes("metricPos", settings.metricPositions, MAX_METRICS);
   }
 
   // Load custom metric labels
@@ -736,8 +737,8 @@ void saveSettings() {
   // Save metric companions
   preferences.putBytes("metricComp", settings.metricCompanions, MAX_METRICS);
 
-  // Save metric columns
-  preferences.putBytes("metricCol", settings.metricColumns, MAX_METRICS);
+  // Save metric positions
+  preferences.putBytes("metricPos", settings.metricPositions, MAX_METRICS);
 
   // Save custom metric labels
   for (int i = 0; i < MAX_METRICS; i++) {
@@ -795,7 +796,8 @@ void handleMetricsAPI() {
             ",\"unit\":\"" + String(m.unit) + "\"" +
             ",\"visible\":" + String(m.visible ? "true" : "false") +
             ",\"displayOrder\":" + String(m.displayOrder) +
-            ",\"companionId\":" + String(m.companionId) + "}";
+            ",\"companionId\":" + String(m.companionId) +
+            ",\"position\":" + String(m.position) + "}";
   }
 
   json += "]}";
@@ -936,6 +938,37 @@ void handleRoot() {
 
         <script>
           let metricsData = [];
+          const MAX_ROWS = 6;  // Maximum 6 rows on OLED
+
+          function updatePosition(metricId) {
+            // Get the new value from the dropdown
+            const dropdown = document.getElementById('pos_' + metricId);
+            if (!dropdown) return;
+
+            const newPosition = parseInt(dropdown.value);
+
+            // Update the metric in metricsData
+            const metric = metricsData.find(m => m.id === metricId);
+            if (metric) {
+              metric.position = newPosition;
+              renderMetrics();
+            }
+          }
+
+          function updateCompanion(metricId) {
+            // Get the new value from the dropdown
+            const dropdown = document.getElementById('comp_' + metricId);
+            if (!dropdown) return;
+
+            const newCompanionId = parseInt(dropdown.value);
+
+            // Update the metric in metricsData
+            const metric = metricsData.find(m => m.id === metricId);
+            if (metric) {
+              metric.companionId = newCompanionId;
+              renderMetrics();
+            }
+          }
 
           function renderMetrics() {
             const container = document.getElementById('metricsContainer');
@@ -944,112 +977,161 @@ void handleRoot() {
             // Sort metrics by displayOrder
             const sortedMetrics = [...metricsData].sort((a, b) => a.displayOrder - b.displayOrder);
 
-            // Create two-column layout
-            const columnsDiv = document.createElement('div');
-            columnsDiv.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 10px;';
+            // Header explaining the layout
+            const header = document.createElement('div');
+            header.style.cssText = 'background: #1e293b; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 2px solid #00d4ff;';
+            header.innerHTML = `
+              <div style="color: #00d4ff; font-weight: bold; font-size: 14px; margin-bottom: 5px;">&#128247; OLED Display Preview (6 Rows Max)</div>
+              <div style="color: #888; font-size: 12px;">Assign each metric to a specific position using the dropdown</div>
+            `;
+            container.appendChild(header);
 
-            const leftColumn = document.createElement('div');
-            leftColumn.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
-            leftColumn.innerHTML = '<div style="text-align: center; color: #00d4ff; font-weight: bold; margin-bottom: 5px; padding: 5px; background: #1e293b; border-radius: 5px;">&#8592; LEFT COLUMN</div>';
+            // Build 6 rows
+            for (let rowIndex = 0; rowIndex < MAX_ROWS; rowIndex++) {
+              // Find metrics for this row
+              const leftPos = rowIndex * 2;      // 0, 2, 4, 6, 8, 10
+              const rightPos = rowIndex * 2 + 1; // 1, 3, 5, 7, 9, 11
 
-            const rightColumn = document.createElement('div');
-            rightColumn.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
-            rightColumn.innerHTML = '<div style="text-align: center; color: #00d4ff; font-weight: bold; margin-bottom: 5px; padding: 5px; background: #1e293b; border-radius: 5px;">RIGHT COLUMN &#8594;</div>';
+              const leftMetric = sortedMetrics.find(m => m.position === leftPos) || null;
+              const rightMetric = sortedMetrics.find(m => m.position === rightPos) || null;
 
-            sortedMetrics.forEach((metric, index) => {
-              const div = document.createElement('div');
-              div.style.cssText = 'background: #0f172a; padding: 10px; border-radius: 6px; border: 1px solid #334155;';
+              const rowDiv = document.createElement('div');
+              rowDiv.style.cssText = 'background: #0f172a; border: 1px solid #334155; border-radius: 6px; margin-bottom: 10px; overflow: hidden;';
 
-              const checked = metric.visible ? 'checked' : '';
+              // Row header
+              const rowHeader = document.createElement('div');
+              rowHeader.style.cssText = 'background: #1e293b; padding: 6px 10px; color: #00d4ff; font-weight: bold; font-size: 12px; border-bottom: 1px solid #334155;';
+              rowHeader.textContent = `Row ${rowIndex + 1}`;
+              rowDiv.appendChild(rowHeader);
 
-              // Build companion dropdown options
-              let companionOptions = '<option value="0">None</option>';
-              metricsData.forEach(m => {
-                if (m.id !== metric.id) {
-                  const selected = (metric.companionId === m.id) ? 'selected' : '';
-                  companionOptions += `<option value="${m.id}" ${selected}>${m.name} (${m.unit})</option>`;
-                }
-              });
+              // Row content - two columns
+              const rowContent = document.createElement('div');
+              rowContent.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: #334155;';
 
-              div.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-                  <input type="checkbox" name="metric_${metric.id}" id="metric_${metric.id}"
-                         value="1" ${checked} style="width: 18px; height: 18px; margin: 0;">
-                  <label for="metric_${metric.id}" style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0; font-size: 13px;">
-                    ${metric.name}
-                  </label>
-                  <div style="display: flex; gap: 3px;">
-                    <button type="button" onclick="moveUp(${metric.id})"
-                            style="background: #1e293b; color: #00d4ff; border: 1px solid #334155;
-                                   padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 14px;"
-                            ${index === 0 ? 'disabled' : ''}>&#9650;</button>
-                    <button type="button" onclick="moveDown(${metric.id})"
-                            style="background: #1e293b; color: #00d4ff; border: 1px solid #334155;
-                                   padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 14px;"
-                            ${index === sortedMetrics.length - 1 ? 'disabled' : ''}>&#9660;</button>
-                  </div>
+              // Left slot
+              const leftSlot = createMetricSlot(leftMetric, 'left', leftPos);
+              rowContent.appendChild(leftSlot);
+
+              // Right slot
+              const rightSlot = createMetricSlot(rightMetric, 'right', rightPos);
+              rowContent.appendChild(rightSlot);
+
+              rowDiv.appendChild(rowContent);
+              container.appendChild(rowDiv);
+            }
+
+            // Metrics list (for configuration)
+            const metricsListDiv = document.createElement('div');
+            metricsListDiv.style.cssText = 'background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 15px; margin-top: 20px;';
+            metricsListDiv.innerHTML = '<div style="color: #00d4ff; font-weight: bold; font-size: 14px; margin-bottom: 10px;">&#9881; All Metrics Configuration</div>';
+
+            sortedMetrics.forEach(metric => {
+              const metricDiv = createMetricConfig(metric);
+              metricsListDiv.appendChild(metricDiv);
+            });
+
+            container.appendChild(metricsListDiv);
+          }
+
+          function createMetricSlot(metric, side, position) {
+            const slot = document.createElement('div');
+            slot.style.cssText = 'background: #0f172a; padding: 15px; min-height: 60px;';
+
+            if (!metric) {
+              // Empty slot
+              slot.innerHTML = `
+                <div style="color: #555; font-size: 12px; text-align: center; padding: 10px;">
+                  ${side === 'left' ? '&#8592;' : '&#8594;'} Empty<br>
+                  <span style="font-size: 10px;">No metric assigned</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
-                  <label style="color: #888; font-size: 11px; min-width: 45px; margin: 0;">Label:</label>
-                  <input type="text" name="label_${metric.id}"
-                         value="${metric.label}" maxlength="10" placeholder="${metric.name}"
-                         style="flex: 1; padding: 4px; background: #16213e; border: 1px solid #334155;
-                                color: #eee; border-radius: 3px; font-size: 11px;">
-                  <input type="hidden" name="order_${metric.id}" value="${metric.displayOrder}">
+              `;
+              return slot;
+            }
+
+            const checked = metric.visible ? 'checked' : '';
+            const companionName = metric.companionId > 0 ?
+              (metricsData.find(m => m.id === metric.companionId)?.name || 'Unknown') : 'None';
+
+            slot.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                <input type="checkbox" name="metric_${metric.id}" value="1" ${checked}
+                       style="width: 16px; height: 16px; margin: 0;" disabled>
+                <label style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0; font-size: 13px;">
+                  ${metric.name}
+                </label>
+              </div>
+              <div style="color: #888; font-size: 10px; margin-left: 24px;">
+                Label: ${metric.label || metric.name}
+              </div>
+              ${metric.companionId > 0 ?
+                `<div style="color: #888; font-size: 10px; margin-left: 24px;">Paired with: ${companionName}</div>` :
+                ''}
+            `;
+
+            return slot;
+          }
+
+          function createMetricConfig(metric) {
+            const div = document.createElement('div');
+            div.style.cssText = 'background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #334155;';
+
+            const checked = metric.visible ? 'checked' : '';
+
+            // Build position dropdown options
+            let positionOptions = '<option value="255">None (Hidden)</option>';
+            for (let row = 0; row < MAX_ROWS; row++) {
+              const leftPos = row * 2;
+              const rightPos = row * 2 + 1;
+              positionOptions += `<option value="${leftPos}" ${metric.position === leftPos ? 'selected' : ''}>Row ${row + 1} - &#8592; Left</option>`;
+              positionOptions += `<option value="${rightPos}" ${metric.position === rightPos ? 'selected' : ''}>Row ${row + 1} - Right &#8594;</option>`;
+            }
+
+            // Build companion dropdown options
+            let companionOptions = '<option value="0">None</option>';
+            metricsData.forEach(m => {
+              if (m.id !== metric.id) {
+                const selected = (metric.companionId === m.id) ? 'selected' : '';
+                companionOptions += `<option value="${m.id}" ${selected}>${m.name} (${m.unit})</option>`;
+              }
+            });
+
+            div.innerHTML = `
+              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <input type="checkbox" name="metric_${metric.id}" id="metric_${metric.id}"
+                       value="1" ${checked} style="width: 18px; height: 18px; margin: 0;">
+                <label for="metric_${metric.id}" style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0; font-size: 13px;">
+                  ${metric.name} (${metric.unit})
+                </label>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                  <label style="color: #888; font-size: 10px; display: block; margin-bottom: 3px;">Position:</label>
+                  <select name="position_${metric.id}" id="pos_${metric.id}" onchange="updatePosition(${metric.id})"
+                          style="width: 100%; padding: 6px; background: #16213e; border: 1px solid #334155;
+                                 color: #eee; border-radius: 3px; font-size: 11px;">
+                    ${positionOptions}
+                  </select>
                 </div>
-                <div style="display: flex; align-items: center; gap: 5px;">
-                  <label style="color: #888; font-size: 11px; min-width: 45px; margin: 0;">Pair:</label>
-                  <select name="companion_${metric.id}"
-                          style="flex: 1; padding: 4px; background: #16213e; border: 1px solid #334155;
+                <div>
+                  <label style="color: #888; font-size: 10px; display: block; margin-bottom: 3px;">Pair with:</label>
+                  <select name="companion_${metric.id}" id="comp_${metric.id}" onchange="updateCompanion(${metric.id})"
+                          style="width: 100%; padding: 6px; background: #16213e; border: 1px solid #334155;
                                  color: #eee; border-radius: 3px; font-size: 11px;">
                     ${companionOptions}
                   </select>
                 </div>
-              `;
+              </div>
+              <div style="margin-top: 8px;">
+                <label style="color: #888; font-size: 10px; display: block; margin-bottom: 3px;">Custom Label (10 chars max):</label>
+                <input type="text" name="label_${metric.id}"
+                       value="${metric.label}" maxlength="10" placeholder="${metric.name}"
+                       style="width: 100%; padding: 6px; background: #16213e; border: 1px solid #334155;
+                              color: #eee; border-radius: 3px; font-size: 11px; box-sizing: border-box;">
+              </div>
+              <input type="hidden" name="order_${metric.id}" value="${metric.displayOrder}">
+            `;
 
-              // Alternate between left and right columns
-              if (index % 2 === 0) {
-                leftColumn.appendChild(div);
-              } else {
-                rightColumn.appendChild(div);
-              }
-            });
-
-            columnsDiv.appendChild(leftColumn);
-            columnsDiv.appendChild(rightColumn);
-            container.appendChild(columnsDiv);
-          }
-
-          function moveUp(metricId) {
-            // Sort metrics by current displayOrder
-            const sortedMetrics = [...metricsData].sort((a, b) => a.displayOrder - b.displayOrder);
-
-            // Find metric's position in sorted array
-            const currentIndex = sortedMetrics.findIndex(m => m.id === metricId);
-            if (currentIndex <= 0) return;  // Already at top
-
-            // Swap with previous metric in sorted array
-            const temp = sortedMetrics[currentIndex].displayOrder;
-            sortedMetrics[currentIndex].displayOrder = sortedMetrics[currentIndex - 1].displayOrder;
-            sortedMetrics[currentIndex - 1].displayOrder = temp;
-
-            renderMetrics();
-          }
-
-          function moveDown(metricId) {
-            // Sort metrics by current displayOrder
-            const sortedMetrics = [...metricsData].sort((a, b) => a.displayOrder - b.displayOrder);
-
-            // Find metric's position in sorted array
-            const currentIndex = sortedMetrics.findIndex(m => m.id === metricId);
-            if (currentIndex < 0 || currentIndex >= sortedMetrics.length - 1) return;  // Already at bottom
-
-            // Swap with next metric in sorted array
-            const temp = sortedMetrics[currentIndex].displayOrder;
-            sortedMetrics[currentIndex].displayOrder = sortedMetrics[currentIndex + 1].displayOrder;
-            sortedMetrics[currentIndex + 1].displayOrder = temp;
-
-            renderMetrics();
+            return div;
           }
 
           // Load metrics on page load
@@ -1159,7 +1241,17 @@ void handleSave() {
     }
   }
 
-  // Apply visibility, labels, order, and companions to current metrics in memory
+  // Save metric positions
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String positionArg = "position_" + String(i + 1);
+    if (server.hasArg(positionArg)) {
+      settings.metricPositions[i] = server.arg(positionArg).toInt();
+    } else {
+      settings.metricPositions[i] = 255;  // Default: None/Hidden
+    }
+  }
+
+  // Apply visibility, labels, order, companions, and columns to current metrics in memory
   for (int i = 0; i < metricData.count; i++) {
     Metric& m = metricData.metrics[i];
     if (m.id > 0 && m.id <= MAX_METRICS) {
@@ -1179,6 +1271,9 @@ void handleSave() {
 
       // Apply companion metric
       m.companionId = settings.metricCompanions[m.id - 1];
+
+      // Apply position assignment
+      m.position = settings.metricPositions[m.id - 1];
     }
   }
 
@@ -1457,12 +1552,16 @@ void addLegacyMetric(uint8_t id, const char* name, int value, const char* unit) 
 
     // Load companion metric
     m.companionId = settings.metricCompanions[id - 1];
+
+    // Load position assignment
+    m.position = settings.metricPositions[id - 1];
   } else {
     m.visible = true;
     strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
     m.label[METRIC_NAME_LEN - 1] = '\0';
     m.displayOrder = metricData.count;
     m.companionId = 0;  // No companion for new metrics
+    m.position = 255;  // Default: None/Hidden
   }
 
   metricData.count++;
@@ -1574,12 +1673,16 @@ void parseStatsV2(JsonDocument& doc) {
 
       // Load companion metric
       m.companionId = settings.metricCompanions[m.id - 1];
+
+      // Load position assignment
+      m.position = settings.metricPositions[m.id - 1];
     } else {
       m.visible = true;  // Default visible for new metrics
       strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
       m.label[METRIC_NAME_LEN - 1] = '\0';
       m.displayOrder = metricData.count;
       m.companionId = 0;  // No companion for new metrics
+      m.position = 255;  // Default: None/Hidden
     }
 
     metricData.count++;
@@ -1728,142 +1831,138 @@ void displayStatsProgressBars() {
   }
 }
 
-// Compact grid layout (new, 10-12 metrics)
+// Compact grid layout - position-based (6 rows max)
 void displayStatsCompactGrid() {
   display.setTextSize(1);
 
-  int COL1_X = 0;
-  int COL2_X = 62;  // Moved 2px left to give right column more space
+  const int COL1_X = 0;
+  const int COL2_X = 62;  // Moved 2px left to give right column more space
   const int ROW_HEIGHT = 10;  // Compact spacing
-
-  // Create sorted array of metric indices by displayOrder
-  int sortedIndices[MAX_METRICS];
-  int sortedCount = 0;
-
-  // Build sorted index array (only visible metrics)
-  for (int order = 0; order < MAX_METRICS; order++) {
-    for (int i = 0; i < metricData.count; i++) {
-      if (metricData.metrics[i].displayOrder == order && metricData.metrics[i].visible) {
-        sortedIndices[sortedCount++] = i;
-        break;
-      }
-    }
-  }
+  const int MAX_ROWS = 6;  // Maximum 6 rows on OLED
 
   int startY = 2;
-  int row = 0;
-  int col = 0;
 
   // Clock positioning: 0=Center, 1=Left, 2=Right
   if (settings.showClock) {
     if (settings.clockPosition == 0) {
-      // Center - Clock at top center, metrics below in 2 columns
+      // Center - Clock at top center, metrics below
       display.setCursor(48, startY);
       display.print(metricData.timestamp);
       startY += 12;
     } else if (settings.clockPosition == 1) {
-      // Left - Clock in left column, metrics start in right column
-      display.setCursor(0, startY);
+      // Clock in left column, first row
+      display.setCursor(COL1_X, startY);
       display.print(metricData.timestamp);
-      // Start rendering metrics from right column (col 1)
-      col = 1;
     } else if (settings.clockPosition == 2) {
-      // Right - Clock in right column, metrics start in left column
-      display.setCursor(64, startY);
+      // Clock in right column, first row
+      display.setCursor(COL2_X, startY);
       display.print(metricData.timestamp);
-      // Metrics will flow: left col, then right col (but skip first right position)
-      // We'll handle this by rendering normally
     }
   }
 
-  // Render metrics in 2-column grid (sorted by displayOrder)
-  for (int idx = 0; idx < sortedCount; idx++) {
-    Metric& m = metricData.metrics[sortedIndices[idx]];
+  // Render 6 rows using position-based system
+  int visibleCount = 0;
 
-    // Skip first right column position if clock is on right and this is the first metric
-    if (settings.showClock && settings.clockPosition == 2 && idx == 0) {
-      col = 0;  // Start from left
-      // Clock occupies first right position
-    }
-
-    int x = (col == 0) ? COL1_X : COL2_X;
+  for (int row = 0; row < MAX_ROWS; row++) {
     int y = startY + (row * ROW_HEIGHT);
 
     // Check for overflow
     if (y + 8 > 64) break;
 
-    display.setCursor(x, y);
+    // Calculate position indices for this row
+    uint8_t leftPos = row * 2;      // 0, 2, 4, 6, 8, 10
+    uint8_t rightPos = row * 2 + 1; // 1, 3, 5, 7, 9, 11
 
-    // Process label: strip trailing '%' and move trailing spaces to after colon
-    char displayLabel[METRIC_NAME_LEN];
-    strncpy(displayLabel, m.label, METRIC_NAME_LEN - 1);
-    displayLabel[METRIC_NAME_LEN - 1] = '\0';
+    // Skip first row left if clock is positioned there
+    bool clockInLeft = (settings.showClock && settings.clockPosition == 1 && row == 0);
+    bool clockInRight = (settings.showClock && settings.clockPosition == 2 && row == 0);
 
-    // Count and remove trailing spaces (to be added after colon)
-    int labelLen = strlen(displayLabel);
-    int trailingSpaces = 0;
-    while (labelLen > 0 && displayLabel[labelLen - 1] == ' ') {
-      trailingSpaces++;
-      displayLabel[labelLen - 1] = '\0';
-      labelLen--;
-    }
-
-    // Strip trailing '%' if present (after removing spaces)
-    if (labelLen > 0 && displayLabel[labelLen - 1] == '%') {
-      displayLabel[labelLen - 1] = '\0';
-    }
-
-    // Format: "LABEL: VAL" with spaces after colon if needed
-    char text[40];  // Increased size to accommodate companion metrics
-    char spaces[11] = "";  // Max 10 spaces
-    for (int i = 0; i < trailingSpaces && i < 10; i++) {
-      spaces[i] = ' ';
-      spaces[i + 1] = '\0';
-    }
-
-    if (strcmp(m.unit, "RPM") == 0 && m.value >= 1000) {
-      // RPM with K suffix: "FAN1: 1.2K"
-      snprintf(text, 40, "%s:%s%.1fK", displayLabel, spaces, m.value / 1000.0);
-    } else if (strlen(displayLabel) + trailingSpaces + strlen(m.unit) + 5 > 10) {
-      // Truncate label if too long
-      char shortLabel[6];
-      strncpy(shortLabel, displayLabel, 5);
-      shortLabel[5] = '\0';
-      snprintf(text, 40, "%s:%s%d%s", shortLabel, spaces, m.value, m.unit);
-    } else {
-      // Normal: "CPU: 45%"
-      snprintf(text, 40, "%s:%s%d%s", displayLabel, spaces, m.value, m.unit);
-    }
-
-    // Check for companion metric (append to same line)
-    if (m.companionId > 0) {
-      // Find companion metric by ID
-      for (int c = 0; c < metricData.count; c++) {
-        if (metricData.metrics[c].id == m.companionId) {
-          Metric& companion = metricData.metrics[c];
-          char companionText[15];
-          snprintf(companionText, 15, " %d%s", companion.value, companion.unit);
-          strncat(text, companionText, 40 - strlen(text) - 1);
+    // Find and render left metric for this position
+    if (!clockInLeft) {
+      for (int i = 0; i < metricData.count; i++) {
+        Metric& m = metricData.metrics[i];
+        if (m.position == leftPos && m.visible) {
+          display.setCursor(COL1_X, y);
+          displayMetricCompact(&m);
+          visibleCount++;
           break;
         }
       }
     }
 
-    display.print(text);
-
-    // Move to next cell
-    col++;
-    if (col >= 2) {
-      col = 0;
-      row++;
+    // Find and render right metric for this position
+    if (!clockInRight) {
+      for (int i = 0; i < metricData.count; i++) {
+        Metric& m = metricData.metrics[i];
+        if (m.position == rightPos && m.visible) {
+          display.setCursor(COL2_X, y);
+          displayMetricCompact(&m);
+          visibleCount++;
+          break;
+        }
+      }
     }
   }
 
   // No metrics edge case
-  if (sortedCount == 0) {
+  if (visibleCount == 0) {
     display.setCursor(20, 28);
     display.print("No metrics");
   }
+}
+
+// Helper function to display a metric in compact format
+void displayMetricCompact(Metric* m) {
+  // Process label: strip trailing '%' and move trailing spaces to after colon
+  char displayLabel[METRIC_NAME_LEN];
+  strncpy(displayLabel, m->label, METRIC_NAME_LEN - 1);
+  displayLabel[METRIC_NAME_LEN - 1] = '\0';
+
+  // Count and remove trailing spaces (to be added after colon)
+  int labelLen = strlen(displayLabel);
+  int trailingSpaces = 0;
+  while (labelLen > 0 && displayLabel[labelLen - 1] == ' ') {
+    trailingSpaces++;
+    displayLabel[labelLen - 1] = '\0';
+    labelLen--;
+  }
+
+  // Strip trailing '%' if present (after removing spaces)
+  if (labelLen > 0 && displayLabel[labelLen - 1] == '%') {
+    displayLabel[labelLen - 1] = '\0';
+  }
+
+  // Format: "LABEL: VAL" with spaces after colon if needed
+  char text[40];
+  char spaces[11] = "";  // Max 10 spaces
+  for (int i = 0; i < trailingSpaces && i < 10; i++) {
+    spaces[i] = ' ';
+    spaces[i + 1] = '\0';
+  }
+
+  if (strcmp(m->unit, "RPM") == 0 && m->value >= 1000) {
+    // RPM with K suffix: "FAN1: 1.2K"
+    snprintf(text, 40, "%s:%s%.1fK", displayLabel, spaces, m->value / 1000.0);
+  } else {
+    // Normal: "CPU: 45%"
+    snprintf(text, 40, "%s:%s%d%s", displayLabel, spaces, m->value, m->unit);
+  }
+
+  // Check for companion metric (append to same line)
+  if (m->companionId > 0) {
+    // Find companion metric by ID
+    for (int c = 0; c < metricData.count; c++) {
+      if (metricData.metrics[c].id == m->companionId) {
+        Metric& companion = metricData.metrics[c];
+        char companionText[15];
+        snprintf(companionText, 15, " %d%s", companion.value, companion.unit);
+        strncat(text, companionText, 40 - strlen(text) - 1);
+        break;
+      }
+    }
+  }
+
+  display.print(text);
 }
 
 // Main display function with layout switching

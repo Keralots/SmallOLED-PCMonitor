@@ -355,7 +355,7 @@ class MetricSelectorGUI:
     def __init__(self, root, existing_config=None):
         self.root = root
         self.root.title("PC Monitor v2.0 - Configuration")
-        self.root.geometry("1000x750")
+        self.root.geometry("1200x850")
         self.root.resizable(False, False)
 
         self.selected_metrics = []
@@ -407,6 +407,47 @@ class MetricSelectorGUI:
         tk.Label(settings_frame, text="Update Interval (seconds):", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=0, column=4, padx=10, pady=5, sticky="e")
         self.interval_var = tk.StringVar(value=str(self.config.get("update_interval", 3)))
         tk.Entry(settings_frame, textvariable=self.interval_var, width=10).grid(row=0, column=5, padx=5, pady=5, sticky="w")
+
+        # Autostart section (second row)
+        tk.Label(settings_frame, text="Windows Autostart:", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=1, column=0, padx=10, pady=5, sticky="e")
+
+        autostart_frame = tk.Frame(settings_frame, bg="#2d2d2d")
+        autostart_frame.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky="w")
+
+        self.autostart_status = tk.Label(
+            autostart_frame,
+            text=self.get_autostart_status_text(),
+            bg="#2d2d2d",
+            fg=self.get_autostart_status_color(),
+            font=("Arial", 10, "bold")
+        )
+        self.autostart_status.pack(side=tk.LEFT, padx=5)
+
+        enable_btn = tk.Button(
+            autostart_frame,
+            text="Enable",
+            command=self.enable_autostart,
+            bg="#00d4ff",
+            fg="#000000",
+            font=("Arial", 9),
+            relief=tk.FLAT,
+            padx=10,
+            pady=2
+        )
+        enable_btn.pack(side=tk.LEFT, padx=5)
+
+        disable_btn = tk.Button(
+            autostart_frame,
+            text="Disable",
+            command=self.disable_autostart,
+            bg="#ff6666",
+            fg="#000000",
+            font=("Arial", 9),
+            relief=tk.FLAT,
+            padx=10,
+            pady=2
+        )
+        disable_btn.pack(side=tk.LEFT, padx=5)
 
         # Counter frame
         counter_frame = tk.Frame(self.root, bg="#2d2d2d", height=50)
@@ -652,6 +693,60 @@ class MetricSelectorGUI:
             else:
                 cb.config(bg="#f0f0f0")
                 frame.config(bg="#f0f0f0")
+
+    def get_autostart_status_text(self):
+        """Check if autostart is enabled"""
+        try:
+            import winshell
+            startup_folder = winshell.startup()
+            shortcut_path = os.path.join(startup_folder, "PC Monitor.lnk")
+            if os.path.exists(shortcut_path):
+                return "✓ Enabled"
+            else:
+                return "✗ Disabled"
+        except Exception:
+            return "? Unknown"
+
+    def get_autostart_status_color(self):
+        """Get color for autostart status"""
+        status = self.get_autostart_status_text()
+        if "Enabled" in status:
+            return "#00ff00"
+        elif "Disabled" in status:
+            return "#ff6666"
+        else:
+            return "#888888"
+
+    def update_autostart_status(self):
+        """Update the autostart status label"""
+        self.autostart_status.config(
+            text=self.get_autostart_status_text(),
+            fg=self.get_autostart_status_color()
+        )
+
+    def enable_autostart(self):
+        """Enable autostart"""
+        try:
+            success = setup_autostart(enable=True)
+            if success:
+                self.update_autostart_status()
+                messagebox.showinfo("Success", "Autostart enabled!\n\nThe script will run minimized to system tray on Windows startup.\nRight-click the tray icon to configure or quit.")
+            else:
+                messagebox.showerror("Error", "Failed to enable autostart")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to enable autostart:\n{str(e)}\n\nMake sure pywin32 is installed:\npip install pywin32")
+
+    def disable_autostart(self):
+        """Disable autostart"""
+        try:
+            success = setup_autostart(enable=False)
+            if success:
+                self.update_autostart_status()
+                messagebox.showinfo("Success", "Autostart disabled!")
+            else:
+                messagebox.showwarning("Warning", "Autostart shortcut not found")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to disable autostart:\n{str(e)}")
 
     def save_and_start(self):
         if len(self.selected_metrics) == 0:
