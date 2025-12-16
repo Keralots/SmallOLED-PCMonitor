@@ -67,13 +67,15 @@ const char* ntpServer = "pool.ntp.org";
 struct Metric {
   uint8_t id;                     // 1-20
   char name[METRIC_NAME_LEN];     // "CPU%", "FAN1", etc. (from Python)
-  char label[METRIC_NAME_LEN];    // Custom label (user editable)
+  char label[METRIC_NAME_LEN];    // Custom label (user editable, preserves '^' for spaces)
   char unit[METRIC_UNIT_LEN];     // "%", "C", "RPM", etc.
   int value;                      // Sensor value
-  bool visible;                   // User-configured visibility
   uint8_t displayOrder;           // Display position (0-19, for sorting in web UI)
   uint8_t companionId;            // ID of companion metric (0 = none, 1-20 = metric ID)
   uint8_t position;               // Display position: 0-11 (0=R1-L, 1=R1-R, 2=R2-L, ..., 11=R6-R), 255=None/Hidden
+  uint8_t barPosition;            // Position where progress bar should be displayed (0-11 or 255=None)
+  int barMin;                     // Min value for progress bar (default 0)
+  int barMax;                     // Max value for progress bar (default 100)
 };
 
 struct MetricData {
@@ -93,16 +95,10 @@ struct Settings {
   bool use24Hour;        // 24-hour format
   int dateFormat;        // 0 = DD/MM/YYYY, 1 = MM/DD/YYYY, 2 = YYYY-MM-DD
 
-  // Display layout mode
-  int displayLayout;     // 0 = Progress Bars (legacy), 1 = Compact Grid
-
   // Clock positioning
   int clockPosition;     // 0 = Center, 1 = Left, 2 = Right
 
-  // Dynamic metric visibility
-  bool metricVisibility[MAX_METRICS];  // Index = metric ID - 1
-
-  // Custom metric labels
+  // Custom metric labels (preserves '^' character for spacing)
   char metricLabels[MAX_METRICS][METRIC_NAME_LEN];  // Custom display names
 
   // Metric display order
@@ -113,6 +109,11 @@ struct Settings {
 
   // Metric position assignment (slot-based: 0-11 for Row1-Left to Row6-Right, 255=None)
   uint8_t metricPositions[MAX_METRICS];  // Display slot position
+
+  // Progress bar settings
+  uint8_t metricBarPositions[MAX_METRICS];  // Position where bar should be displayed (0-11 or 255=None)
+  int metricBarMin[MAX_METRICS];            // Min value for progress bars
+  int metricBarMax[MAX_METRICS];            // Max value for progress bars
 
   // Clock toggle
   bool showClock;        // Show/hide timestamp in metrics display
@@ -318,6 +319,7 @@ bool connectManualWiFi(const char* ssid, const char* password);
 void parseStats(const char* json);
 void displayStats();
 void displayMetricCompact(Metric* m);
+void drawProgressBar(int x, int y, int width, Metric* m);
 void displayClockWithInvader();
 void updateInvaderAnimation(struct tm* timeinfo);
 void handleInvaderPatrolState();
@@ -585,16 +587,17 @@ void loadSettings() {
     settings.daylightSaving = true;
     settings.use24Hour = true;
     settings.dateFormat = 0;
-    settings.displayLayout = 0;  // Progress bars by default
     settings.clockPosition = 0;  // Center by default
     settings.showClock = true;
-    // All metrics visible by default
+    // Initialize all metrics with defaults
     for (int i = 0; i < MAX_METRICS; i++) {
-      settings.metricVisibility[i] = true;
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
       settings.metricOrder[i] = i;  // Default order
       settings.metricCompanions[i] = 0;  // No companion by default
       settings.metricPositions[i] = 255;  // Default: None/Hidden (user must assign position)
+      settings.metricBarPositions[i] = 255;  // Default: No progress bar
+      settings.metricBarMin[i] = 0;
+      settings.metricBarMax[i] = 100;
     }
     Serial.println("Settings initialized with defaults");
     return;
@@ -609,20 +612,16 @@ void loadSettings() {
     preferences.putBool("dst", true);
     preferences.putBool("use24Hour", true);
     preferences.putInt("dateFormat", 0);
-    preferences.putInt("displayLayout", 0);
     preferences.putInt("clockPos", 0);  // Center
     preferences.putBool("showClock", true);
 
-    // Initialize all metrics as visible
-    bool defaultVis[MAX_METRICS];
+    // Initialize all metrics with default values
     uint8_t defaultOrder[MAX_METRICS];
     uint8_t defaultCompanions[MAX_METRICS];
     for (int i = 0; i < MAX_METRICS; i++) {
-      defaultVis[i] = true;
       defaultOrder[i] = i;
       defaultCompanions[i] = 0;  // No companion
     }
-    preferences.putBytes("metricVis", defaultVis, MAX_METRICS);
     preferences.putBytes("metricOrd", defaultOrder, MAX_METRICS);
     preferences.putBytes("metricComp", defaultCompanions, MAX_METRICS);
 
@@ -634,27 +633,10 @@ void loadSettings() {
   settings.daylightSaving = preferences.getBool("dst", true); // Default: true
   settings.use24Hour = preferences.getBool("use24Hour", true); // Default: 24h
   settings.dateFormat = preferences.getInt("dateFormat", 0);  // Default: DD/MM/YYYY
-  settings.displayLayout = preferences.getInt("displayLayout", 0);  // Default: Progress bars
   settings.clockPosition = preferences.getInt("clockPos", 0);  // Default: Center
   settings.showClock = preferences.getBool("showClock", true);
 
-  // Load metric visibility array
-  size_t visSize = preferences.getBytesLength("metricVis");
-  if (visSize == MAX_METRICS) {
-    preferences.getBytes("metricVis", settings.metricVisibility, MAX_METRICS);
-    Serial.println("Loaded metric visibility from NVS");
-  } else {
-    // Default all visible if not found (fresh install or upgrade from v1.0)
-    Serial.println("Initializing metricVisibility to all visible (upgrade/fresh install)");
-    for (int i = 0; i < MAX_METRICS; i++) {
-      settings.metricVisibility[i] = true;
-    }
-    // Save defaults to NVS
-    preferences.putBytes("metricVis", settings.metricVisibility, MAX_METRICS);
-    if (!preferences.isKey("displayLayout")) {
-      preferences.putInt("displayLayout", settings.displayLayout);
-    }
-  }
+  // Note: Visibility is now determined by position (255 = hidden, 0-11 = visible)
 
   // Load metric display order
   size_t orderSize = preferences.getBytesLength("metricOrd");
@@ -698,6 +680,22 @@ void loadSettings() {
     preferences.putBytes("metricPos", settings.metricPositions, MAX_METRICS);
   }
 
+  // Load progress bar settings
+  size_t barPosSize = preferences.getBytesLength("metricBarPos");
+  if (barPosSize == MAX_METRICS) {
+    preferences.getBytes("metricBarPos", settings.metricBarPositions, MAX_METRICS);
+    preferences.getBytes("barMin", settings.metricBarMin, MAX_METRICS * sizeof(int));
+    preferences.getBytes("barMax", settings.metricBarMax, MAX_METRICS * sizeof(int));
+    Serial.println("Loaded progress bar settings from NVS");
+  } else {
+    // Default: no progress bars
+    for (int i = 0; i < MAX_METRICS; i++) {
+      settings.metricBarPositions[i] = 255;  // None
+      settings.metricBarMin[i] = 0;
+      settings.metricBarMax[i] = 100;
+    }
+  }
+
   // Load custom metric labels
   for (int i = 0; i < MAX_METRICS; i++) {
     String key = "label" + String(i);
@@ -712,9 +710,7 @@ void loadSettings() {
 
   preferences.end();
 
-  Serial.println("Settings loaded (v2.0)");
-  Serial.print("Display Layout: ");
-  Serial.println(settings.displayLayout == 0 ? "Progress Bars" : "Compact Grid");
+  Serial.println("Settings loaded (v2.0 - Compact Grid Layout)");
 }
 
 void saveSettings() {
@@ -724,12 +720,8 @@ void saveSettings() {
   preferences.putBool("dst", settings.daylightSaving);
   preferences.putBool("use24Hour", settings.use24Hour);
   preferences.putInt("dateFormat", settings.dateFormat);
-  preferences.putInt("displayLayout", settings.displayLayout);
   preferences.putInt("clockPos", settings.clockPosition);
   preferences.putBool("showClock", settings.showClock);
-
-  // Save metric visibility array
-  preferences.putBytes("metricVis", settings.metricVisibility, MAX_METRICS);
 
   // Save metric display order
   preferences.putBytes("metricOrd", settings.metricOrder, MAX_METRICS);
@@ -737,8 +729,13 @@ void saveSettings() {
   // Save metric companions
   preferences.putBytes("metricComp", settings.metricCompanions, MAX_METRICS);
 
-  // Save metric positions
+  // Save metric positions (255 = hidden, 0-11 = visible at position)
   preferences.putBytes("metricPos", settings.metricPositions, MAX_METRICS);
+
+  // Save progress bar settings
+  preferences.putBytes("metricBarPos", settings.metricBarPositions, MAX_METRICS);
+  preferences.putBytes("barMin", settings.metricBarMin, MAX_METRICS * sizeof(int));
+  preferences.putBytes("barMax", settings.metricBarMax, MAX_METRICS * sizeof(int));
 
   // Save custom metric labels
   for (int i = 0; i < MAX_METRICS; i++) {
@@ -794,10 +791,12 @@ void handleMetricsAPI() {
             ",\"name\":\"" + String(m.name) + "\"" +
             ",\"label\":\"" + String(m.label) + "\"" +
             ",\"unit\":\"" + String(m.unit) + "\"" +
-            ",\"visible\":" + String(m.visible ? "true" : "false") +
             ",\"displayOrder\":" + String(m.displayOrder) +
             ",\"companionId\":" + String(m.companionId) +
-            ",\"position\":" + String(m.position) + "}";
+            ",\"position\":" + String(m.position) +
+            ",\"barPosition\":" + String(m.barPosition) +
+            ",\"barMin\":" + String(m.barMin) +
+            ",\"barMax\":" + String(m.barMax) + "}";
   }
 
   json += "]}";
@@ -889,23 +888,14 @@ void handleRoot() {
 
       <div class="card">
         <h3 style="text-align: left;">&#128202; Display Layout</h3>
-        <label for="displayLayout">Metrics Display Style</label>
-        <select name="displayLayout" id="displayLayout">
-          <option value="0" )rawliteral" + String(settings.displayLayout == 0 ? "selected" : "") + R"rawliteral(>Progress Bars (4-5 metrics)</option>
-          <option value="1" )rawliteral" + String(settings.displayLayout == 1 ? "selected" : "") + R"rawliteral(>Compact Grid (10-12 metrics)</option>
-        </select>
-        <p style="color: #888; font-size: 12px; margin-top: 10px;">
-          Compact mode shows more metrics without progress bars
-        </p>
-
-        <label for="clockPosition" style="margin-top: 15px; display: block;">Clock Position (Compact Grid Only)</label>
+        <label for="clockPosition">Clock Position</label>
         <select name="clockPosition" id="clockPosition">
           <option value="0" )rawliteral" + String(settings.clockPosition == 0 ? "selected" : "") + R"rawliteral(>Center (Top)</option>
-          <option value="1" )rawliteral" + String(settings.clockPosition == 1 ? "selected" : "") + R"rawliteral(>Left Column</option>
-          <option value="2" )rawliteral" + String(settings.clockPosition == 2 ? "selected" : "") + R"rawliteral(>Right Column</option>
+          <option value="1" )rawliteral" + String(settings.clockPosition == 1 ? "selected" : "") + R"rawliteral(>Left Column (Row 1)</option>
+          <option value="2" )rawliteral" + String(settings.clockPosition == 2 ? "selected" : "") + R"rawliteral(>Right Column (Row 1)</option>
         </select>
         <p style="color: #888; font-size: 12px; margin-top: 10px;">
-          Position clock to optimize space for metrics
+          Position clock to optimize space for metrics. Compact grid layout (2 columns × 6 rows).
         </p>
       </div>
 
@@ -940,34 +930,53 @@ void handleRoot() {
           let metricsData = [];
           const MAX_ROWS = 6;  // Maximum 6 rows on OLED
 
+          function saveFormState() {
+            // Save all form values before re-rendering
+            metricsData.forEach(metric => {
+              // Save label value
+              const labelInput = document.querySelector(`input[name="label_${metric.id}"]`);
+              if (labelInput) {
+                metric.label = labelInput.value;
+              }
+
+              // Save position value
+              const posDropdown = document.getElementById('pos_' + metric.id);
+              if (posDropdown) {
+                metric.position = parseInt(posDropdown.value);
+              }
+
+              // Save companion value
+              const compDropdown = document.getElementById('comp_' + metric.id);
+              if (compDropdown) {
+                metric.companionId = parseInt(compDropdown.value);
+              }
+
+              // Save progress bar settings
+              const barPosDropdown = document.getElementById('barPos_' + metric.id);
+              if (barPosDropdown) {
+                metric.barPosition = parseInt(barPosDropdown.value);
+              }
+
+              const barMinInput = document.querySelector(`input[name="barMin_${metric.id}"]`);
+              if (barMinInput) {
+                metric.barMin = parseInt(barMinInput.value) || 0;
+              }
+
+              const barMaxInput = document.querySelector(`input[name="barMax_${metric.id}"]`);
+              if (barMaxInput) {
+                metric.barMax = parseInt(barMaxInput.value) || 100;
+              }
+            });
+          }
+
           function updatePosition(metricId) {
-            // Get the new value from the dropdown
-            const dropdown = document.getElementById('pos_' + metricId);
-            if (!dropdown) return;
-
-            const newPosition = parseInt(dropdown.value);
-
-            // Update the metric in metricsData
-            const metric = metricsData.find(m => m.id === metricId);
-            if (metric) {
-              metric.position = newPosition;
-              renderMetrics();
-            }
+            saveFormState();  // Save all changes before re-rendering
+            renderMetrics();
           }
 
           function updateCompanion(metricId) {
-            // Get the new value from the dropdown
-            const dropdown = document.getElementById('comp_' + metricId);
-            if (!dropdown) return;
-
-            const newCompanionId = parseInt(dropdown.value);
-
-            // Update the metric in metricsData
-            const metric = metricsData.find(m => m.id === metricId);
-            if (metric) {
-              metric.companionId = newCompanionId;
-              renderMetrics();
-            }
+            saveFormState();  // Save all changes before re-rendering
+            renderMetrics();
           }
 
           function renderMetrics() {
@@ -1048,24 +1057,21 @@ void handleRoot() {
               return slot;
             }
 
-            const checked = metric.visible ? 'checked' : '';
             const companionName = metric.companionId > 0 ?
               (metricsData.find(m => m.id === metric.companionId)?.name || 'Unknown') : 'None';
 
             slot.innerHTML = `
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
-                <input type="checkbox" name="metric_${metric.id}" value="1" ${checked}
-                       style="width: 16px; height: 16px; margin: 0;" disabled>
-                <label style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0; font-size: 13px;">
+              <div style="margin-bottom: 4px;">
+                <div style="color: #00d4ff; font-weight: bold; font-size: 13px; margin-bottom: 2px;">
                   ${metric.name}
-                </label>
+                </div>
+                <div style="color: #888; font-size: 10px;">
+                  Label: ${metric.label || metric.name}
+                </div>
+                ${metric.companionId > 0 ?
+                  `<div style="color: #888; font-size: 10px;">Paired with: ${companionName}</div>` :
+                  ''}
               </div>
-              <div style="color: #888; font-size: 10px; margin-left: 24px;">
-                Label: ${metric.label || metric.name}
-              </div>
-              ${metric.companionId > 0 ?
-                `<div style="color: #888; font-size: 10px; margin-left: 24px;">Paired with: ${companionName}</div>` :
-                ''}
             `;
 
             return slot;
@@ -1075,8 +1081,6 @@ void handleRoot() {
             const div = document.createElement('div');
             div.style.cssText = 'background: #0f172a; padding: 12px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #334155;';
 
-            const checked = metric.visible ? 'checked' : '';
-
             // Build position dropdown options
             let positionOptions = '<option value="255">None (Hidden)</option>';
             for (let row = 0; row < MAX_ROWS; row++) {
@@ -1084,6 +1088,15 @@ void handleRoot() {
               const rightPos = row * 2 + 1;
               positionOptions += `<option value="${leftPos}" ${metric.position === leftPos ? 'selected' : ''}>Row ${row + 1} - &#8592; Left</option>`;
               positionOptions += `<option value="${rightPos}" ${metric.position === rightPos ? 'selected' : ''}>Row ${row + 1} - Right &#8594;</option>`;
+            }
+
+            // Build bar position dropdown options (same as position but for progress bar placement)
+            let barPositionOptions = '<option value="255">None</option>';
+            for (let row = 0; row < MAX_ROWS; row++) {
+              const leftPos = row * 2;
+              const rightPos = row * 2 + 1;
+              barPositionOptions += `<option value="${leftPos}" ${metric.barPosition === leftPos ? 'selected' : ''}>Row ${row + 1} - &#8592; Left</option>`;
+              barPositionOptions += `<option value="${rightPos}" ${metric.barPosition === rightPos ? 'selected' : ''}>Row ${row + 1} - Right &#8594;</option>`;
             }
 
             // Build companion dropdown options
@@ -1096,12 +1109,10 @@ void handleRoot() {
             });
 
             div.innerHTML = `
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                <input type="checkbox" name="metric_${metric.id}" id="metric_${metric.id}"
-                       value="1" ${checked} style="width: 18px; height: 18px; margin: 0;">
-                <label for="metric_${metric.id}" style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0; font-size: 13px;">
+              <div style="margin-bottom: 8px;">
+                <div style="color: #00d4ff; font-weight: bold; font-size: 13px;">
                   ${metric.name} (${metric.unit})
-                </label>
+                </div>
               </div>
               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div>
@@ -1127,6 +1138,28 @@ void handleRoot() {
                        value="${metric.label}" maxlength="10" placeholder="${metric.name}"
                        style="width: 100%; padding: 6px; background: #16213e; border: 1px solid #334155;
                               color: #eee; border-radius: 3px; font-size: 11px; box-sizing: border-box;">
+              </div>
+              <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #334155;">
+                <label style="color: #888; font-size: 10px; display: block; margin-bottom: 3px;">Progress Bar Position:</label>
+                <select name="barPosition_${metric.id}" id="barPos_${metric.id}"
+                        style="width: 100%; padding: 6px; background: #16213e; border: 1px solid #334155;
+                               color: #eee; border-radius: 3px; font-size: 11px; margin-bottom: 8px;">
+                  ${barPositionOptions}
+                </select>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                  <div>
+                    <label style="color: #888; font-size: 9px; display: block; margin-bottom: 2px;">Min Value:</label>
+                    <input type="number" name="barMin_${metric.id}" value="${metric.barMin || 0}"
+                           style="width: 100%; padding: 4px; background: #16213e; border: 1px solid #334155;
+                                  color: #eee; border-radius: 3px; font-size: 10px; box-sizing: border-box;">
+                  </div>
+                  <div>
+                    <label style="color: #888; font-size: 9px; display: block; margin-bottom: 2px;">Max Value:</label>
+                    <input type="number" name="barMax_${metric.id}" value="${metric.barMax || 100}"
+                           style="width: 100%; padding: 4px; background: #16213e; border: 1px solid #334155;
+                                  color: #eee; border-radius: 3px; font-size: 10px; box-sizing: border-box;">
+                  </div>
+                </div>
               </div>
               <input type="hidden" name="order_${metric.id}" value="${metric.displayOrder}">
             `;
@@ -1189,11 +1222,6 @@ void handleSave() {
     settings.dateFormat = server.arg("dateFormat").toInt();
   }
 
-  // Save display layout
-  if (server.hasArg("displayLayout")) {
-    settings.displayLayout = server.arg("displayLayout").toInt();
-  }
-
   // Save clock position
   if (server.hasArg("clockPosition")) {
     settings.clockPosition = server.arg("clockPosition").toInt();
@@ -1201,12 +1229,6 @@ void handleSave() {
 
   // Save clock visibility checkbox
   settings.showClock = server.hasArg("showClock");
-
-  // Save dynamic metric visibility (unchecked = not present in POST data)
-  for (int i = 0; i < MAX_METRICS; i++) {
-    String argName = "metric_" + String(i + 1);
-    settings.metricVisibility[i] = server.hasArg(argName);
-  }
 
   // Save custom labels
   for (int i = 0; i < MAX_METRICS; i++) {
@@ -1251,12 +1273,30 @@ void handleSave() {
     }
   }
 
-  // Apply visibility, labels, order, companions, and columns to current metrics in memory
+  // Save progress bar settings
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String barPosArg = "barPosition_" + String(i + 1);
+    String minArg = "barMin_" + String(i + 1);
+    String maxArg = "barMax_" + String(i + 1);
+
+    if (server.hasArg(barPosArg)) {
+      settings.metricBarPositions[i] = server.arg(barPosArg).toInt();
+    } else {
+      settings.metricBarPositions[i] = 255;  // Default: No bar
+    }
+
+    if (server.hasArg(minArg)) {
+      settings.metricBarMin[i] = server.arg(minArg).toInt();
+    }
+    if (server.hasArg(maxArg)) {
+      settings.metricBarMax[i] = server.arg(maxArg).toInt();
+    }
+  }
+
+  // Apply labels, order, companions, positions, and progress bars to current metrics in memory
   for (int i = 0; i < metricData.count; i++) {
     Metric& m = metricData.metrics[i];
     if (m.id > 0 && m.id <= MAX_METRICS) {
-      m.visible = settings.metricVisibility[m.id - 1];
-
       // Apply custom label if set
       if (settings.metricLabels[m.id - 1][0] != '\0') {
         strncpy(m.label, settings.metricLabels[m.id - 1], METRIC_NAME_LEN - 1);
@@ -1533,16 +1573,12 @@ void addLegacyMetric(uint8_t id, const char* name, int value, const char* unit) 
   m.unit[METRIC_UNIT_LEN - 1] = '\0';
   m.value = value;
 
-  // Load visibility from settings (ID-based indexing)
+  // Load settings (ID-based indexing)
   if (id > 0 && id <= MAX_METRICS) {
-    m.visible = settings.metricVisibility[id - 1];
-
-    // Apply custom label if set (don't trim - user may want trailing spaces for alignment)
+    // Apply custom label if set (preserve '^' character - it will be converted during display)
     if (settings.metricLabels[id - 1][0] != '\0') {
       strncpy(m.label, settings.metricLabels[id - 1], METRIC_NAME_LEN - 1);
       m.label[METRIC_NAME_LEN - 1] = '\0';
-      // Convert '^' to spaces for custom alignment
-      convertCaretToSpaces(m.label);
     } else {
       strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
       m.label[METRIC_NAME_LEN - 1] = '\0';
@@ -1553,15 +1589,23 @@ void addLegacyMetric(uint8_t id, const char* name, int value, const char* unit) 
     // Load companion metric
     m.companionId = settings.metricCompanions[id - 1];
 
-    // Load position assignment
+    // Load position assignment (255 = hidden, 0-11 = visible)
     m.position = settings.metricPositions[id - 1];
+
+    // Load progress bar settings
+    m.barPosition = settings.metricBarPositions[id - 1];
+    m.barMin = settings.metricBarMin[id - 1];
+    m.barMax = settings.metricBarMax[id - 1];
   } else {
-    m.visible = true;
+    // Default values for new metrics
     strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
     m.label[METRIC_NAME_LEN - 1] = '\0';
     m.displayOrder = metricData.count;
     m.companionId = 0;  // No companion for new metrics
     m.position = 255;  // Default: None/Hidden
+    m.barPosition = 255;  // Default: No bar
+    m.barMin = 0;
+    m.barMax = 100;
   }
 
   metricData.count++;
@@ -1653,15 +1697,10 @@ void parseStatsV2(JsonDocument& doc) {
 
     // Load visibility from settings (ID-based indexing)
     if (m.id > 0 && m.id <= MAX_METRICS) {
-      m.visible = settings.metricVisibility[m.id - 1];
-
-      // Apply custom label if set (empty = use Python name)
-      // Don't trim - user may want trailing spaces for alignment
+      // Apply custom label if set (preserve '^' character - it will be converted during display)
       if (settings.metricLabels[m.id - 1][0] != '\0') {
         strncpy(m.label, settings.metricLabels[m.id - 1], METRIC_NAME_LEN - 1);
         m.label[METRIC_NAME_LEN - 1] = '\0';
-        // Convert '^' to spaces for custom alignment
-        convertCaretToSpaces(m.label);
       } else {
         // No custom label, copy name to label
         strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
@@ -1674,15 +1713,23 @@ void parseStatsV2(JsonDocument& doc) {
       // Load companion metric
       m.companionId = settings.metricCompanions[m.id - 1];
 
-      // Load position assignment
+      // Load position assignment (255 = hidden, 0-11 = visible)
       m.position = settings.metricPositions[m.id - 1];
+
+      // Load progress bar settings
+      m.barPosition = settings.metricBarPositions[m.id - 1];
+      m.barMin = settings.metricBarMin[m.id - 1];
+      m.barMax = settings.metricBarMax[m.id - 1];
     } else {
-      m.visible = true;  // Default visible for new metrics
+      // Default values for new metrics
       strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
       m.label[METRIC_NAME_LEN - 1] = '\0';
       m.displayOrder = metricData.count;
       m.companionId = 0;  // No companion for new metrics
       m.position = 255;  // Default: None/Hidden
+      m.barPosition = 255;  // Default: No bar
+      m.barMin = 0;
+      m.barMax = 100;
     }
 
     metricData.count++;
@@ -1696,10 +1743,10 @@ void parseStatsV2(JsonDocument& doc) {
   Serial.print(" metrics, ");
   int visibleCount = 0;
   for (int i = 0; i < metricData.count; i++) {
-    if (metricData.metrics[i].visible) visibleCount++;
+    if (metricData.metrics[i].position != 255) visibleCount++;
   }
   Serial.print(visibleCount);
-  Serial.println(" visible");
+  Serial.println(" visible (position assigned)");
 }
 
 // Main parsing function with version detection
@@ -1736,10 +1783,10 @@ void displayStatsProgressBars() {
   int sortedIndices[MAX_METRICS];
   int sortedCount = 0;
 
-  // Build sorted index array
+  // Build sorted index array (only include metrics with assigned positions)
   for (int order = 0; order < MAX_METRICS; order++) {
     for (int i = 0; i < metricData.count; i++) {
-      if (metricData.metrics[i].displayOrder == order && metricData.metrics[i].visible) {
+      if (metricData.metrics[i].displayOrder == order && metricData.metrics[i].position != 255) {
         sortedIndices[sortedCount++] = i;
         break;
       }
@@ -1753,10 +1800,13 @@ void displayStatsProgressBars() {
     // Label + Value (use custom label, strip trailing % if present)
     display.setCursor(0, currentY);
 
-    // Process label: strip trailing '%' and move trailing spaces to after colon
+    // Process label: convert '^' to spaces, strip trailing '%', move trailing spaces to after colon
     char displayLabel[METRIC_NAME_LEN];
     strncpy(displayLabel, m.label, METRIC_NAME_LEN - 1);
     displayLabel[METRIC_NAME_LEN - 1] = '\0';
+
+    // Convert '^' to spaces for custom alignment
+    convertCaretToSpaces(displayLabel);
 
     // Count and remove trailing spaces (to be added after colon)
     int len = strlen(displayLabel);
@@ -1877,28 +1927,60 @@ void displayStatsCompactGrid() {
     bool clockInLeft = (settings.showClock && settings.clockPosition == 1 && row == 0);
     bool clockInRight = (settings.showClock && settings.clockPosition == 2 && row == 0);
 
-    // Find and render left metric for this position
+    // Find and render left column (check for bar first, then text)
     if (!clockInLeft) {
+      bool rendered = false;
+
+      // First check if any metric wants to display a bar at this position
       for (int i = 0; i < metricData.count; i++) {
         Metric& m = metricData.metrics[i];
-        if (m.position == leftPos && m.visible) {
-          display.setCursor(COL1_X, y);
-          displayMetricCompact(&m);
+        if (m.barPosition == leftPos) {
+          drawProgressBar(COL1_X, y, 60, &m);  // Full-size bar for left column
           visibleCount++;
+          rendered = true;
           break;
+        }
+      }
+
+      // If no bar, check for text metric at this position
+      if (!rendered) {
+        for (int i = 0; i < metricData.count; i++) {
+          Metric& m = metricData.metrics[i];
+          if (m.position == leftPos) {
+            display.setCursor(COL1_X, y);
+            displayMetricCompact(&m);
+            visibleCount++;
+            break;
+          }
         }
       }
     }
 
-    // Find and render right metric for this position
+    // Find and render right column (check for bar first, then text)
     if (!clockInRight) {
+      bool rendered = false;
+
+      // First check if any metric wants to display a bar at this position
       for (int i = 0; i < metricData.count; i++) {
         Metric& m = metricData.metrics[i];
-        if (m.position == rightPos && m.visible) {
-          display.setCursor(COL2_X, y);
-          displayMetricCompact(&m);
+        if (m.barPosition == rightPos) {
+          drawProgressBar(COL2_X, y, 64, &m);  // Full-size bar for right column
           visibleCount++;
+          rendered = true;
           break;
+        }
+      }
+
+      // If no bar, check for text metric at this position
+      if (!rendered) {
+        for (int i = 0; i < metricData.count; i++) {
+          Metric& m = metricData.metrics[i];
+          if (m.position == rightPos) {
+            display.setCursor(COL2_X, y);
+            displayMetricCompact(&m);
+            visibleCount++;
+            break;
+          }
         }
       }
     }
@@ -1913,10 +1995,13 @@ void displayStatsCompactGrid() {
 
 // Helper function to display a metric in compact format
 void displayMetricCompact(Metric* m) {
-  // Process label: strip trailing '%' and move trailing spaces to after colon
+  // Process label: convert '^' to spaces, strip trailing '%', move trailing spaces to after colon
   char displayLabel[METRIC_NAME_LEN];
   strncpy(displayLabel, m->label, METRIC_NAME_LEN - 1);
   displayLabel[METRIC_NAME_LEN - 1] = '\0';
+
+  // Convert '^' to spaces for custom alignment
+  convertCaretToSpaces(displayLabel);
 
   // Count and remove trailing spaces (to be added after colon)
   int labelLen = strlen(displayLabel);
@@ -1965,13 +2050,27 @@ void displayMetricCompact(Metric* m) {
   display.print(text);
 }
 
-// Main display function with layout switching
-void displayStats() {
-  if (settings.displayLayout == 0) {
-    displayStatsProgressBars();  // Legacy layout
-  } else {
-    displayStatsCompactGrid();   // Compact 2-column grid
+// Helper function to draw a full-size progress bar (occupies entire position slot)
+void drawProgressBar(int x, int y, int width, Metric* m) {
+  // Calculate bar fill percentage based on min/max values
+  int range = m->barMax - m->barMin;
+  if (range <= 0) range = 100;  // Avoid division by zero
+
+  int valueInRange = constrain(m->value, m->barMin, m->barMax) - m->barMin;
+  int fillWidth = map(valueInRange, 0, range, 0, width - 2);
+
+  // Draw bar outline (8px tall, full row height)
+  display.drawRect(x, y, width, 8, SSD1306_WHITE);
+
+  // Fill bar based on value
+  if (fillWidth > 0) {
+    display.fillRect(x + 1, y + 1, fillWidth, 6, SSD1306_WHITE);
   }
+}
+
+// Main display function - always uses compact grid layout
+void displayStats() {
+  displayStatsCompactGrid();   // Compact 2-column grid layout
 }
 
 // ========== Standard Clock Display ==========
