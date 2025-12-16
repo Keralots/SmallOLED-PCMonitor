@@ -14,7 +14,9 @@
       "Bash(python merge_bins.py:*)",
       "Bash(\"C:\\Users\\rafal\\.platformio\\penv\\Scripts\\platformio.exe\" run)",
       "Bash(dir:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(findstr:*)",
+      "Bash(move:*)"
     ],
     "deny": [],
     "ask": []

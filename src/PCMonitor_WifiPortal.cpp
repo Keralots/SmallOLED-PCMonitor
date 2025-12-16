@@ -60,19 +60,20 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 const char* ntpServer = "pool.ntp.org";
 
 // ========== Dynamic Metrics System (v2.0) ==========
-#define MAX_METRICS 12
+#define MAX_METRICS 20  // Increased from 12 to support more metrics with companions
 #define METRIC_NAME_LEN 11  // 10 chars + null terminator
 #define METRIC_UNIT_LEN 5   // 4 chars + null terminator
 
 struct Metric {
-  uint8_t id;                     // 1-12
+  uint8_t id;                     // 1-20
   char name[METRIC_NAME_LEN];     // "CPU%", "FAN1", etc. (from Python)
   char label[METRIC_NAME_LEN];    // Custom label (user editable)
   char unit[METRIC_UNIT_LEN];     // "%", "C", "RPM", etc.
   int value;                      // Sensor value
   bool visible;                   // User-configured visibility
-  uint8_t displayOrder;           // Display position (0-11)
-  uint8_t companionId;            // ID of companion metric (0 = none, 1-12 = metric ID)
+  uint8_t displayOrder;           // Display position (0-19)
+  uint8_t companionId;            // ID of companion metric (0 = none, 1-20 = metric ID)
+  uint8_t column;                 // Display column (0 = left, 1 = right)
 };
 
 struct MetricData {
@@ -109,6 +110,9 @@ struct Settings {
 
   // Companion metrics (pair metrics on same line)
   uint8_t metricCompanions[MAX_METRICS];  // Companion metric ID (0 = none)
+
+  // Metric column assignment (for compact grid layout)
+  uint8_t metricColumns[MAX_METRICS];  // 0 = left column, 1 = right column
 
   // Clock toggle
   bool showClock;        // Show/hide timestamp in metrics display
@@ -589,6 +593,7 @@ void loadSettings() {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
       settings.metricOrder[i] = i;  // Default order
       settings.metricCompanions[i] = 0;  // No companion by default
+      settings.metricColumns[i] = i % 2;  // Default: alternate left (0) and right (1)
     }
     Serial.println("Settings initialized with defaults");
     return;
@@ -678,6 +683,20 @@ void loadSettings() {
     preferences.putBytes("metricComp", settings.metricCompanions, MAX_METRICS);
   }
 
+  // Load metric columns
+  size_t columnSize = preferences.getBytesLength("metricCol");
+  if (columnSize == MAX_METRICS) {
+    preferences.getBytes("metricCol", settings.metricColumns, MAX_METRICS);
+    Serial.println("Loaded metric columns from NVS");
+  } else {
+    // Default alternating columns if not found
+    Serial.println("Initializing columns to alternate (0, 1, 0, 1...)");
+    for (int i = 0; i < MAX_METRICS; i++) {
+      settings.metricColumns[i] = i % 2;  // Alternate left (0) and right (1)
+    }
+    preferences.putBytes("metricCol", settings.metricColumns, MAX_METRICS);
+  }
+
   // Load custom metric labels
   for (int i = 0; i < MAX_METRICS; i++) {
     String key = "label" + String(i);
@@ -716,6 +735,9 @@ void saveSettings() {
 
   // Save metric companions
   preferences.putBytes("metricComp", settings.metricCompanions, MAX_METRICS);
+
+  // Save metric columns
+  preferences.putBytes("metricCol", settings.metricColumns, MAX_METRICS);
 
   // Save custom metric labels
   for (int i = 0; i < MAX_METRICS; i++) {
@@ -786,6 +808,7 @@ void handleRoot() {
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PC Monitor Settings</title>
   <style>
@@ -901,7 +924,7 @@ void handleRoot() {
 
         <p style="color: #888; font-size: 12px; margin-top: 15px;">
           <strong>Note:</strong> Metrics are configured in Python script.<br>
-          Select up to 12 in pc_stats_monitor_v2.py
+          Select up to 20 in pc_stats_monitor_v2.py (use companion metrics to fit more)
         </p>
 
         <hr style="margin: 20px 0; border: none; border-top: 1px solid #333;">
@@ -921,9 +944,21 @@ void handleRoot() {
             // Sort metrics by displayOrder
             const sortedMetrics = [...metricsData].sort((a, b) => a.displayOrder - b.displayOrder);
 
+            // Create two-column layout
+            const columnsDiv = document.createElement('div');
+            columnsDiv.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 10px;';
+
+            const leftColumn = document.createElement('div');
+            leftColumn.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+            leftColumn.innerHTML = '<div style="text-align: center; color: #00d4ff; font-weight: bold; margin-bottom: 5px; padding: 5px; background: #1e293b; border-radius: 5px;">&#8592; LEFT COLUMN</div>';
+
+            const rightColumn = document.createElement('div');
+            rightColumn.style.cssText = 'display: flex; flex-direction: column; gap: 8px;';
+            rightColumn.innerHTML = '<div style="text-align: center; color: #00d4ff; font-weight: bold; margin-bottom: 5px; padding: 5px; background: #1e293b; border-radius: 5px;">RIGHT COLUMN &#8594;</div>';
+
             sortedMetrics.forEach((metric, index) => {
               const div = document.createElement('div');
-              div.style.cssText = 'background: #0f172a; padding: 12px; margin-bottom: 8px; border-radius: 6px; border: 1px solid #334155;';
+              div.style.cssText = 'background: #0f172a; padding: 10px; border-radius: 6px; border: 1px solid #334155;';
 
               const checked = metric.visible ? 'checked' : '';
 
@@ -937,43 +972,52 @@ void handleRoot() {
               });
 
               div.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
                   <input type="checkbox" name="metric_${metric.id}" id="metric_${metric.id}"
-                         value="1" ${checked} style="width: 20px; height: 20px; margin: 0;">
-                  <label for="metric_${metric.id}" style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0;">
-                    ${metric.name} (${metric.unit})
+                         value="1" ${checked} style="width: 18px; height: 18px; margin: 0;">
+                  <label for="metric_${metric.id}" style="color: #00d4ff; font-weight: bold; flex: 1; margin: 0; font-size: 13px;">
+                    ${metric.name}
                   </label>
-                  <div style="display: flex; gap: 4px;">
+                  <div style="display: flex; gap: 3px;">
                     <button type="button" onclick="moveUp(${metric.id})"
                             style="background: #1e293b; color: #00d4ff; border: 1px solid #334155;
-                                   padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 16px;"
+                                   padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 14px;"
                             ${index === 0 ? 'disabled' : ''}>&#9650;</button>
                     <button type="button" onclick="moveDown(${metric.id})"
                             style="background: #1e293b; color: #00d4ff; border: 1px solid #334155;
-                                   padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 16px;"
+                                   padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 14px;"
                             ${index === sortedMetrics.length - 1 ? 'disabled' : ''}>&#9660;</button>
                   </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 6px;">
-                  <label style="color: #888; font-size: 12px; min-width: 80px; margin: 0;">Custom Label:</label>
+                <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 5px;">
+                  <label style="color: #888; font-size: 11px; min-width: 45px; margin: 0;">Label:</label>
                   <input type="text" name="label_${metric.id}"
                          value="${metric.label}" maxlength="10" placeholder="${metric.name}"
-                         style="flex: 1; padding: 6px; background: #16213e; border: 1px solid #334155;
-                                color: #eee; border-radius: 4px; font-size: 13px;">
+                         style="flex: 1; padding: 4px; background: #16213e; border: 1px solid #334155;
+                                color: #eee; border-radius: 3px; font-size: 11px;">
                   <input type="hidden" name="order_${metric.id}" value="${metric.displayOrder}">
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <label style="color: #888; font-size: 12px; min-width: 80px; margin: 0;">Pair with:</label>
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <label style="color: #888; font-size: 11px; min-width: 45px; margin: 0;">Pair:</label>
                   <select name="companion_${metric.id}"
-                          style="flex: 1; padding: 6px; background: #16213e; border: 1px solid #334155;
-                                 color: #eee; border-radius: 4px; font-size: 13px;">
+                          style="flex: 1; padding: 4px; background: #16213e; border: 1px solid #334155;
+                                 color: #eee; border-radius: 3px; font-size: 11px;">
                     ${companionOptions}
                   </select>
                 </div>
               `;
 
-              container.appendChild(div);
+              // Alternate between left and right columns
+              if (index % 2 === 0) {
+                leftColumn.appendChild(div);
+              } else {
+                rightColumn.appendChild(div);
+              }
             });
+
+            columnsDiv.appendChild(leftColumn);
+            columnsDiv.appendChild(rightColumn);
+            container.appendChild(columnsDiv);
           }
 
           function moveUp(metricId) {
@@ -1689,7 +1733,7 @@ void displayStatsCompactGrid() {
   display.setTextSize(1);
 
   int COL1_X = 0;
-  int COL2_X = 64;
+  int COL2_X = 62;  // Moved 2px left to give right column more space
   const int ROW_HEIGHT = 10;  // Compact spacing
 
   // Create sorted array of metric indices by displayOrder

@@ -35,7 +35,7 @@ DEFAULT_CONFIG = {
 }
 
 # Maximum metrics supported by ESP32
-MAX_METRICS = 12
+MAX_METRICS = 20  # Increased from 12 to support companion metrics
 
 # Global sensor database
 sensor_database = {
@@ -110,9 +110,21 @@ def discover_sensors():
 
         sensor_count = 0
         for sensor in sensors:
+            # Generate short name for ESP32 display
+            short_name = generate_short_name(sensor.Name, sensor.SensorType, sensor.Identifier)
+
+            # Enhance display name with identifier context for GUI
+            display_name = sensor.Name
+            identifier_parts = sensor.Identifier.split('/')
+            if len(identifier_parts) > 1:
+                device_info = identifier_parts[1]
+                # Add device context to display name for clarity
+                if device_info.lower() not in display_name.lower():
+                    display_name = f"{sensor.Name} [{device_info}]"
+
             sensor_info = {
-                "name": "",
-                "display_name": sensor.Name,
+                "name": short_name,
+                "display_name": display_name,
                 "source": "wmi",
                 "type": sensor.SensorType.lower(),
                 "unit": get_unit_from_type(sensor.SensorType),
@@ -120,9 +132,6 @@ def discover_sensors():
                 "wmi_sensor_name": sensor.Name,
                 "custom_label": ""
             }
-
-            # Generate short name for ESP32 display
-            sensor_info["name"] = generate_short_name(sensor.Name, sensor.SensorType, sensor.Identifier)
 
             # Categorize sensor
             sensor_type = sensor.SensorType.lower()
@@ -167,18 +176,41 @@ def generate_short_name(full_name, sensor_type, identifier=""):
     """
     Generate a short name (max 10 chars) for ESP32 display with context
     """
-    # Extract device type from identifier path
+    # Extract context from identifier path (e.g., /hdd/0/temperature/0 -> HDD0)
     device_prefix = ""
+    device_index = ""
+
     if identifier:
         parts = identifier.split('/')
         if len(parts) > 1:
             device = parts[1].lower()
+
+            # CPU/GPU/Motherboard prefixes
             if 'cpu' in device:
                 device_prefix = "CPU_"
-            elif 'gpu' in device or 'nvidia' in device:
+            elif 'gpu' in device or 'nvidia' in device or 'amd' in device:
                 device_prefix = "GPU_"
             elif 'motherboard' in device or 'mainboard' in device:
                 device_prefix = "MB_"
+            # Storage devices (HDD, SSD, NVMe)
+            elif 'hdd' in device or 'storage' in device:
+                device_prefix = "HDD"
+                # Extract drive number if present (e.g., /hdd/0 -> HDD0)
+                if len(parts) > 2 and parts[2].isdigit():
+                    device_index = parts[2]
+            elif 'ssd' in device:
+                device_prefix = "SSD"
+                if len(parts) > 2 and parts[2].isdigit():
+                    device_index = parts[2]
+            elif 'nvme' in device:
+                device_prefix = "NVM"
+                if len(parts) > 2 and parts[2].isdigit():
+                    device_index = parts[2]
+            # Network adapters
+            elif 'nic' in device or 'network' in device or 'ethernet' in device:
+                device_prefix = "NET"
+                if len(parts) > 2 and parts[2].isdigit():
+                    device_index = parts[2]
 
     # Keep the original name but clean it up
     name = full_name.strip()
@@ -189,7 +221,7 @@ def generate_short_name(full_name, sensor_type, identifier=""):
         name = name.replace("Temperature", "").replace("temperature", "").strip()
         # Add device prefix if not already there
         if device_prefix and not name.upper().startswith(device_prefix.replace("_", "")):
-            name = device_prefix + name
+            name = device_prefix + device_index + "_" + name if device_index else device_prefix + name
 
     # For fans, preserve numbers and context
     elif sensor_type.lower() == "fan":
@@ -201,13 +233,19 @@ def generate_short_name(full_name, sensor_type, identifier=""):
     elif sensor_type.lower() == "load":
         name = name.replace("Load", "").strip()
         if device_prefix:
-            name = device_prefix + name
+            name = device_prefix + device_index + "_" + name if device_index else device_prefix + name
 
     # For power
     elif sensor_type.lower() == "power":
         name = name.replace("Package", "PKG").replace("Power", "").strip()
         if device_prefix:
-            name = device_prefix + name
+            name = device_prefix + device_index + "_" + name if device_index else device_prefix + name
+
+    # For data (network/disk usage)
+    elif sensor_type.lower() == "data":
+        name = name.replace("Data", "").strip()
+        if device_prefix:
+            name = device_prefix + device_index + "_" + name if device_index else device_prefix + name
 
     # Clean up
     name = name.replace("  ", " ").replace(" ", "_")
@@ -389,7 +427,7 @@ class MetricSelectorGUI:
         search_label.pack(side=tk.LEFT, padx=(50, 5))
 
         self.search_var = tk.StringVar()
-        self.search_var.trace('w', self.on_search)
+        self.search_var.trace_add('write', lambda *_: self.on_search())
         search_entry = tk.Entry(counter_frame, textvariable=self.search_var, width=20)
         search_entry.pack(side=tk.LEFT, padx=5)
 
