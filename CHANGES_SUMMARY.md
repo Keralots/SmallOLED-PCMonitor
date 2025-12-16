@@ -5,16 +5,6 @@
 ### ✅ Row-Based Visual Layout
 The web interface now shows a visual preview that matches the OLED screen:
 
-**Before:**
-- Single vertical list of metrics
-- Unclear which metrics appear on left vs right columns
-
-**After:**
-- "OLED Display Preview" header
-- Shows rows (Row 1, Row 2, etc.)
-- Each row has two slots: **[Left Metric | Right Metric]**
-- Empty slots display "← Empty" or "→ Empty"
-- Users can assign each metric to left or right column using dropdown
 
 **How it works:**
 1. Each metric has a "Column Position" dropdown (← Left / Right →)
@@ -82,22 +72,6 @@ Added autostart controls directly in the configuration window:
 **Files Changed:**
 - [pc_stats_monitor_v2.py:411-450](pc_stats_monitor_v2.py#L411-L450) - UI elements
 - [pc_stats_monitor_v2.py:697-749](pc_stats_monitor_v2.py#L697-L749) - Helper methods
-
----
-
-## What Was NOT Implemented
-
-### ❌ Companion Metrics (Removed)
-The "Pair" dropdown was removed as it conflicted with the row-based layout. Users can now control exactly which metrics appear on each row using the column assignment.
-
-### ❌ Dependency Installer Button
-Not implemented in this update. Users can manually install dependencies:
-```bash
-pip install psutil wmi pywin32 pystray pillow
-```
-
-### ❌ LibreHardwareMonitor Auto-Installer
-Not implemented. Users need to manually install LibreHardwareMonitor.
 
 ---
 

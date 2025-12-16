@@ -8,6 +8,11 @@
 - **Update Interval**: Set how often to send metrics (in seconds)
 - **Custom Labels**: Set custom labels for each metric (max 10 characters)
 
+### Manually install dependencies first:
+```bash
+pip install psutil wmi pywin32 pystray pillow
+```
+
 ### 2. Command Line Options
 
 #### First Run (Initial Configuration)
