@@ -76,6 +76,8 @@ struct Metric {
   uint8_t barPosition;            // Position where progress bar should be displayed (0-11 or 255=None)
   int barMin;                     // Min value for progress bar (default 0)
   int barMax;                     // Max value for progress bar (default 100)
+  uint8_t barWidth;               // Bar width in pixels (default 60 for left, 64 for right)
+  uint8_t barOffsetX;             // Horizontal offset in pixels from left edge (default 0)
 };
 
 struct MetricData {
@@ -97,9 +99,13 @@ struct Settings {
 
   // Clock positioning
   int clockPosition;     // 0 = Center, 1 = Left, 2 = Right
+  int clockOffset;       // Horizontal offset in pixels (can be negative or positive)
 
   // Custom metric labels (preserves '^' character for spacing)
   char metricLabels[MAX_METRICS][METRIC_NAME_LEN];  // Custom display names
+
+  // Metric names (from Python - for validation)
+  char metricNames[MAX_METRICS][METRIC_NAME_LEN];   // Original metric names (e.g., "CPU%", "PUMP")
 
   // Metric display order
   uint8_t metricOrder[MAX_METRICS];  // Display position for each metric
@@ -114,6 +120,8 @@ struct Settings {
   uint8_t metricBarPositions[MAX_METRICS];  // Position where bar should be displayed (0-11 or 255=None)
   int metricBarMin[MAX_METRICS];            // Min value for progress bars
   int metricBarMax[MAX_METRICS];            // Max value for progress bars
+  uint8_t metricBarWidths[MAX_METRICS];     // Bar width in pixels
+  uint8_t metricBarOffsets[MAX_METRICS];    // Bar horizontal offset in pixels
 
   // Clock toggle
   bool showClock;        // Show/hide timestamp in metrics display
@@ -588,16 +596,20 @@ void loadSettings() {
     settings.use24Hour = true;
     settings.dateFormat = 0;
     settings.clockPosition = 0;  // Center by default
+    settings.clockOffset = 0;    // No offset by default
     settings.showClock = true;
     // Initialize all metrics with defaults
     for (int i = 0; i < MAX_METRICS; i++) {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
+      settings.metricNames[i][0] = '\0';   // Empty = no stored name
       settings.metricOrder[i] = i;  // Default order
       settings.metricCompanions[i] = 0;  // No companion by default
       settings.metricPositions[i] = 255;  // Default: None/Hidden (user must assign position)
       settings.metricBarPositions[i] = 255;  // Default: No progress bar
       settings.metricBarMin[i] = 0;
       settings.metricBarMax[i] = 100;
+      settings.metricBarWidths[i] = 60;  // Default width (60px for left, 64px for right)
+      settings.metricBarOffsets[i] = 0;  // Default: no offset
     }
     Serial.println("Settings initialized with defaults");
     return;
@@ -613,6 +625,7 @@ void loadSettings() {
     preferences.putBool("use24Hour", true);
     preferences.putInt("dateFormat", 0);
     preferences.putInt("clockPos", 0);  // Center
+    preferences.putInt("clockOffset", 0);  // No offset
     preferences.putBool("showClock", true);
 
     // Initialize all metrics with default values
@@ -634,6 +647,7 @@ void loadSettings() {
   settings.use24Hour = preferences.getBool("use24Hour", true); // Default: 24h
   settings.dateFormat = preferences.getInt("dateFormat", 0);  // Default: DD/MM/YYYY
   settings.clockPosition = preferences.getInt("clockPos", 0);  // Default: Center
+  settings.clockOffset = preferences.getInt("clockOffset", 0);  // Default: No offset
   settings.showClock = preferences.getBool("showClock", true);
 
   // Note: Visibility is now determined by position (255 = hidden, 0-11 = visible)
@@ -686,6 +700,8 @@ void loadSettings() {
     preferences.getBytes("metricBarPos", settings.metricBarPositions, MAX_METRICS);
     preferences.getBytes("barMin", settings.metricBarMin, MAX_METRICS * sizeof(int));
     preferences.getBytes("barMax", settings.metricBarMax, MAX_METRICS * sizeof(int));
+    preferences.getBytes("barWidths", settings.metricBarWidths, MAX_METRICS);
+    preferences.getBytes("barOffsets", settings.metricBarOffsets, MAX_METRICS);
     Serial.println("Loaded progress bar settings from NVS");
   } else {
     // Default: no progress bars
@@ -693,6 +709,8 @@ void loadSettings() {
       settings.metricBarPositions[i] = 255;  // None
       settings.metricBarMin[i] = 0;
       settings.metricBarMax[i] = 100;
+      settings.metricBarWidths[i] = 60;  // Default width
+      settings.metricBarOffsets[i] = 0;  // Default: no offset
     }
   }
 
@@ -705,6 +723,18 @@ void loadSettings() {
       settings.metricLabels[i][METRIC_NAME_LEN - 1] = '\0';
     } else {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
+    }
+  }
+
+  // Load metric names (for validation)
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String key = "name" + String(i);
+    String name = preferences.getString(key.c_str(), "");
+    if (name.length() > 0) {
+      strncpy(settings.metricNames[i], name.c_str(), METRIC_NAME_LEN - 1);
+      settings.metricNames[i][METRIC_NAME_LEN - 1] = '\0';
+    } else {
+      settings.metricNames[i][0] = '\0';  // Empty = no stored name
     }
   }
 
@@ -721,6 +751,7 @@ void saveSettings() {
   preferences.putBool("use24Hour", settings.use24Hour);
   preferences.putInt("dateFormat", settings.dateFormat);
   preferences.putInt("clockPos", settings.clockPosition);
+  preferences.putInt("clockOffset", settings.clockOffset);
   preferences.putBool("showClock", settings.showClock);
 
   // Save metric display order
@@ -736,12 +767,24 @@ void saveSettings() {
   preferences.putBytes("metricBarPos", settings.metricBarPositions, MAX_METRICS);
   preferences.putBytes("barMin", settings.metricBarMin, MAX_METRICS * sizeof(int));
   preferences.putBytes("barMax", settings.metricBarMax, MAX_METRICS * sizeof(int));
+  preferences.putBytes("barWidths", settings.metricBarWidths, MAX_METRICS);
+  preferences.putBytes("barOffsets", settings.metricBarOffsets, MAX_METRICS);
 
   // Save custom metric labels
   for (int i = 0; i < MAX_METRICS; i++) {
     String key = "label" + String(i);
     if (settings.metricLabels[i][0] != '\0') {
       preferences.putString(key.c_str(), settings.metricLabels[i]);
+    } else {
+      preferences.remove(key.c_str());  // Remove if empty
+    }
+  }
+
+  // Save metric names (for validation)
+  for (int i = 0; i < MAX_METRICS; i++) {
+    String key = "name" + String(i);
+    if (settings.metricNames[i][0] != '\0') {
+      preferences.putString(key.c_str(), settings.metricNames[i]);
     } else {
       preferences.remove(key.c_str());  // Remove if empty
     }
@@ -796,7 +839,9 @@ void handleMetricsAPI() {
             ",\"position\":" + String(m.position) +
             ",\"barPosition\":" + String(m.barPosition) +
             ",\"barMin\":" + String(m.barMin) +
-            ",\"barMax\":" + String(m.barMax) + "}";
+            ",\"barMax\":" + String(m.barMax) +
+            ",\"barWidth\":" + String(m.barWidth) +
+            ",\"barOffsetX\":" + String(m.barOffsetX) + "}";
   }
 
   json += "]}";
@@ -894,8 +939,12 @@ void handleRoot() {
           <option value="1" )rawliteral" + String(settings.clockPosition == 1 ? "selected" : "") + R"rawliteral(>Left Column (Row 1)</option>
           <option value="2" )rawliteral" + String(settings.clockPosition == 2 ? "selected" : "") + R"rawliteral(>Right Column (Row 1)</option>
         </select>
+
+        <label for="clockOffset" style="margin-top: 15px; display: block;">Clock Offset (pixels)</label>
+        <input type="number" name="clockOffset" id="clockOffset" value=")rawliteral" + String(settings.clockOffset) + R"rawliteral(" min="-20" max="20" style="width: 100%; padding: 8px; box-sizing: border-box;">
+
         <p style="color: #888; font-size: 12px; margin-top: 10px;">
-          Position clock to optimize space for metrics. Compact grid layout (2 columns × 6 rows).
+          Position clock to optimize space for metrics. Use offset to fine-tune horizontal position (-20 to +20 pixels).
         </p>
       </div>
 
@@ -965,6 +1014,16 @@ void handleRoot() {
               const barMaxInput = document.querySelector(`input[name="barMax_${metric.id}"]`);
               if (barMaxInput) {
                 metric.barMax = parseInt(barMaxInput.value) || 100;
+              }
+
+              const barWidthInput = document.querySelector(`input[name="barWidth_${metric.id}"]`);
+              if (barWidthInput) {
+                metric.barWidth = parseInt(barWidthInput.value) || 60;
+              }
+
+              const barOffsetInput = document.querySelector(`input[name="barOffset_${metric.id}"]`);
+              if (barOffsetInput) {
+                metric.barOffsetX = parseInt(barOffsetInput.value) || 0;
               }
             });
           }
@@ -1160,6 +1219,20 @@ void handleRoot() {
                                   color: #eee; border-radius: 3px; font-size: 10px; box-sizing: border-box;">
                   </div>
                 </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px;">
+                  <div>
+                    <label style="color: #888; font-size: 9px; display: block; margin-bottom: 2px;">Width (px):</label>
+                    <input type="number" name="barWidth_${metric.id}" value="${metric.barWidth || 60}" min="10" max="64"
+                           style="width: 100%; padding: 4px; background: #16213e; border: 1px solid #334155;
+                                  color: #eee; border-radius: 3px; font-size: 10px; box-sizing: border-box;">
+                  </div>
+                  <div>
+                    <label style="color: #888; font-size: 9px; display: block; margin-bottom: 2px;">Offset X (px):</label>
+                    <input type="number" name="barOffset_${metric.id}" value="${metric.barOffsetX || 0}" min="0" max="54"
+                           style="width: 100%; padding: 4px; background: #16213e; border: 1px solid #334155;
+                                  color: #eee; border-radius: 3px; font-size: 10px; box-sizing: border-box;">
+                  </div>
+                </div>
               </div>
               <input type="hidden" name="order_${metric.id}" value="${metric.displayOrder}">
             `;
@@ -1227,6 +1300,11 @@ void handleSave() {
     settings.clockPosition = server.arg("clockPosition").toInt();
   }
 
+  // Save clock offset
+  if (server.hasArg("clockOffset")) {
+    settings.clockOffset = server.arg("clockOffset").toInt();
+  }
+
   // Save clock visibility checkbox
   settings.showClock = server.hasArg("showClock");
 
@@ -1278,6 +1356,8 @@ void handleSave() {
     String barPosArg = "barPosition_" + String(i + 1);
     String minArg = "barMin_" + String(i + 1);
     String maxArg = "barMax_" + String(i + 1);
+    String widthArg = "barWidth_" + String(i + 1);
+    String offsetArg = "barOffset_" + String(i + 1);
 
     if (server.hasArg(barPosArg)) {
       settings.metricBarPositions[i] = server.arg(barPosArg).toInt();
@@ -1290,6 +1370,16 @@ void handleSave() {
     }
     if (server.hasArg(maxArg)) {
       settings.metricBarMax[i] = server.arg(maxArg).toInt();
+    }
+    if (server.hasArg(widthArg)) {
+      settings.metricBarWidths[i] = server.arg(widthArg).toInt();
+    } else {
+      settings.metricBarWidths[i] = 60;  // Default width
+    }
+    if (server.hasArg(offsetArg)) {
+      settings.metricBarOffsets[i] = server.arg(offsetArg).toInt();
+    } else {
+      settings.metricBarOffsets[i] = 0;  // Default: no offset
     }
   }
 
@@ -1314,6 +1404,17 @@ void handleSave() {
 
       // Apply position assignment
       m.position = settings.metricPositions[m.id - 1];
+
+      // Apply progress bar settings
+      m.barPosition = settings.metricBarPositions[m.id - 1];
+      m.barMin = settings.metricBarMin[m.id - 1];
+      m.barMax = settings.metricBarMax[m.id - 1];
+      m.barWidth = settings.metricBarWidths[m.id - 1];
+      m.barOffsetX = settings.metricBarOffsets[m.id - 1];
+
+      // Store/update the metric name for future validation
+      strncpy(settings.metricNames[m.id - 1], m.name, METRIC_NAME_LEN - 1);
+      settings.metricNames[m.id - 1][METRIC_NAME_LEN - 1] = '\0';
     }
   }
 
@@ -1575,27 +1676,64 @@ void addLegacyMetric(uint8_t id, const char* name, int value, const char* unit) 
 
   // Load settings (ID-based indexing)
   if (id > 0 && id <= MAX_METRICS) {
-    // Apply custom label if set (preserve '^' character - it will be converted during display)
-    if (settings.metricLabels[id - 1][0] != '\0') {
-      strncpy(m.label, settings.metricLabels[id - 1], METRIC_NAME_LEN - 1);
-      m.label[METRIC_NAME_LEN - 1] = '\0';
+    // Check if stored metric name matches current metric name
+    // If no stored name exists OR name matches, apply settings
+    // If name exists but doesn't match, this is a different sensor - use defaults
+    bool nameMatches = (settings.metricNames[id - 1][0] == '\0' ||  // No stored name
+                        strcmp(settings.metricNames[id - 1], m.name) == 0);  // Name matches
+
+    if (nameMatches) {
+      // Apply stored settings
+      // Apply custom label if set (preserve '^' character - it will be converted during display)
+      if (settings.metricLabels[id - 1][0] != '\0') {
+        strncpy(m.label, settings.metricLabels[id - 1], METRIC_NAME_LEN - 1);
+        m.label[METRIC_NAME_LEN - 1] = '\0';
+      } else {
+        strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
+        m.label[METRIC_NAME_LEN - 1] = '\0';
+      }
+
+      m.displayOrder = settings.metricOrder[id - 1];
+
+      // Load companion metric
+      m.companionId = settings.metricCompanions[id - 1];
+
+      // Load position assignment (255 = hidden, 0-11 = visible)
+      m.position = settings.metricPositions[id - 1];
+
+      // Load progress bar settings
+      m.barPosition = settings.metricBarPositions[id - 1];
+      m.barMin = settings.metricBarMin[id - 1];
+      m.barMax = settings.metricBarMax[id - 1];
+      m.barWidth = settings.metricBarWidths[id - 1];
+      m.barOffsetX = settings.metricBarOffsets[id - 1];
+
+      // Store/update the metric name for future validation
+      strncpy(settings.metricNames[id - 1], m.name, METRIC_NAME_LEN - 1);
+      settings.metricNames[id - 1][METRIC_NAME_LEN - 1] = '\0';
     } else {
+      // Name mismatch - this is a different sensor now, use defaults
+      Serial.printf("Metric ID %d name changed: '%s' -> '%s', using defaults\n",
+                    id, settings.metricNames[id - 1], m.name);
+
       strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
       m.label[METRIC_NAME_LEN - 1] = '\0';
+      m.displayOrder = metricData.count;
+      m.companionId = 0;
+      m.position = 255;  // Default: None/Hidden
+      m.barPosition = 255;  // Default: No bar
+      m.barMin = 0;
+      m.barMax = 100;
+      m.barWidth = 60;
+      m.barOffsetX = 0;
+
+      // Update stored name to the new sensor
+      strncpy(settings.metricNames[id - 1], m.name, METRIC_NAME_LEN - 1);
+      settings.metricNames[id - 1][METRIC_NAME_LEN - 1] = '\0';
+
+      // Clear stored label since it's for a different sensor
+      settings.metricLabels[id - 1][0] = '\0';
     }
-
-    m.displayOrder = settings.metricOrder[id - 1];
-
-    // Load companion metric
-    m.companionId = settings.metricCompanions[id - 1];
-
-    // Load position assignment (255 = hidden, 0-11 = visible)
-    m.position = settings.metricPositions[id - 1];
-
-    // Load progress bar settings
-    m.barPosition = settings.metricBarPositions[id - 1];
-    m.barMin = settings.metricBarMin[id - 1];
-    m.barMax = settings.metricBarMax[id - 1];
   } else {
     // Default values for new metrics
     strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
@@ -1606,6 +1744,8 @@ void addLegacyMetric(uint8_t id, const char* name, int value, const char* unit) 
     m.barPosition = 255;  // Default: No bar
     m.barMin = 0;
     m.barMax = 100;
+    m.barWidth = 60;  // Default width
+    m.barOffsetX = 0;  // Default: no offset
   }
 
   metricData.count++;
@@ -1697,29 +1837,66 @@ void parseStatsV2(JsonDocument& doc) {
 
     // Load visibility from settings (ID-based indexing)
     if (m.id > 0 && m.id <= MAX_METRICS) {
-      // Apply custom label if set (preserve '^' character - it will be converted during display)
-      if (settings.metricLabels[m.id - 1][0] != '\0') {
-        strncpy(m.label, settings.metricLabels[m.id - 1], METRIC_NAME_LEN - 1);
-        m.label[METRIC_NAME_LEN - 1] = '\0';
+      // Check if stored metric name matches current metric name
+      // If no stored name exists OR name matches, apply settings
+      // If name exists but doesn't match, this is a different sensor - use defaults
+      bool nameMatches = (settings.metricNames[m.id - 1][0] == '\0' ||  // No stored name
+                          strcmp(settings.metricNames[m.id - 1], m.name) == 0);  // Name matches
+
+      if (nameMatches) {
+        // Apply stored settings
+        // Apply custom label if set (preserve '^' character - it will be converted during display)
+        if (settings.metricLabels[m.id - 1][0] != '\0') {
+          strncpy(m.label, settings.metricLabels[m.id - 1], METRIC_NAME_LEN - 1);
+          m.label[METRIC_NAME_LEN - 1] = '\0';
+        } else {
+          // No custom label, copy name to label
+          strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
+          m.label[METRIC_NAME_LEN - 1] = '\0';
+        }
+
+        // Load display order
+        m.displayOrder = settings.metricOrder[m.id - 1];
+
+        // Load companion metric
+        m.companionId = settings.metricCompanions[m.id - 1];
+
+        // Load position assignment (255 = hidden, 0-11 = visible)
+        m.position = settings.metricPositions[m.id - 1];
+
+        // Load progress bar settings
+        m.barPosition = settings.metricBarPositions[m.id - 1];
+        m.barMin = settings.metricBarMin[m.id - 1];
+        m.barMax = settings.metricBarMax[m.id - 1];
+        m.barWidth = settings.metricBarWidths[m.id - 1];
+        m.barOffsetX = settings.metricBarOffsets[m.id - 1];
+
+        // Store/update the metric name for future validation
+        strncpy(settings.metricNames[m.id - 1], m.name, METRIC_NAME_LEN - 1);
+        settings.metricNames[m.id - 1][METRIC_NAME_LEN - 1] = '\0';
       } else {
-        // No custom label, copy name to label
+        // Name mismatch - this is a different sensor now, use defaults
+        Serial.printf("Metric ID %d name changed: '%s' -> '%s', using defaults\n",
+                      m.id, settings.metricNames[m.id - 1], m.name);
+
         strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
         m.label[METRIC_NAME_LEN - 1] = '\0';
+        m.displayOrder = metricData.count;
+        m.companionId = 0;
+        m.position = 255;  // Default: None/Hidden
+        m.barPosition = 255;  // Default: No bar
+        m.barMin = 0;
+        m.barMax = 100;
+        m.barWidth = 60;
+        m.barOffsetX = 0;
+
+        // Update stored name to the new sensor
+        strncpy(settings.metricNames[m.id - 1], m.name, METRIC_NAME_LEN - 1);
+        settings.metricNames[m.id - 1][METRIC_NAME_LEN - 1] = '\0';
+
+        // Clear stored label since it's for a different sensor
+        settings.metricLabels[m.id - 1][0] = '\0';
       }
-
-      // Load display order
-      m.displayOrder = settings.metricOrder[m.id - 1];
-
-      // Load companion metric
-      m.companionId = settings.metricCompanions[m.id - 1];
-
-      // Load position assignment (255 = hidden, 0-11 = visible)
-      m.position = settings.metricPositions[m.id - 1];
-
-      // Load progress bar settings
-      m.barPosition = settings.metricBarPositions[m.id - 1];
-      m.barMin = settings.metricBarMin[m.id - 1];
-      m.barMax = settings.metricBarMax[m.id - 1];
     } else {
       // Default values for new metrics
       strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
@@ -1730,6 +1907,8 @@ void parseStatsV2(JsonDocument& doc) {
       m.barPosition = 255;  // Default: No bar
       m.barMin = 0;
       m.barMax = 100;
+      m.barWidth = 60;  // Default width
+      m.barOffsetX = 0;  // Default: no offset
     }
 
     metricData.count++;
@@ -1896,16 +2075,16 @@ void displayStatsCompactGrid() {
   if (settings.showClock) {
     if (settings.clockPosition == 0) {
       // Center - Clock at top center, metrics below
-      display.setCursor(48, startY);
+      display.setCursor(48 + settings.clockOffset, startY);
       display.print(metricData.timestamp);
       startY += 12;
     } else if (settings.clockPosition == 1) {
       // Clock in left column, first row
-      display.setCursor(COL1_X, startY);
+      display.setCursor(COL1_X + settings.clockOffset, startY);
       display.print(metricData.timestamp);
     } else if (settings.clockPosition == 2) {
       // Clock in right column, first row
-      display.setCursor(COL2_X, startY);
+      display.setCursor(COL2_X + settings.clockOffset, startY);
       display.print(metricData.timestamp);
     }
   }
@@ -2052,19 +2231,28 @@ void displayMetricCompact(Metric* m) {
 
 // Helper function to draw a full-size progress bar (occupies entire position slot)
 void drawProgressBar(int x, int y, int width, Metric* m) {
+  // Apply custom width and offset
+  int actualX = x + m->barOffsetX;
+  int actualWidth = m->barWidth;
+
+  // Constrain to ensure bar doesn't exceed screen boundaries
+  if (actualX + actualWidth > 128) {
+    actualWidth = 128 - actualX;
+  }
+
   // Calculate bar fill percentage based on min/max values
   int range = m->barMax - m->barMin;
   if (range <= 0) range = 100;  // Avoid division by zero
 
   int valueInRange = constrain(m->value, m->barMin, m->barMax) - m->barMin;
-  int fillWidth = map(valueInRange, 0, range, 0, width - 2);
+  int fillWidth = map(valueInRange, 0, range, 0, actualWidth - 2);
 
   // Draw bar outline (8px tall, full row height)
-  display.drawRect(x, y, width, 8, SSD1306_WHITE);
+  display.drawRect(actualX, y, actualWidth, 8, SSD1306_WHITE);
 
   // Fill bar based on value
   if (fillWidth > 0) {
-    display.fillRect(x + 1, y + 1, fillWidth, 6, SSD1306_WHITE);
+    display.fillRect(actualX + 1, y + 1, fillWidth, 6, SSD1306_WHITE);
   }
 }
 
