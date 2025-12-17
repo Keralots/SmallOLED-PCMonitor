@@ -304,6 +304,8 @@ void handleRoot();
 void handleSave();
 void handleReset();
 void handleMetricsAPI();
+void handleExportConfig();
+void handleImportConfig();
 void trimTrailingSpaces(char* str);
 void convertCaretToSpaces(char* str);
 void displaySetupInstructions();
@@ -819,6 +821,8 @@ void setupWebServer() {
   server.on("/save", HTTP_POST, handleSave);
   server.on("/reset", handleReset);
   server.on("/metrics", handleMetricsAPI);  // New API endpoint
+  server.on("/api/export", HTTP_GET, handleExportConfig);
+  server.on("/api/import", HTTP_POST, handleImportConfig);
   server.begin();
 }
 
@@ -859,7 +863,7 @@ void handleRoot() {
   <title>PC Monitor Settings</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a2e; color: #eee; }
-    .container { max-width: 400px; margin: 0 auto; }
+    .container { max-width: 400px; margin: 0 auto; padding-bottom: 100px; }
     h1 { color: #00d4ff; text-align: center; }
     .card { background: #16213e; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
     label { display: block; margin: 15px 0 5px; color: #00d4ff; }
@@ -872,6 +876,30 @@ void handleRoot() {
     .reset-btn:hover { background: #c73e54; }
     .info { text-align: center; color: #888; font-size: 12px; margin-top: 20px; }
     .status { background: #0f3460; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 20px; }
+
+    /* Collapsible sections */
+    .section-header { background: #0f3460; padding: 15px; border-radius: 8px; cursor: pointer; margin-bottom: 10px; user-select: none; display: flex; justify-content: space-between; align-items: center; }
+    .section-header:hover { background: #1a4d7a; }
+    .section-header h3 { margin: 0; color: #00d4ff; }
+    .section-arrow { font-size: 14px; transition: transform 0.3s; }
+    .section-arrow.collapsed { transform: rotate(-90deg); }
+    .section-content { max-height: 10000px; overflow: visible; transition: max-height 0.3s ease; }
+    .section-content.collapsed { max-height: 0; overflow: hidden; }
+
+    /* Config management buttons */
+    .config-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+    .export-btn { background: #4CAF50; color: #fff; padding: 12px; font-size: 14px; margin-top: 0; }
+    .export-btn:hover { background: #45a049; }
+    .import-btn { background: #2196F3; color: #fff; padding: 12px; font-size: 14px; margin-top: 0; }
+    .import-btn:hover { background: #0b7dda; }
+
+    /* Sticky save button */
+    .sticky-save { position: fixed; bottom: 0; left: 0; right: 0; background: #1a1a2e; padding: 5px; box-shadow: 0 -2px 10px rgba(0,0,0,0.5); z-index: 1000; }
+    .sticky-save .container { max-width: 400px; margin: 0 auto; }
+    .sticky-save button { margin-top: 0; }
+
+    /* Hidden file input */
+    #importFile { display: none; }
   </style>
 </head>
 <body>
@@ -880,9 +908,22 @@ void handleRoot() {
     <div class="status">
       <strong>IP:</strong> )rawliteral" + WiFi.localIP().toString() + R"rawliteral( | <strong>UDP Port:</strong> 4210
     </div>
+
+    <!-- Config Management -->
+    <div class="config-buttons">
+      <button type="button" class="export-btn" onclick="exportConfig()">&#128190; Export Config</button>
+      <button type="button" class="import-btn" onclick="document.getElementById('importFile').click()">&#128229; Import Config</button>
+    </div>
+    <input type="file" id="importFile" accept=".json" onchange="importConfig(event)">
+
     <form action="/save" method="POST">
-      <div class="card">
+      <!-- Clock Settings Section -->
+      <div class="section-header" onclick="toggleSection('clockSection')">
         <h3>&#128348; Clock Settings</h3>
+        <span class="section-arrow">&#9660;</span>
+      </div>
+      <div id="clockSection" class="section-content">
+        <div class="card">
         
         <label for="clockStyle">Idle Clock Style</label>
         <select name="clockStyle" id="clockStyle">
@@ -905,10 +946,16 @@ void handleRoot() {
           <option value="1" )rawliteral" + String(settings.dateFormat == 1 ? "selected" : "") + R"rawliteral(>MM/DD/YYYY</option>
           <option value="2" )rawliteral" + String(settings.dateFormat == 2 ? "selected" : "") + R"rawliteral(>YYYY-MM-DD</option>
         </select>
+        </div>
       </div>
-      
-      <div class="card">
+
+      <!-- Timezone Section -->
+      <div class="section-header" onclick="toggleSection('timezoneSection')">
         <h3>&#127760; Timezone</h3>
+        <span class="section-arrow">&#9660;</span>
+      </div>
+      <div id="timezoneSection" class="section-content">
+        <div class="card">
         
         <label for="gmtOffset">GMT Offset (hours)</label>
         <select name="gmtOffset" id="gmtOffset">
@@ -929,10 +976,16 @@ void handleRoot() {
           <option value="1" )rawliteral" + String(settings.daylightSaving ? "selected" : "") + R"rawliteral(>Enabled (+1 hour)</option>
           <option value="0" )rawliteral" + String(!settings.daylightSaving ? "selected" : "") + R"rawliteral(>Disabled</option>
         </select>
+        </div>
       </div>
 
-      <div class="card">
-        <h3 style="text-align: left;">&#128202; Display Layout</h3>
+      <!-- Display Layout Section -->
+      <div class="section-header" onclick="toggleSection('layoutSection')">
+        <h3>&#128202; Display Layout</h3>
+        <span class="section-arrow">&#9660;</span>
+      </div>
+      <div id="layoutSection" class="section-content">
+        <div class="card">
         <label for="clockPosition">Clock Position</label>
         <select name="clockPosition" id="clockPosition">
           <option value="0" )rawliteral" + String(settings.clockPosition == 0 ? "selected" : "") + R"rawliteral(>Center (Top)</option>
@@ -946,10 +999,16 @@ void handleRoot() {
         <p style="color: #888; font-size: 12px; margin-top: 10px;">
           Position clock to optimize space for metrics. Use offset to fine-tune horizontal position (-20 to +20 pixels).
         </p>
+        </div>
       </div>
 
-      <div class="card">
-        <h3 style="text-align: left;">&#128195; Visible Metrics</h3>
+      <!-- Visible Metrics Section -->
+      <div class="section-header" onclick="toggleSection('metricsSection')">
+        <h3>&#128195; Visible Metrics</h3>
+        <span class="section-arrow">&#9660;</span>
+      </div>
+      <div id="metricsSection" class="section-content">
+        <div class="card">
         <p style="color: #888; font-size: 14px; margin-top: 0; text-align: left;">
           Select which metrics to show on OLED
         </p>
@@ -1257,20 +1316,88 @@ void handleRoot() {
                 '<p style="color: #ff6666;">Error loading metrics</p>';
             });
         </script>
+        </div>
       </div>
-
-      <button type="submit" class="save-btn">&#128190; Save Settings</button>
     </form>
-    
+
     <form action="/reset" method="GET" onsubmit="return confirm('Reset WiFi settings? Device will restart in AP mode.');">
       <button type="submit" class="reset-btn">&#128260; Reset WiFi Settings</button>
     </form>
-    
+
     <div class="info">
       PC Stats Monitor v2.0<br>
       Configure Python script with IP shown above
     </div>
   </div>
+
+  <!-- Sticky Save Button -->
+  <div class="sticky-save">
+    <div class="container">
+      <button type="button" class="save-btn" onclick="document.querySelector('form[action=\'/save\']').submit()">&#128190; Save Settings</button>
+    </div>
+  </div>
+
+  <script>
+    // Collapsible section toggle
+    function toggleSection(sectionId) {
+      const content = document.getElementById(sectionId);
+      const arrow = event.currentTarget.querySelector('.section-arrow');
+      content.classList.toggle('collapsed');
+      arrow.classList.toggle('collapsed');
+    }
+
+    // Export configuration
+    function exportConfig() {
+      fetch('/api/export')
+        .then(response => response.json())
+        .then(data => {
+          const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'pc-monitor-config.json';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          alert('Configuration exported successfully!');
+        })
+        .catch(err => alert('Error exporting configuration: ' + err));
+    }
+
+    // Import configuration
+    function importConfig(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const config = JSON.parse(e.target.result);
+
+          // Send to server
+          fetch('/api/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              alert('Configuration imported successfully! Reloading page...');
+              location.reload();
+            } else {
+              alert('Error importing configuration: ' + data.message);
+            }
+          })
+          .catch(err => alert('Error importing configuration: ' + err));
+        } catch (err) {
+          alert('Invalid configuration file: ' + err);
+        }
+      };
+      reader.readAsText(file);
+    }
+  </script>
 </body>
 </html>
 )rawliteral";
@@ -1485,6 +1612,218 @@ void handleReset() {
   
   wifiManager.resetSettings();
   ESP.restart();
+}
+
+// Export configuration as JSON
+void handleExportConfig() {
+  String json = "{";
+
+  // Clock settings
+  json += "\"clockStyle\":" + String(settings.clockStyle) + ",";
+  json += "\"gmtOffset\":" + String(settings.gmtOffset) + ",";
+  json += "\"daylightSaving\":" + String(settings.daylightSaving ? "true" : "false") + ",";
+  json += "\"use24Hour\":" + String(settings.use24Hour ? "true" : "false") + ",";
+  json += "\"dateFormat\":" + String(settings.dateFormat) + ",";
+  json += "\"clockPosition\":" + String(settings.clockPosition) + ",";
+  json += "\"clockOffset\":" + String(settings.clockOffset) + ",";
+  json += "\"showClock\":" + String(settings.showClock ? "true" : "false") + ",";
+
+  // Metric labels
+  json += "\"metricLabels\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += "\"" + String(settings.metricLabels[i]) + "\"";
+  }
+  json += "],";
+
+  // Metric names
+  json += "\"metricNames\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += "\"" + String(settings.metricNames[i]) + "\"";
+  }
+  json += "],";
+
+  // Metric order
+  json += "\"metricOrder\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricOrder[i]);
+  }
+  json += "],";
+
+  // Metric companions
+  json += "\"metricCompanions\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricCompanions[i]);
+  }
+  json += "],";
+
+  // Metric positions
+  json += "\"metricPositions\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricPositions[i]);
+  }
+  json += "],";
+
+  // Progress bar settings
+  json += "\"metricBarPositions\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricBarPositions[i]);
+  }
+  json += "],";
+
+  json += "\"metricBarMin\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricBarMin[i]);
+  }
+  json += "],";
+
+  json += "\"metricBarMax\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricBarMax[i]);
+  }
+  json += "],";
+
+  json += "\"metricBarWidths\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricBarWidths[i]);
+  }
+  json += "],";
+
+  json += "\"metricBarOffsets\":[";
+  for (int i = 0; i < MAX_METRICS; i++) {
+    if (i > 0) json += ",";
+    json += String(settings.metricBarOffsets[i]);
+  }
+  json += "]";
+
+  json += "}";
+
+  server.send(200, "application/json", json);
+}
+
+// Import configuration from JSON
+void handleImportConfig() {
+  if (server.hasArg("plain")) {
+    String body = server.arg("plain");
+
+    JsonDocument doc;
+    DeserializationError error = deserializeJson(doc, body);
+
+    if (error) {
+      server.send(400, "application/json", "{\"success\":false,\"message\":\"Invalid JSON\"}");
+      return;
+    }
+
+    // Import clock settings
+    if (doc.containsKey("clockStyle")) settings.clockStyle = doc["clockStyle"];
+    if (doc.containsKey("gmtOffset")) settings.gmtOffset = doc["gmtOffset"];
+    if (doc.containsKey("daylightSaving")) settings.daylightSaving = doc["daylightSaving"];
+    if (doc.containsKey("use24Hour")) settings.use24Hour = doc["use24Hour"];
+    if (doc.containsKey("dateFormat")) settings.dateFormat = doc["dateFormat"];
+    if (doc.containsKey("clockPosition")) settings.clockPosition = doc["clockPosition"];
+    if (doc.containsKey("clockOffset")) settings.clockOffset = doc["clockOffset"];
+    if (doc.containsKey("showClock")) settings.showClock = doc["showClock"];
+
+    // Import metric labels
+    if (doc.containsKey("metricLabels")) {
+      JsonArray labels = doc["metricLabels"];
+      for (int i = 0; i < MAX_METRICS && i < labels.size(); i++) {
+        const char* label = labels[i];
+        if (label) {
+          strncpy(settings.metricLabels[i], label, METRIC_NAME_LEN - 1);
+          settings.metricLabels[i][METRIC_NAME_LEN - 1] = '\0';
+        }
+      }
+    }
+
+    // Import metric names
+    if (doc.containsKey("metricNames")) {
+      JsonArray names = doc["metricNames"];
+      for (int i = 0; i < MAX_METRICS && i < names.size(); i++) {
+        const char* name = names[i];
+        if (name) {
+          strncpy(settings.metricNames[i], name, METRIC_NAME_LEN - 1);
+          settings.metricNames[i][METRIC_NAME_LEN - 1] = '\0';
+        }
+      }
+    }
+
+    // Import metric order
+    if (doc.containsKey("metricOrder")) {
+      JsonArray order = doc["metricOrder"];
+      for (int i = 0; i < MAX_METRICS && i < order.size(); i++) {
+        settings.metricOrder[i] = order[i];
+      }
+    }
+
+    // Import metric companions
+    if (doc.containsKey("metricCompanions")) {
+      JsonArray companions = doc["metricCompanions"];
+      for (int i = 0; i < MAX_METRICS && i < companions.size(); i++) {
+        settings.metricCompanions[i] = companions[i];
+      }
+    }
+
+    // Import metric positions
+    if (doc.containsKey("metricPositions")) {
+      JsonArray positions = doc["metricPositions"];
+      for (int i = 0; i < MAX_METRICS && i < positions.size(); i++) {
+        settings.metricPositions[i] = positions[i];
+      }
+    }
+
+    // Import progress bar settings
+    if (doc.containsKey("metricBarPositions")) {
+      JsonArray barPositions = doc["metricBarPositions"];
+      for (int i = 0; i < MAX_METRICS && i < barPositions.size(); i++) {
+        settings.metricBarPositions[i] = barPositions[i];
+      }
+    }
+
+    if (doc.containsKey("metricBarMin")) {
+      JsonArray barMin = doc["metricBarMin"];
+      for (int i = 0; i < MAX_METRICS && i < barMin.size(); i++) {
+        settings.metricBarMin[i] = barMin[i];
+      }
+    }
+
+    if (doc.containsKey("metricBarMax")) {
+      JsonArray barMax = doc["metricBarMax"];
+      for (int i = 0; i < MAX_METRICS && i < barMax.size(); i++) {
+        settings.metricBarMax[i] = barMax[i];
+      }
+    }
+
+    if (doc.containsKey("metricBarWidths")) {
+      JsonArray barWidths = doc["metricBarWidths"];
+      for (int i = 0; i < MAX_METRICS && i < barWidths.size(); i++) {
+        settings.metricBarWidths[i] = barWidths[i];
+      }
+    }
+
+    if (doc.containsKey("metricBarOffsets")) {
+      JsonArray barOffsets = doc["metricBarOffsets"];
+      for (int i = 0; i < MAX_METRICS && i < barOffsets.size(); i++) {
+        settings.metricBarOffsets[i] = barOffsets[i];
+      }
+    }
+
+    // Save imported settings
+    saveSettings();
+    applyTimezone();
+
+    server.send(200, "application/json", "{\"success\":true,\"message\":\"Configuration imported successfully\"}");
+  } else {
+    server.send(400, "application/json", "{\"success\":false,\"message\":\"No data received\"}");
+  }
 }
 
 void displaySetupInstructions() {
