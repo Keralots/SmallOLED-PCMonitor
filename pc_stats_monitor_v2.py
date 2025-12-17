@@ -45,6 +45,8 @@ sensor_database = {
     "load": [],
     "clock": [],
     "power": [],
+    "data": [],       # Network/disk data (uploaded/downloaded GB)
+    "throughput": [], # Network throughput (upload/download speed KB/s, MB/s)
     "other": []
 }
 
@@ -59,6 +61,9 @@ def discover_sensors():
 
     # Add psutil system metrics
     print("\n[1/2] Discovering system metrics (psutil)...")
+
+    # Warm up psutil for accurate readings
+    psutil.cpu_percent(interval=0.1)
     sensor_database["system"].append({
         "name": "CPU",
         "display_name": "CPU Usage",
@@ -66,7 +71,8 @@ def discover_sensors():
         "type": "percent",
         "unit": "%",
         "psutil_method": "cpu_percent",
-        "custom_label": ""
+        "custom_label": "",
+        "current_value": int(psutil.cpu_percent(interval=0))
     })
 
     sensor_database["system"].append({
@@ -76,7 +82,8 @@ def discover_sensors():
         "type": "percent",
         "unit": "%",
         "psutil_method": "virtual_memory.percent",
-        "custom_label": ""
+        "custom_label": "",
+        "current_value": int(psutil.virtual_memory().percent)
     })
 
     sensor_database["system"].append({
@@ -86,7 +93,8 @@ def discover_sensors():
         "type": "memory",
         "unit": "GB",
         "psutil_method": "virtual_memory.used",
-        "custom_label": ""
+        "custom_label": "",
+        "current_value": int(psutil.virtual_memory().used / (1024**3))
     })
 
     sensor_database["system"].append({
@@ -96,7 +104,8 @@ def discover_sensors():
         "type": "percent",
         "unit": "%",
         "psutil_method": "disk_usage",
-        "custom_label": ""
+        "custom_label": "",
+        "current_value": int(psutil.disk_usage('C:\\').percent)
     })
 
     print(f"  Found {len(sensor_database['system'])} system metrics")
@@ -122,6 +131,48 @@ def discover_sensors():
                 if device_info.lower() not in display_name.lower():
                     display_name = f"{sensor.Name} [{device_info}]"
 
+                # Special handling for network data metrics (upload/download disambiguation)
+                if sensor.SensorType.lower() == "data" and ('nic' in device_info.lower() or 'network' in device_info.lower()):
+                    # Extract data metric index to distinguish upload/download
+                    # /nic/0/data/0 = Download, /nic/0/data/1 = Upload, etc.
+                    if len(identifier_parts) >= 4:
+                        data_index = identifier_parts[-1]
+
+                        # Check if name already has Upload/Download
+                        name_lower = sensor.Name.lower()
+                        if 'upload' not in name_lower and 'download' not in name_lower and 'rx' not in name_lower and 'tx' not in name_lower:
+                            # Add Upload/Download based on data index
+                            if data_index == '0':
+                                display_name = f"{sensor.Name} - Download [{device_info}]"
+                            elif data_index == '1':
+                                display_name = f"{sensor.Name} - Upload [{device_info}]"
+                            else:
+                                display_name = f"{sensor.Name} #{data_index} [{device_info}]"
+
+                # Special handling for network throughput metrics (upload/download disambiguation)
+                elif sensor.SensorType.lower() == "throughput" and ('nic' in device_info.lower() or 'network' in device_info.lower()):
+                    # Extract throughput metric index to distinguish upload/download
+                    # /nic/0/throughput/0 = Upload Speed, /nic/0/throughput/1 = Download Speed
+                    if len(identifier_parts) >= 4:
+                        throughput_index = identifier_parts[-1]
+
+                        # Check if name already has Upload/Download
+                        name_lower = sensor.Name.lower()
+                        if 'upload' not in name_lower and 'download' not in name_lower and 'rx' not in name_lower and 'tx' not in name_lower:
+                            # Add Upload/Download based on throughput index
+                            if throughput_index == '0':
+                                display_name = f"{sensor.Name} - Upload [{device_info}]"
+                            elif throughput_index == '1':
+                                display_name = f"{sensor.Name} - Download [{device_info}]"
+                            else:
+                                display_name = f"{sensor.Name} #{throughput_index} [{device_info}]"
+
+            # Get current sensor value
+            try:
+                current_value = int(sensor.Value) if sensor.Value else 0
+            except:
+                current_value = 0
+
             sensor_info = {
                 "name": short_name,
                 "display_name": display_name,
@@ -130,7 +181,8 @@ def discover_sensors():
                 "unit": get_unit_from_type(sensor.SensorType),
                 "wmi_identifier": sensor.Identifier,
                 "wmi_sensor_name": sensor.Name,
-                "custom_label": ""
+                "custom_label": "",
+                "current_value": current_value
             }
 
             # Categorize sensor
@@ -150,6 +202,12 @@ def discover_sensors():
             elif sensor_type == "power":
                 sensor_database["power"].append(sensor_info)
                 sensor_count += 1
+            elif sensor_type == "data":
+                sensor_database["data"].append(sensor_info)
+                sensor_count += 1
+            elif sensor_type == "throughput":
+                sensor_database["throughput"].append(sensor_info)
+                sensor_count += 1
             else:
                 sensor_database["other"].append(sensor_info)
                 sensor_count += 1
@@ -160,7 +218,10 @@ def discover_sensors():
         print(f"    - Loads: {len(sensor_database['load'])}")
         print(f"    - Clocks: {len(sensor_database['clock'])}")
         print(f"    - Power: {len(sensor_database['power'])}")
-        print(f"    - Other: {len(sensor_database['other'])}")
+        print(f"    - Data: {len(sensor_database['data'])}")
+        print(f"    - Throughput: {len(sensor_database['throughput'])}")
+        if len(sensor_database['other']) > 0:
+            print(f"    - Other: {len(sensor_database['other'])}")
 
     except ImportError:
         print("  WARNING: pywin32/wmi not installed. Hardware sensors unavailable.")
@@ -170,6 +231,8 @@ def discover_sensors():
         print("  Make sure LibreHardwareMonitor is running!")
 
     print("\n" + "=" * 60)
+    print("\nℹ NOTE: Sensor values in GUI are static (captured at launch time)")
+    print("  This helps you identify active sensors and their typical readings.")
 
 
 def generate_short_name(full_name, sensor_type, identifier=""):
@@ -247,6 +310,40 @@ def generate_short_name(full_name, sensor_type, identifier=""):
         if device_prefix:
             name = device_prefix + device_index + "_" + name if device_index else device_prefix + name
 
+        # For network metrics, add Upload/Download suffix if not already in name
+        if device_prefix == "NET" and identifier:
+            parts = identifier.split('/')
+            name_lower = name.lower()
+            # Check if upload/download not already specified
+            if 'upload' not in name_lower and 'download' not in name_lower and 'u' not in name_lower.split('_')[-1] and 'd' not in name_lower.split('_')[-1]:
+                # Extract data metric index: /nic/0/data/0 = Download, /nic/0/data/1 = Upload
+                if len(parts) >= 4:
+                    data_index = parts[-1]
+                    if data_index == '0':
+                        name = name + "_D"  # Download
+                    elif data_index == '1':
+                        name = name + "_U"  # Upload
+
+    # For throughput (network speeds)
+    elif sensor_type.lower() == "throughput":
+        name = name.replace("Speed", "").strip()
+        if device_prefix:
+            name = device_prefix + device_index + "_" + name if device_index else device_prefix + name
+
+        # For network throughput, add Upload/Download suffix
+        if device_prefix == "NET" and identifier:
+            parts = identifier.split('/')
+            name_lower = name.lower()
+            # Check if upload/download not already specified
+            if 'upload' not in name_lower and 'download' not in name_lower and 'u' not in name_lower.split('_')[-1] and 'd' not in name_lower.split('_')[-1]:
+                # Extract throughput metric index: /nic/0/throughput/0 = Upload, /nic/0/throughput/1 = Download
+                if len(parts) >= 4:
+                    throughput_index = parts[-1]
+                    if throughput_index == '0':
+                        name = name + "_U"  # Upload
+                    elif throughput_index == '1':
+                        name = name + "_D"  # Download
+
     # Clean up
     name = name.replace("  ", " ").replace(" ", "_")
 
@@ -271,7 +368,8 @@ def get_unit_from_type(sensor_type):
         "Clock": "MHz",
         "Power": "W",
         "Voltage": "V",
-        "Data": "GB"
+        "Data": "GB",
+        "Throughput": "KB/s"  # Network throughput speeds
     }
     return unit_map.get(sensor_type, "")
 
@@ -472,6 +570,16 @@ class MetricSelectorGUI:
         search_entry = tk.Entry(counter_frame, textvariable=self.search_var, width=20)
         search_entry.pack(side=tk.LEFT, padx=5)
 
+        # Info note about static values
+        info_label = tk.Label(
+            counter_frame,
+            text="ℹ Values are static from GUI launch",
+            bg="#2d2d2d",
+            fg="#888888",
+            font=("Arial", 9, "italic")
+        )
+        info_label.pack(side=tk.LEFT, padx=(20, 0))
+
         # Buttons
         clear_btn = tk.Button(
             counter_frame,
@@ -513,7 +621,9 @@ class MetricSelectorGUI:
             ("FANS & COOLING", "fan"),
             ("LOADS", "load"),
             ("CLOCKS", "clock"),
-            ("POWER", "power")
+            ("POWER", "power"),
+            ("NETWORK DATA", "data"),
+            ("NETWORK THROUGHPUT", "throughput")
         ]
 
         for cat_title, cat_key in categories:
@@ -541,10 +651,11 @@ class MetricSelectorGUI:
                 sensor_frame = tk.Frame(cat_frame, bg="#f0f0f0")
                 sensor_frame.pack(fill=tk.X, padx=10, pady=2)
 
-                # Checkbox
+                # Checkbox with current value
+                value_text = f" - {sensor['current_value']}{sensor['unit']}" if sensor.get('current_value') is not None else ""
                 cb = tk.Checkbutton(
                     sensor_frame,
-                    text=f"{sensor['display_name']} ({sensor['name']})",
+                    text=f"{sensor['display_name']} ({sensor['name']}){value_text}",
                     variable=var,
                     bg="#f0f0f0",
                     anchor="w",

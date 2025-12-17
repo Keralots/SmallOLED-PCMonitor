@@ -59,6 +59,9 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // ========== NTP Time Configuration ==========
 const char* ntpServer = "pool.ntp.org";
 
+// ========== Display Format Configuration ==========
+const bool USE_RPM_K_FORMAT = false;  // true = "1.8K", false = "1800RPM"
+
 // ========== Dynamic Metrics System (v2.0) ==========
 #define MAX_METRICS 20  // Increased from 12 to support more metrics with companions
 #define METRIC_NAME_LEN 11  // 10 chars + null terminator
@@ -125,6 +128,9 @@ struct Settings {
 
   // Clock toggle
   bool showClock;        // Show/hide timestamp in metrics display
+
+  // Display layout mode
+  int displayRowMode;    // 0 = 5 rows (12px spacing), 1 = 6 rows (10px compact)
 };
 
 Settings settings;
@@ -600,6 +606,7 @@ void loadSettings() {
     settings.clockPosition = 0;  // Center by default
     settings.clockOffset = 0;    // No offset by default
     settings.showClock = true;
+    settings.displayRowMode = 0;  // Default: 5 rows with more spacing
     // Initialize all metrics with defaults
     for (int i = 0; i < MAX_METRICS; i++) {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
@@ -629,6 +636,7 @@ void loadSettings() {
     preferences.putInt("clockPos", 0);  // Center
     preferences.putInt("clockOffset", 0);  // No offset
     preferences.putBool("showClock", true);
+    preferences.putInt("rowMode", 0);  // Default: 5 rows
 
     // Initialize all metrics with default values
     uint8_t defaultOrder[MAX_METRICS];
@@ -651,6 +659,7 @@ void loadSettings() {
   settings.clockPosition = preferences.getInt("clockPos", 0);  // Default: Center
   settings.clockOffset = preferences.getInt("clockOffset", 0);  // Default: No offset
   settings.showClock = preferences.getBool("showClock", true);
+  settings.displayRowMode = preferences.getInt("rowMode", 0);  // Default: 5 rows
 
   // Note: Visibility is now determined by position (255 = hidden, 0-11 = visible)
 
@@ -755,6 +764,7 @@ void saveSettings() {
   preferences.putInt("clockPos", settings.clockPosition);
   preferences.putInt("clockOffset", settings.clockOffset);
   preferences.putBool("showClock", settings.showClock);
+  preferences.putInt("rowMode", settings.displayRowMode);
 
   // Save metric display order
   preferences.putBytes("metricOrd", settings.metricOrder, MAX_METRICS);
@@ -999,6 +1009,18 @@ void handleRoot() {
         <p style="color: #888; font-size: 12px; margin-top: 10px;">
           Position clock to optimize space for metrics. Use offset to fine-tune horizontal position (-20 to +20 pixels).
         </p>
+
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #333;">
+
+        <label for="rowMode">Display Row Mode</label>
+        <select name="rowMode" id="rowMode" onchange="updateRowMode()">
+          <option value="0" )rawliteral" + String(settings.displayRowMode == 0 ? "selected" : "") + R"rawliteral(>5 Rows (13px spacing - optimized)</option>
+          <option value="1" )rawliteral" + String(settings.displayRowMode == 1 ? "selected" : "") + R"rawliteral(>6 Rows (10px spacing - compact)</option>
+        </select>
+
+        <p style="color: #888; font-size: 12px; margin-top: 10px;">
+          5-row mode provides maximum readability with optimized 13px spacing (11px with centered clock). 6-row mode fits more metrics. Row 6 positions (10-11) are hidden in 5-row mode.
+        </p>
         </div>
       </div>
 
@@ -1036,7 +1058,7 @@ void handleRoot() {
 
         <script>
           let metricsData = [];
-          const MAX_ROWS = 6;  // Maximum 6 rows on OLED
+          let MAX_ROWS = )rawliteral" + String((settings.displayRowMode == 0) ? 5 : 6) + R"rawliteral(;  // Dynamic based on row mode
 
           function saveFormState() {
             // Save all form values before re-rendering
@@ -1097,6 +1119,42 @@ void handleRoot() {
             renderMetrics();
           }
 
+          function updateRowMode() {
+            const rowMode = parseInt(document.getElementById('rowMode').value);
+            const oldMaxRows = MAX_ROWS;
+            MAX_ROWS = (rowMode === 0) ? 5 : 6;
+
+            // Warn if switching to 5-row mode with metrics on Row 6
+            if (MAX_ROWS === 5 && oldMaxRows === 6) {
+              const row6Metrics = metricsData.filter(m =>
+                m.position === 10 || m.position === 11 ||
+                m.barPosition === 10 || m.barPosition === 11
+              );
+              if (row6Metrics.length > 0) {
+                const metricNames = row6Metrics.map(m => m.name).join(', ');
+                if (!confirm(`Warning: ${row6Metrics.length} metric(s) on Row 6 (${metricNames}) will be hidden. Continue?`)) {
+                  document.getElementById('rowMode').value = '1';
+                  MAX_ROWS = 6;
+                  return;
+                }
+              }
+            }
+
+            // Hide Row 6 metrics when switching to 5-row mode
+            if (MAX_ROWS === 5) {
+              metricsData.forEach(metric => {
+                if (metric.position === 10 || metric.position === 11) {
+                  metric.position = 255;
+                }
+                if (metric.barPosition === 10 || metric.barPosition === 11) {
+                  metric.barPosition = 255;
+                }
+              });
+            }
+
+            renderMetrics();
+          }
+
           function renderMetrics() {
             const container = document.getElementById('metricsContainer');
             container.innerHTML = '';
@@ -1108,7 +1166,7 @@ void handleRoot() {
             const header = document.createElement('div');
             header.style.cssText = 'background: #1e293b; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 2px solid #00d4ff;';
             header.innerHTML = `
-              <div style="color: #00d4ff; font-weight: bold; font-size: 14px; margin-bottom: 5px;">&#128247; OLED Display Preview (6 Rows Max)</div>
+              <div style="color: #00d4ff; font-weight: bold; font-size: 14px; margin-bottom: 5px;">&#128247; OLED Display Preview (` + MAX_ROWS + ` Rows Max)</div>
               <div style="color: #888; font-size: 12px;">Assign each metric to a specific position using the dropdown</div>
             `;
             container.appendChild(header);
@@ -1435,6 +1493,11 @@ void handleSave() {
   // Save clock visibility checkbox
   settings.showClock = server.hasArg("showClock");
 
+  // Save row mode selection
+  if (server.hasArg("rowMode")) {
+    settings.displayRowMode = server.arg("rowMode").toInt();
+  }
+
   // Save custom labels
   for (int i = 0; i < MAX_METRICS; i++) {
     String labelArg = "label_" + String(i + 1);
@@ -1507,6 +1570,18 @@ void handleSave() {
       settings.metricBarOffsets[i] = server.arg(offsetArg).toInt();
     } else {
       settings.metricBarOffsets[i] = 0;  // Default: no offset
+    }
+  }
+
+  // Hide Row 6 metrics when switching to 5-row mode
+  if (settings.displayRowMode == 0) {  // 5-row mode
+    for (int i = 0; i < MAX_METRICS; i++) {
+      if (settings.metricPositions[i] == 10 || settings.metricPositions[i] == 11) {
+        settings.metricPositions[i] = 255;  // Hide
+      }
+      if (settings.metricBarPositions[i] == 10 || settings.metricBarPositions[i] == 11) {
+        settings.metricBarPositions[i] = 255;  // Hide bars
+      }
     }
   }
 
@@ -1627,6 +1702,7 @@ void handleExportConfig() {
   json += "\"clockPosition\":" + String(settings.clockPosition) + ",";
   json += "\"clockOffset\":" + String(settings.clockOffset) + ",";
   json += "\"showClock\":" + String(settings.showClock ? "true" : "false") + ",";
+  json += "\"displayRowMode\":" + String(settings.displayRowMode) + ",";
 
   // Metric labels
   json += "\"metricLabels\":[";
@@ -1731,6 +1807,7 @@ void handleImportConfig() {
     if (doc.containsKey("clockPosition")) settings.clockPosition = doc["clockPosition"];
     if (doc.containsKey("clockOffset")) settings.clockOffset = doc["clockOffset"];
     if (doc.containsKey("showClock")) settings.showClock = doc["showClock"];
+    if (doc.containsKey("displayRowMode")) settings.displayRowMode = doc["displayRowMode"];
 
     // Import metric labels
     if (doc.containsKey("metricLabels")) {
@@ -1813,6 +1890,18 @@ void handleImportConfig() {
       JsonArray barOffsets = doc["metricBarOffsets"];
       for (int i = 0; i < MAX_METRICS && i < barOffsets.size(); i++) {
         settings.metricBarOffsets[i] = barOffsets[i];
+      }
+    }
+
+    // Hide Row 6 metrics when importing 5-row mode config
+    if (settings.displayRowMode == 0) {
+      for (int i = 0; i < MAX_METRICS; i++) {
+        if (settings.metricPositions[i] == 10 || settings.metricPositions[i] == 11) {
+          settings.metricPositions[i] = 255;
+        }
+        if (settings.metricBarPositions[i] == 10 || settings.metricBarPositions[i] == 11) {
+          settings.metricBarPositions[i] = 255;
+        }
       }
     }
 
@@ -2405,10 +2494,20 @@ void displayStatsCompactGrid() {
 
   const int COL1_X = 0;
   const int COL2_X = 62;  // Moved 2px left to give right column more space
-  const int ROW_HEIGHT = 10;  // Compact spacing
-  const int MAX_ROWS = 6;  // Maximum 6 rows on OLED
 
-  int startY = 2;
+  // Dynamic row configuration based on user settings
+  int startY;
+  int ROW_HEIGHT;
+  const int MAX_ROWS = (settings.displayRowMode == 0) ? 5 : 6;
+
+  if (settings.displayRowMode == 0) {  // 5-row mode - optimized spacing
+    startY = 0;  // Start at very top to maximize space
+    // Use 13px spacing for maximum readability, except with centered clock (11px to fit)
+    ROW_HEIGHT = (settings.showClock && settings.clockPosition == 0) ? 11 : 13;
+  } else {  // 6-row mode - compact layout
+    startY = 2;
+    ROW_HEIGHT = 10;
+  }
 
   // Clock positioning: 0=Center, 1=Left, 2=Right
   if (settings.showClock) {
@@ -2416,7 +2515,7 @@ void displayStatsCompactGrid() {
       // Center - Clock at top center, metrics below
       display.setCursor(48 + settings.clockOffset, startY);
       display.print(metricData.timestamp);
-      startY += 12;
+      startY += 10;  // Clock height (8px) + 2px gap
     } else if (settings.clockPosition == 1) {
       // Clock in left column, first row
       display.setCursor(COL1_X + settings.clockOffset, startY);
@@ -2543,11 +2642,11 @@ void displayMetricCompact(Metric* m) {
     spaces[i + 1] = '\0';
   }
 
-  if (strcmp(m->unit, "RPM") == 0 && m->value >= 1000) {
+  if (USE_RPM_K_FORMAT && strcmp(m->unit, "RPM") == 0 && m->value >= 1000) {
     // RPM with K suffix: "FAN1: 1.2K"
     snprintf(text, 40, "%s:%s%.1fK", displayLabel, spaces, m->value / 1000.0);
   } else {
-    // Normal: "CPU: 45%"
+    // Normal: "CPU: 45%" or "FAN1: 1800RPM"
     snprintf(text, 40, "%s:%s%d%s", displayLabel, spaces, m->value, m->unit);
   }
 
