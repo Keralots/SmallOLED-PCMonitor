@@ -134,24 +134,29 @@ At the end of installation, if asked to remove characters limit for path, agree 
 1. open CMD or powershell/terminal as admin.
 2. Install required Python packages:
    ```bash
-   pip install psutil pywin32
-   pip install wmi pywin32
+   pip install psutil wmi pywin32 pystray pillow
    ```
    For linux:
    ```bash
    pip install psutil
    ```
-3. Configure the script:
+3. Configure the script (only for firmware versions below 1.3.0):
    - Open [pc_stats_monitor.py](pc_stats_monitor.py) for windows systems or [pc_stats_monitor_linux.py](pc_stats_monitor_linux.py) for linux systems
    - Change the `ESP32_IP` to match your ESP32's IP address (displayed on OLED):
      ```python
      ESP32_IP = "192.168.0.163"  # Change this to your ESP32 IP
      ```
 
-4. Run the script:
+4. For the new versions (Firmware 1.3.0 and above) Run the script:
    ```bash
-   python pc_stats_monitor.py
+   python pc_stats_monitor_v2.py
    ```
+5. Pick any sensors you like from GUI
+
+6. You will see "no metrics" on the screen.
+7. Enter IP address of ESP in your browser and scroll all the way down. You will start seeing sensors.
+
+MORE INFORMATION HOW TO USE - to be added.
 
 #### Running at Startup (Windows - Optional)
 To automatically start monitoring when Windows boots:
