@@ -24,15 +24,45 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 ## Features
 
 - **Dual Display Modes:**
-  - **PC Online**: Real-time stats (CPU, RAM, GPU temp, disk usage, fan/pump speed)
+  - **PC Online**: Real-time stats with customizable metrics and positions
   - **PC Offline**: Animated clock (Mario, Space Invaders, Standard, or Large styles)
+- **v2.0 Python GUI (NEW!)**:
+  - Easy graphical configuration - no more editing files!
+  - Select from all available sensors on your system
+  - Live sensor values shown during selection
+  - Support for up to 20 metrics
+  - Custom labels (max 10 characters)
+  - Autostart configuration built-in
+  - Windows and Linux support
 - **Web Configuration Portal**: Customize all settings via browser
+  - Drag-and-drop metric positioning on OLED display
+  - 5-row (spacious) or 6-row (compact) display modes
+  - Progress bars for visual representation
   - Clock styles and time/date formats
   - Timezone and daylight saving
-  - **Customizable display labels** (rename "PUMP" to "FAN", "COOLER", etc.)
+  - Export/Import configuration
+- **Network Monitoring (NEW!)**:
+  - Track upload/download speeds (real-time)
+  - Monitor total data transferred
 - **WiFi Portal**: Easy first-time setup without code changes
 - **Optimized Performance**: Minimal CPU usage on PC (<1%)
 - **Persistent Settings**: All preferences saved to ESP32 flash memory
+
+## Quick Start for Beginners
+
+**Never done this before? Here's the simple version:**
+
+1. **Flash ESP32** - Use [Web Flasher](https://espressif.github.io/esptool-js/) (no installation needed!)
+2. **Connect ESP32 to WiFi** - Connect to "PCMonitor-Setup" network (password: monitor123), go to 192.168.4.1
+3. **Install Python** - Download from [python.org](https://www.python.org/downloads/) (check "Add to PATH" during install)
+4. **Install LibreHardwareMonitor** (Windows only) - Download from [GitHub](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases), run as Admin
+5. **Run Python Script** - Open terminal/cmd, type: `pip install psutil pywin32 wmi pystray pillow` then `python pc_stats_monitor_v2.py`
+6. **Configure in GUI** - Enter ESP32 IP address, select sensors you want to monitor, click "Save & Start"
+7. **Position Metrics** - Open ESP32 IP in browser, drag metrics to desired positions on display preview
+
+Done! Your PC stats will now appear on the OLED display. 🎉
+
+For detailed instructions, keep reading below.
 
 ## Hardware Requirements
 
@@ -94,18 +124,32 @@ For detailed instructions, see [release/v1.1.0/FLASH_INSTRUCTIONS.md](release/v1
 #### Web Configuration Portal
 Once connected to WiFi, access the full configuration page:
 1. Open a browser and navigate to the ESP32's IP address (shown on OLED)
+
+![ESP32 Web Portal - Clock Settings](img/ESP-WEBPortal1.png)
+
 2. **Clock Settings:**
-   - Idle clock style (Mario animation, Standard, or Large)
+   - Idle clock style (Mario animation, Space Invaders, Standard, or Large)
    - Time format (12/24 hour)
    - Date format (DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD)
-3. **Timezone:**
+
+![ESP32 Web Portal - Display Settings](img/ESP-WEBPortal2.png)
+
+3. **Display Layout:**
+   - Choose between 5-row (spacious, 13px) or 6-row (compact, 10px) modes
+   - Enable progress bars for visual representation
+   - Row 6 positions automatically hidden in 5-row mode
+4. **Timezone:**
    - GMT offset (-12 to +14 hours)
    - Daylight saving time toggle
-4. **Display Labels (NEW!):**
-   - Customize labels shown on OLED when PC is online
+5. **Display Labels:**
+   - Customize static labels shown on OLED (not metric names)
    - Fan/Pump label (e.g., "PUMP", "FAN", "COOLER")
    - CPU, RAM, GPU, and Disk labels
    - Perfect for personalizing your setup!
+6. **Configuration:**
+   - Export configuration to JSON file (backup)
+   - Import configuration from JSON file (restore)
+   - Reset to factory defaults
 
 ### 2. PC Stats Sender (Python)
 
@@ -130,42 +174,148 @@ At the end of installation, if asked to remove characters limit for path, agree 
 
 
 
-#### Python Script Setup
-1. open CMD or powershell/terminal as admin.
-2. Install required Python packages:
-   ```bash
-   pip install psutil wmi pywin32 pystray pillow
-   ```
-   For linux:
-   ```bash
-   pip install psutil
-   ```
-3. Configure the script (only for firmware versions below 1.3.0):
-   - Open [pc_stats_monitor.py](pc_stats_monitor.py) for windows systems or [pc_stats_monitor_linux.py](pc_stats_monitor_linux.py) for linux systems
-   - Change the `ESP32_IP` to match your ESP32's IP address (displayed on OLED):
-     ```python
-     ESP32_IP = "192.168.0.163"  # Change this to your ESP32 IP
-     ```
+#### Python Script Setup (v2.0 - New GUI Version!)
 
-4. For the new versions (Firmware 1.3.0 and above) Run the script:
-   ```bash
-   python pc_stats_monitor_v2.py
-   ```
-5. Pick any sensors you like from GUI
+The v2.0 script now includes a **graphical interface** that makes configuration easy - no more editing files manually!
 
-6. You will see "no metrics" on the screen.
-7. Enter IP address of ESP in your browser and scroll all the way down. You will start seeing sensors.
+##### Step 1: Install Python Dependencies
 
-MORE INFORMATION HOW TO USE - to be added.
+**For Windows:**
+```bash
+pip install psutil pywin32 wmi pystray pillow
+```
 
-#### Running at Startup (Windows - Optional)
-To automatically start monitoring when Windows boots:
-1. Copy `autostart-monitor.bat` file exacly to: C:\script\autostart-monitor.bat
-2. Copy `pc_stats_monitor.py` file exacly to C:\script\pc_stats_monitor.py
-3. Press `Win + R`, type `shell:startup`, press Enter
-4. Create a shortcut to `autostart-monitor.bat` (drag and drop should create a shortcut as well)
-   
-6. Or use Task Scheduler for running as administrator
+**For Linux:**
+```bash
+pip install psutil
+```
+
+##### Step 2: Run the Script for First Time
+
+**Windows:**
+```bash
+python pc_stats_monitor_v2.py
+```
+
+**Linux:**
+```bash
+python3 pc_stats_monitor_v2_linux.py
+```
+
+The GUI will automatically open if no configuration exists.
+
+##### Step 3: Configure in the GUI
+
+![Python GUI Screenshot](img/pcmonitorGUI.png)
+
+The configuration window lets you:
+
+1. **Enter ESP32 IP Address** - Find this on your OLED display after WiFi setup
+2. **Set UDP Port** (default: 4210) - Leave this unless you changed it
+3. **Update Interval** (default: 3 seconds) - How often to send stats
+4. **Select Metrics to Monitor**:
+   - Browse through categories: System, Temperatures, Fans, Loads, Clocks, Power, Network Data, Network Throughput
+   - Check the boxes next to sensors you want to monitor
+   - You can select up to 20 metrics
+   - **Current values are shown** to help you identify sensors
+   - Use the **Search** box to quickly find specific sensors
+5. **Custom Labels** (optional):
+   - Each sensor has a "Label" field
+   - Enter a custom name (max 10 characters) to display on ESP32
+   - Leave empty to use auto-generated names
+6. **Click "Save & Start Monitoring"** when done
+
+##### Step 4: Position Metrics on ESP32 Display
+
+After the Python script starts sending data:
+
+1. Open your ESP32's IP address in a web browser
+2. Scroll down to the **"Metrics from PC"** section
+3. You'll see all metrics received from your PC
+4. **Drag and drop** metrics to position them on the display
+5. Use **progress bars** for visual representation (optional)
+6. Choose between **5-row** (more spacing) or **6-row** (compact) display modes
+
+![ESP32 Web Portal - Metrics](img/ESP-WEBPortal3.png)
+
+The display will update in real-time as you arrange metrics!
+
+##### Step 5: Enable Autostart (Optional)
+
+**Windows:**
+```bash
+python pc_stats_monitor_v2.py --autostart enable
+```
+
+This will:
+- Create a startup entry in Windows
+- Run minimized to system tray on boot
+- Right-click tray icon to configure or quit
+
+**Linux (systemd):**
+```bash
+python3 pc_stats_monitor_v2_linux.py --autostart enable
+```
+
+This creates a systemd user service that:
+- Starts automatically on boot
+- Restarts if it crashes
+- Check status: `systemctl --user status pc-monitor`
+- View logs: `journalctl --user -u pc-monitor -f`
+
+##### Common Commands
+
+**Edit Configuration:**
+```bash
+# Windows
+python pc_stats_monitor_v2.py --edit
+
+# Linux
+python3 pc_stats_monitor_v2_linux.py --edit
+```
+
+**Run in Background (Windows only):**
+```bash
+python pc_stats_monitor_v2.py --minimized
+```
+
+**Disable Autostart:**
+```bash
+# Windows
+python pc_stats_monitor_v2.py --autostart disable
+
+# Linux
+python3 pc_stats_monitor_v2_linux.py --autostart disable
+```
+
+##### Understanding Display Modes
+
+The firmware supports two display layouts:
+
+**5-Row Mode (Recommended):**
+- More spacing (13px between rows)
+- Better readability
+- Positions 0-9 available
+- 11px spacing with centered clock
+
+![5-Row Display](img/5rows.jpg)
+
+**6-Row Mode (Compact):**
+- Tighter spacing (10px between rows)
+- Fits more metrics
+- Positions 0-11 available
+
+![6-Row Display](img/6rows.jpg)
+
+You can switch between modes in the ESP32 web interface under "Display Layout Settings".
+
+#### Legacy Script (Older Versions)
+
+If you're using firmware versions below 1.3.0, use the legacy scripts:
+- [pc_stats_monitor.py](pc_stats_monitor.py) for Windows
+- [pc_stats_monitor_linux.py](pc_stats_monitor_linux.py) for Linux
+
+These require manual configuration by editing the ESP32_IP in the script file.
 
 ## Usage
 
@@ -203,33 +353,37 @@ Change clock style anytime via the web configuration portal!
    - Customize CPU, RAM, GPU, Disk labels too
 4. Save settings - changes apply immediately!
 
-### Customizing Monitored Sensors
+### Customizing Monitored Sensors (v2.0)
 
-The Python script monitors these sensors (customize in [pc_stats_monitor.py](pc_stats_monitor.py)):
-- **CPU Usage**: Overall percentage
-- **CPU Temperature**: CPU Package sensor *(change sensor name in script)*
-- **RAM Usage**: Percentage and GB used/total
-- **GPU Temperature**: GPU Core sensor *(change sensor name in script)*
-- **Disk Usage**: C: drive percentage
-- **Fan/Pump Speed**: Pump Fan RPM *(change sensor name in script)*
+With the v2.0 GUI, you can easily select any sensors available on your system:
 
-To monitor different sensors, edit the sensor names in [pc_stats_monitor.py](pc_stats_monitor.py):
-```python
-# Lines 43-56 - Customize these for your system:
-if sensor.SensorType == 'Fan' and sensor.Name == 'Pump Fan':
-    # Change 'Pump Fan' to match your fan name
-    # Examples: 'Fan #1', 'CPU Fan', 'Case Fan #2'
+**Available Sensor Categories:**
+- **System Metrics**: CPU%, RAM%, Disk usage (using psutil)
+- **Temperatures**: CPU cores, GPU, motherboard, drives
+- **Fans & Cooling**: All detected fan speeds
+- **Loads**: CPU/GPU load percentages
+- **Clocks**: CPU/GPU clock speeds
+- **Power**: Power consumption sensors
+- **Network Data**: Total uploaded/downloaded (in GB)
+- **Network Throughput**: Current upload/download speeds (in KB/s or MB/s)
 
-elif sensor.SensorType == 'Temperature' and sensor.Name == 'CPU Package':
-    # Change 'CPU Package' to your CPU temp sensor
-    # Examples: 'CPU Core #1', 'CPU (Tctl/Tdie)'
+**How to Select Sensors:**
+1. Make sure **LibreHardwareMonitor is running** (Windows only)
+2. Run `python pc_stats_monitor_v2.py --edit`
+3. Browse through sensor categories
+4. **Current values are displayed** next to each sensor to help you identify them
+5. Check boxes for sensors you want to monitor
+6. Set custom labels if desired (max 10 characters)
+7. Save and start monitoring
 
-elif sensor.SensorType == 'Temperature' and sensor.Name == 'GPU Core':
-    # Change 'GPU Core' to your GPU temp sensor
-    # Examples: 'GPU Temperature', 'GPU Hot Spot'
-```
+![ESP32 Web Portal Example](img/ESP-WEBPortal1.png)
 
-**Tip:** Open LibreHardwareMonitor to see all available sensor names for your system!
+**Tips:**
+- The GUI shows live sensor values when you open it
+- Use the search box to quickly find specific sensors
+- Network metrics automatically distinguish between upload and download
+- You can select up to 20 different metrics
+- Labels set in Python GUI will override default names on ESP32
 
 ## Troubleshooting
 
@@ -248,33 +402,69 @@ elif sensor.SensorType == 'Temperature' and sensor.Name == 'GPU Core':
 - Check power supply (use quality USB cable)
 - Monitor serial output at 115200 baud for error messages
 
-### Python Script Issues
+### Python Script Issues (v2.0)
 
-**"WMI not found" or sensor errors**
-- Make sure LibreHardwareMonitor is running as Administrator
+**"No configuration found" - GUI won't open**
+- Make sure you have Tkinter installed (comes with Python on Windows)
+- Linux: Install with `sudo apt-get install python3-tk`
+- Check that you're running Python 3.7 or newer
+
+**"WMI not found" or hardware sensor errors (Windows)**
+- Make sure **LibreHardwareMonitor is running as Administrator**
+- Install dependencies: `pip install pywin32 wmi`
 - Check that WMI service is running: `services.msc` → Windows Management Instrumentation
 
-**No data on display**
-- Verify ESP32 IP address in script matches actual IP
-- Check firewall isn't blocking UDP port 4210
-- Ensure both devices are on the same network
+**No sensors showing in GUI (Windows)**
+- Run LibreHardwareMonitor **before** starting the Python script
+- Enable WMI in LibreHardwareMonitor: Options → "Run on Windows startup"
+- Wait a few seconds after launching LibreHardwareMonitor before running Python script
 
-**High CPU usage**
-- Increase `BROADCAST_INTERVAL` in script (default: 3 seconds)
-- Script is optimized to use minimal resources
+**No data on ESP32 display**
+- Verify ESP32 IP address in Python GUI matches actual IP (shown on OLED)
+- Check Windows Firewall isn't blocking UDP port 4210
+- Ensure both PC and ESP32 are on the same network
+- Open ESP32 web interface and check "Metrics from PC" section at the bottom
+- Try running: `python pc_stats_monitor_v2.py` (not minimized) to see console output
 
-**Sensors not found**
-- Run the script once to see available sensors in console output
-- Modify sensor names in `initialize_sensors()` function
-- Check LibreHardwareMonitor GUI for correct sensor names
+**Autostart not working (Windows)**
+- Make sure `pywin32` is installed: `pip install pywin32`
+- Check Windows Startup folder: Press `Win + R`, type `shell:startup`
+- Look for "PC Monitor.lnk" shortcut
+- For system tray mode, install: `pip install pystray pillow`
+
+**Autostart not working (Linux)**
+- Check service status: `systemctl --user status pc-monitor`
+- View logs: `journalctl --user -u pc-monitor -f`
+- Make sure systemd is available on your system
+- Enable lingering (optional): `loginctl enable-linger $USER`
+
+**Network metrics not showing (Linux)**
+- Network metrics use psutil's `net_io_counters()`
+- Upload/download speeds are calculated from byte deltas
+- First reading will always be 0, wait for next update cycle
+
+**Custom labels not appearing on ESP32**
+- Labels are set in Python GUI, not ESP32 web interface
+- Run `python pc_stats_monitor_v2.py --edit` to modify labels
+- ESP32 receives the label name from Python script
+- Check that Python script successfully connects (see console output)
 
 ## Technical Details
 
 ### Communication
 - **Protocol**: UDP
-- **Port**: 4210
+- **Port**: 4210 (configurable)
 - **Format**: JSON
-- **Update Rate**: 3 seconds (configurable)
+- **Update Rate**: 3 seconds (configurable via GUI)
+- **Max Metrics**: 20 (increased from 12 in v1.x)
+
+### v2.0 Improvements
+- **JSON-based configuration** stored in `monitor_config.json` (Windows) or `monitor_config_linux.json` (Linux)
+- **Dynamic sensor discovery** - automatically detects all available sensors
+- **Network metrics** calculated in real-time (upload/download speeds)
+- **5-row/6-row display modes** with optimized spacing (13px vs 10px)
+- **Export/Import** configuration for easy backup and sharing
+- **Systemd integration** (Linux) for proper service management
 
 ### Libraries Used
 
@@ -284,9 +474,25 @@ elif sensor.SensorType == 'Temperature' and sensor.Name == 'GPU Core':
 - Adafruit GFX
 - ArduinoJson
 
-**Python:**
-- psutil (system stats)
-- pywin32/wmi (hardware sensors)
+**Python (Windows):**
+- psutil (system stats & network)
+- pywin32/wmi (LibreHardwareMonitor integration)
+- tkinter (GUI - included with Python)
+- pystray/pillow (system tray - optional)
+
+**Python (Linux):**
+- psutil (system stats, temps, fans, network)
+- tkinter (GUI)
+
+### File Structure
+```
+pc_stats_monitor_v2.py          # Windows version with GUI
+pc_stats_monitor_v2_linux.py    # Linux version with GUI
+monitor_config.json              # Windows config (auto-generated)
+monitor_config_linux.json        # Linux config (auto-generated)
+pc_stats_monitor.py              # Legacy Windows script (v1.x)
+pc_stats_monitor_linux.py        # Legacy Linux script (v1.x)
+```
 
 ## License
 
