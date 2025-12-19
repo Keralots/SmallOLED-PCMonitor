@@ -187,7 +187,11 @@ pip install psutil pywin32 wmi pystray pillow
 
 **For Linux:**
 ```bash
-pip install psutil
+pip install psutil tk
+or (if above is not working)
+sudo apt install python3-pip -y
+sudo apt install python3-tk -y
+
 ```
 
 ##### Step 2: Run the Script for First Time
