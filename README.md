@@ -236,9 +236,11 @@ After the Python script starts sending data:
 1. Open your ESP32's IP address in a web browser
 2. Scroll down to the **"Metrics from PC"** section
 3. You'll see all metrics received from your PC
-4. **Drag and drop** metrics to position them on the display
+4. Select location of the metric on display and optionally pair it with companion metric. E.g. **"CPU: 10% 40C"** > shows usage and temperature of CPU.
 5. Use **progress bars** for visual representation (optional)
 6. Choose between **5-row** (more spacing) or **6-row** (compact) display modes
+
+**TIP:** Start with 1-2 metrics initially and slowly build entire layout.
 
 ![ESP32 Web Portal - Metrics](img/ESP-WEBPortal3.png)
 
