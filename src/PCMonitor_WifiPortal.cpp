@@ -876,44 +876,247 @@ void handleRoot() {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PC Monitor Settings</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #1a1a2e; color: #eee; }
-    .container { max-width: 400px; margin: 0 auto; padding-bottom: 100px; }
-    h1 { color: #00d4ff; text-align: center; }
-    .card { background: #16213e; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-    label { display: block; margin: 15px 0 5px; color: #00d4ff; }
-    select, input { width: 100%; padding: 10px; border: none; border-radius: 5px; background: #0f3460; color: #fff; font-size: 16px; }
-    select:focus, input:focus { outline: 2px solid #00d4ff; }
-    button { width: 100%; padding: 15px; margin-top: 20px; border: none; border-radius: 5px; font-size: 18px; cursor: pointer; }
-    .save-btn { background: #00d4ff; color: #1a1a2e; }
-    .save-btn:hover { background: #00a8cc; }
-    .reset-btn { background: #e94560; color: #fff; }
-    .reset-btn:hover { background: #c73e54; }
-    .info { text-align: center; color: #888; font-size: 12px; margin-top: 20px; }
-    .status { background: #0f3460; padding: 10px; border-radius: 5px; text-align: center; margin-bottom: 20px; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      margin: 0; padding: 20px;
+      background: linear-gradient(135deg, #0f0c29 0%, #1a1a2e 50%, #24243e 100%);
+      background-attachment: fixed;
+      color: #e0e7ff;
+      min-height: 100vh;
+    }
+    .container { max-width: 420px; margin: 0 auto; padding-bottom: 100px; }
+    h1 {
+      color: #fff;
+      text-align: center;
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      text-shadow: 0 2px 10px rgba(0,212,255,0.3);
+    }
+    .card {
+      background: rgba(22,33,62,0.6);
+      backdrop-filter: blur(10px);
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 15px;
+      border: 1px solid rgba(0,212,255,0.15);
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    label {
+      display: block;
+      margin: 15px 0 8px;
+      color: #00d4ff;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+    select, input[type="number"], input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 2px solid rgba(0,212,255,0.2);
+      border-radius: 8px;
+      background: rgba(15,52,96,0.5);
+      color: #fff;
+      font-size: 15px;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+    select:hover, input[type="number"]:hover, input[type="text"]:hover {
+      border-color: rgba(0,212,255,0.4);
+      background: rgba(15,52,96,0.7);
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: #00d4ff;
+      background: rgba(15,52,96,0.8);
+      box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+    }
+    input[type="checkbox"] {
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border: 2px solid rgba(0,212,255,0.4);
+      border-radius: 5px;
+      background: rgba(15,52,96,0.5);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.3s ease;
+      flex-shrink: 0;
+    }
+    input[type="checkbox"]:hover {
+      border-color: #00d4ff;
+      transform: scale(1.05);
+    }
+    input[type="checkbox"]:checked {
+      background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+      border-color: #00d4ff;
+    }
+    input[type="checkbox"]:checked::after {
+      content: '✓';
+      position: absolute;
+      color: #0f0c29;
+      font-size: 14px;
+      font-weight: bold;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .save-btn {
+      background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%);
+      color: #0f0c29;
+      box-shadow: 0 4px 15px rgba(0,212,255,0.3);
+    }
+    .save-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0,212,255,0.4);
+    }
+    .save-btn:active { transform: translateY(0); }
+    .reset-btn {
+      background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(255,107,107,0.2);
+    }
+    .reset-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(255,107,107,0.3);
+    }
+    .reset-btn:active { transform: translateY(0); }
+    .info { text-align: center; color: #94a3b8; font-size: 12px; margin-top: 20px; }
+    .status {
+      background: rgba(15,52,96,0.4);
+      padding: 12px;
+      border-radius: 10px;
+      text-align: center;
+      margin-bottom: 20px;
+      border: 1px solid rgba(0,212,255,0.2);
+      font-size: 14px;
+    }
 
     /* Collapsible sections */
-    .section-header { background: #0f3460; padding: 15px; border-radius: 8px; cursor: pointer; margin-bottom: 10px; user-select: none; display: flex; justify-content: space-between; align-items: center; }
-    .section-header:hover { background: #1a4d7a; }
-    .section-header h3 { margin: 0; color: #00d4ff; }
-    .section-arrow { font-size: 14px; transition: transform 0.3s; }
+    .section-header {
+      background: linear-gradient(135deg, rgba(15,52,96,0.6) 0%, rgba(26,77,122,0.4) 100%);
+      padding: 16px 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      margin-bottom: 10px;
+      user-select: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 1px solid rgba(0,212,255,0.15);
+      transition: all 0.3s ease;
+    }
+    .section-header:hover {
+      background: linear-gradient(135deg, rgba(15,52,96,0.8) 0%, rgba(26,77,122,0.6) 100%);
+      transform: translateX(4px);
+      border-color: rgba(0,212,255,0.3);
+    }
+    .section-header h3 {
+      margin: 0;
+      color: #00d4ff;
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .section-arrow {
+      font-size: 14px;
+      transition: transform 0.3s ease;
+      color: #00d4ff;
+    }
     .section-arrow.collapsed { transform: rotate(-90deg); }
-    .section-content { max-height: 10000px; overflow: visible; transition: max-height 0.3s ease; }
-    .section-content.collapsed { max-height: 0; overflow: hidden; }
+    .section-content {
+      max-height: 10000px;
+      overflow: visible;
+      transition: max-height 0.3s ease, opacity 0.3s ease;
+      opacity: 1;
+    }
+    .section-content.collapsed {
+      max-height: 0;
+      overflow: hidden;
+      opacity: 0;
+    }
 
     /* Config management buttons */
     .config-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
-    .export-btn { background: #4CAF50; color: #fff; padding: 12px; font-size: 14px; margin-top: 0; }
-    .export-btn:hover { background: #45a049; }
-    .import-btn { background: #2196F3; color: #fff; padding: 12px; font-size: 14px; margin-top: 0; }
-    .import-btn:hover { background: #0b7dda; }
+    .export-btn {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #fff;
+      padding: 12px;
+      font-size: 14px;
+      margin-top: 0;
+      border-radius: 8px;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(16,185,129,0.2);
+      transition: all 0.3s ease;
+    }
+    .export-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(16,185,129,0.3);
+    }
+    .import-btn {
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      color: #fff;
+      padding: 12px;
+      font-size: 14px;
+      margin-top: 0;
+      border-radius: 8px;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(59,130,246,0.2);
+      transition: all 0.3s ease;
+    }
+    .import-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(59,130,246,0.3);
+    }
 
     /* Sticky save button */
-    .sticky-save { position: fixed; bottom: 0; left: 0; right: 0; background: #1a1a2e; padding: 5px; box-shadow: 0 -2px 10px rgba(0,0,0,0.5); z-index: 1000; }
-    .sticky-save .container { max-width: 400px; margin: 0 auto; }
+    .sticky-save {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(to top, rgba(15,12,41,0.98) 0%, rgba(15,12,41,0.95) 100%);
+      backdrop-filter: blur(10px);
+      padding: 12px 20px;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+      z-index: 1000;
+      border-top: 1px solid rgba(0,212,255,0.2);
+    }
+    .sticky-save .container { max-width: 420px; margin: 0 auto; }
     .sticky-save button { margin-top: 0; }
 
     /* Hidden file input */
     #importFile { display: none; }
+
+    /* Mobile responsiveness */
+    @media (max-width: 480px) {
+      body { padding: 12px; }
+      .container { padding-bottom: 90px; }
+      h1 { font-size: 24px; }
+      .card { padding: 16px; }
+      .section-header { padding: 14px 16px; }
+      .section-header h3 { font-size: 15px; }
+      select, input[type="number"], input[type="text"] { font-size: 16px; padding: 11px 12px; }
+      button { padding: 13px; font-size: 15px; }
+      .sticky-save { padding: 10px 12px; }
+    }
+    @media (max-width: 360px) {
+      h1 { font-size: 22px; }
+      .config-buttons { grid-template-columns: 1fr; gap: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -1817,19 +2020,19 @@ void handleImportConfig() {
     }
 
     // Import clock settings
-    if (doc.containsKey("clockStyle")) settings.clockStyle = doc["clockStyle"];
-    if (doc.containsKey("gmtOffset")) settings.gmtOffset = doc["gmtOffset"];
-    if (doc.containsKey("daylightSaving")) settings.daylightSaving = doc["daylightSaving"];
-    if (doc.containsKey("use24Hour")) settings.use24Hour = doc["use24Hour"];
-    if (doc.containsKey("dateFormat")) settings.dateFormat = doc["dateFormat"];
-    if (doc.containsKey("clockPosition")) settings.clockPosition = doc["clockPosition"];
-    if (doc.containsKey("clockOffset")) settings.clockOffset = doc["clockOffset"];
-    if (doc.containsKey("showClock")) settings.showClock = doc["showClock"];
-    if (doc.containsKey("displayRowMode")) settings.displayRowMode = doc["displayRowMode"];
-    if (doc.containsKey("useRpmKFormat")) settings.useRpmKFormat = doc["useRpmKFormat"];
+    if (!doc["clockStyle"].isNull()) settings.clockStyle = doc["clockStyle"];
+    if (!doc["gmtOffset"].isNull()) settings.gmtOffset = doc["gmtOffset"];
+    if (!doc["daylightSaving"].isNull()) settings.daylightSaving = doc["daylightSaving"];
+    if (!doc["use24Hour"].isNull()) settings.use24Hour = doc["use24Hour"];
+    if (!doc["dateFormat"].isNull()) settings.dateFormat = doc["dateFormat"];
+    if (!doc["clockPosition"].isNull()) settings.clockPosition = doc["clockPosition"];
+    if (!doc["clockOffset"].isNull()) settings.clockOffset = doc["clockOffset"];
+    if (!doc["showClock"].isNull()) settings.showClock = doc["showClock"];
+    if (!doc["displayRowMode"].isNull()) settings.displayRowMode = doc["displayRowMode"];
+    if (!doc["useRpmKFormat"].isNull()) settings.useRpmKFormat = doc["useRpmKFormat"];
 
     // Import metric labels
-    if (doc.containsKey("metricLabels")) {
+    if (!doc["metricLabels"].isNull()) {
       JsonArray labels = doc["metricLabels"];
       for (int i = 0; i < MAX_METRICS && i < labels.size(); i++) {
         const char* label = labels[i];
@@ -1841,7 +2044,7 @@ void handleImportConfig() {
     }
 
     // Import metric names
-    if (doc.containsKey("metricNames")) {
+    if (!doc["metricNames"].isNull()) {
       JsonArray names = doc["metricNames"];
       for (int i = 0; i < MAX_METRICS && i < names.size(); i++) {
         const char* name = names[i];
@@ -1853,7 +2056,7 @@ void handleImportConfig() {
     }
 
     // Import metric order
-    if (doc.containsKey("metricOrder")) {
+    if (!doc["metricOrder"].isNull()) {
       JsonArray order = doc["metricOrder"];
       for (int i = 0; i < MAX_METRICS && i < order.size(); i++) {
         settings.metricOrder[i] = order[i];
@@ -1861,7 +2064,7 @@ void handleImportConfig() {
     }
 
     // Import metric companions
-    if (doc.containsKey("metricCompanions")) {
+    if (!doc["metricCompanions"].isNull()) {
       JsonArray companions = doc["metricCompanions"];
       for (int i = 0; i < MAX_METRICS && i < companions.size(); i++) {
         settings.metricCompanions[i] = companions[i];
@@ -1869,7 +2072,7 @@ void handleImportConfig() {
     }
 
     // Import metric positions
-    if (doc.containsKey("metricPositions")) {
+    if (!doc["metricPositions"].isNull()) {
       JsonArray positions = doc["metricPositions"];
       for (int i = 0; i < MAX_METRICS && i < positions.size(); i++) {
         settings.metricPositions[i] = positions[i];
@@ -1877,35 +2080,35 @@ void handleImportConfig() {
     }
 
     // Import progress bar settings
-    if (doc.containsKey("metricBarPositions")) {
+    if (!doc["metricBarPositions"].isNull()) {
       JsonArray barPositions = doc["metricBarPositions"];
       for (int i = 0; i < MAX_METRICS && i < barPositions.size(); i++) {
         settings.metricBarPositions[i] = barPositions[i];
       }
     }
 
-    if (doc.containsKey("metricBarMin")) {
+    if (!doc["metricBarMin"].isNull()) {
       JsonArray barMin = doc["metricBarMin"];
       for (int i = 0; i < MAX_METRICS && i < barMin.size(); i++) {
         settings.metricBarMin[i] = barMin[i];
       }
     }
 
-    if (doc.containsKey("metricBarMax")) {
+    if (!doc["metricBarMax"].isNull()) {
       JsonArray barMax = doc["metricBarMax"];
       for (int i = 0; i < MAX_METRICS && i < barMax.size(); i++) {
         settings.metricBarMax[i] = barMax[i];
       }
     }
 
-    if (doc.containsKey("metricBarWidths")) {
+    if (!doc["metricBarWidths"].isNull()) {
       JsonArray barWidths = doc["metricBarWidths"];
       for (int i = 0; i < MAX_METRICS && i < barWidths.size(); i++) {
         settings.metricBarWidths[i] = barWidths[i];
       }
     }
 
-    if (doc.containsKey("metricBarOffsets")) {
+    if (!doc["metricBarOffsets"].isNull()) {
       JsonArray barOffsets = doc["metricBarOffsets"];
       for (int i = 0; i < MAX_METRICS && i < barOffsets.size(); i++) {
         settings.metricBarOffsets[i] = barOffsets[i];
