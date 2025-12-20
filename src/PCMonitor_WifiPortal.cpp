@@ -59,9 +59,6 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // ========== NTP Time Configuration ==========
 const char* ntpServer = "pool.ntp.org";
 
-// ========== Display Format Configuration ==========
-const bool USE_RPM_K_FORMAT = false;  // true = "1.8K", false = "1800RPM"
-
 // ========== Dynamic Metrics System (v2.0) ==========
 #define MAX_METRICS 20  // Increased from 12 to support more metrics with companions
 #define METRIC_NAME_LEN 11  // 10 chars + null terminator
@@ -131,6 +128,9 @@ struct Settings {
 
   // Display layout mode
   int displayRowMode;    // 0 = 5 rows (12px spacing), 1 = 6 rows (10px compact)
+
+  // RPM display format
+  bool useRpmKFormat;    // true = "1.8K", false = "1800RPM"
 };
 
 Settings settings;
@@ -607,6 +607,7 @@ void loadSettings() {
     settings.clockOffset = 0;    // No offset by default
     settings.showClock = true;
     settings.displayRowMode = 0;  // Default: 5 rows with more spacing
+    settings.useRpmKFormat = false;  // Default: Full RPM format (1800RPM)
     // Initialize all metrics with defaults
     for (int i = 0; i < MAX_METRICS; i++) {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
@@ -637,6 +638,7 @@ void loadSettings() {
     preferences.putInt("clockOffset", 0);  // No offset
     preferences.putBool("showClock", true);
     preferences.putInt("rowMode", 0);  // Default: 5 rows
+    preferences.putBool("rpmKFormat", false);  // Default: Full RPM format
 
     // Initialize all metrics with default values
     uint8_t defaultOrder[MAX_METRICS];
@@ -660,6 +662,7 @@ void loadSettings() {
   settings.clockOffset = preferences.getInt("clockOffset", 0);  // Default: No offset
   settings.showClock = preferences.getBool("showClock", true);
   settings.displayRowMode = preferences.getInt("rowMode", 0);  // Default: 5 rows
+  settings.useRpmKFormat = preferences.getBool("rpmKFormat", false);  // Default: Full RPM format
 
   // Note: Visibility is now determined by position (255 = hidden, 0-11 = visible)
 
@@ -765,6 +768,7 @@ void saveSettings() {
   preferences.putInt("clockOffset", settings.clockOffset);
   preferences.putBool("showClock", settings.showClock);
   preferences.putInt("rowMode", settings.displayRowMode);
+  preferences.putBool("rpmKFormat", settings.useRpmKFormat);
 
   // Save metric display order
   preferences.putBytes("metricOrd", settings.metricOrder, MAX_METRICS);
@@ -1021,6 +1025,16 @@ void handleRoot() {
         <p style="color: #888; font-size: 12px; margin-top: 10px;">
           5-row mode provides maximum readability with optimized 13px spacing (11px with centered clock). 6-row mode fits more metrics. Row 6 positions (10-11) are hidden in 5-row mode.
         </p>
+
+        <div style="margin-top: 20px;">
+          <label>
+            <input type="checkbox" name="rpmKFormat" id="rpmKFormat" )rawliteral" + String(settings.useRpmKFormat ? "checked" : "") + R"rawliteral(>
+            Use K-format for RPM values (e.g., 1.8K instead of 1800RPM)
+          </label>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            Applies to all fan and pump speed metrics with RPM unit.
+          </p>
+        </div>
         </div>
       </div>
 
@@ -1498,6 +1512,9 @@ void handleSave() {
     settings.displayRowMode = server.arg("rowMode").toInt();
   }
 
+  // Save RPM format preference
+  settings.useRpmKFormat = server.hasArg("rpmKFormat");
+
   // Save custom labels
   for (int i = 0; i < MAX_METRICS; i++) {
     String labelArg = "label_" + String(i + 1);
@@ -1703,6 +1720,7 @@ void handleExportConfig() {
   json += "\"clockOffset\":" + String(settings.clockOffset) + ",";
   json += "\"showClock\":" + String(settings.showClock ? "true" : "false") + ",";
   json += "\"displayRowMode\":" + String(settings.displayRowMode) + ",";
+  json += "\"useRpmKFormat\":" + String(settings.useRpmKFormat ? "true" : "false") + ",";
 
   // Metric labels
   json += "\"metricLabels\":[";
@@ -1808,6 +1826,7 @@ void handleImportConfig() {
     if (doc.containsKey("clockOffset")) settings.clockOffset = doc["clockOffset"];
     if (doc.containsKey("showClock")) settings.showClock = doc["showClock"];
     if (doc.containsKey("displayRowMode")) settings.displayRowMode = doc["displayRowMode"];
+    if (doc.containsKey("useRpmKFormat")) settings.useRpmKFormat = doc["useRpmKFormat"];
 
     // Import metric labels
     if (doc.containsKey("metricLabels")) {
@@ -2642,7 +2661,7 @@ void displayMetricCompact(Metric* m) {
     spaces[i + 1] = '\0';
   }
 
-  if (USE_RPM_K_FORMAT && strcmp(m->unit, "RPM") == 0 && m->value >= 1000) {
+  if (settings.useRpmKFormat && strcmp(m->unit, "RPM") == 0 && m->value >= 1000) {
     // RPM with K suffix: "FAN1: 1.2K"
     snprintf(text, 40, "%s:%s%.1fK", displayLabel, spaces, m->value / 1000.0);
   } else {
