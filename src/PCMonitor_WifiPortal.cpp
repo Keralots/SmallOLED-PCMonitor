@@ -1,7 +1,7 @@
 /*
  * PC Stats Monitor Display - WiFi Portal Version with Web Config
- * ESP32-C3 Super Mini + SSD1306 128x64 OLED
- * 
+ * ESP32-C3 Super Mini + SSD1306/SH1106 128x64 OLED
+ *
  * Features:
  * - WiFi setup portal for easy configuration
  * - Web-based settings page (access via ESP32 IP address)
@@ -10,15 +10,19 @@
  * - Settings saved to flash memory
  * - UDP data reception on port 4210
  * - Configurable timezone and date format
- * 
+ *
  * Required Libraries:
  * - WiFiManager by tzapu (install from Library Manager)
- * - Adafruit SSD1306
+ * - Adafruit SSD1306 / Adafruit SH110x
  * - Adafruit GFX
  * - ArduinoJson
  * - Preferences (built-in)
  * - WebServer (built-in)
  */
+
+// ========== Display Type Selection ==========
+// Set to 0 for 0.96" SSD1306 (I2C: 0x3C), set to 1 for 1.3" SH1106 (I2C: 0x3D)
+#define DISPLAY_TYPE 0  // Change to 1 for 1.3" OLED
 
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -26,10 +30,15 @@
 #include <Preferences.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#if DISPLAY_TYPE == 1
+  #include <Adafruit_SH110X.h>  // For 1.3" SH1106
+#else
+  #include <Adafruit_SSD1306.h>  // For 0.96" SSD1306
+#endif
 #include <ArduinoJson.h>
 #include <time.h>
 #include <esp_task_wdt.h>
+#include <Update.h>
 
 // ========== WiFi Portal Configuration ==========
 const char* AP_NAME = "PCMonitor-Setup";
@@ -54,7 +63,15 @@ Preferences preferences;
 #define SCREEN_HEIGHT 64
 #define SDA_PIN 8
 #define SCL_PIN 9
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+#if DISPLAY_TYPE == 1
+  Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+  #define DISPLAY_WHITE SH110X_WHITE
+  #define DISPLAY_BLACK SH110X_BLACK
+#else
+  Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+  #define DISPLAY_WHITE SSD1306_WHITE
+  #define DISPLAY_BLACK SSD1306_BLACK
+#endif
 
 // ========== NTP Time Configuration ==========
 const char* ntpServer = "pool.ntp.org";
@@ -131,6 +148,23 @@ struct Settings {
 
   // RPM display format
   bool useRpmKFormat;    // true = "1.8K", false = "1800RPM"
+
+  // Colon blink settings
+  uint8_t colonBlinkMode;    // 0 = Always On, 1 = Blink, 2 = Always Off
+  uint8_t colonBlinkRate;    // Blink rate in tenths of Hz (5 = 0.5Hz, 10 = 1Hz, 20 = 2Hz)
+
+  // Display refresh rate settings
+  uint8_t refreshRateMode;   // 0 = Auto (adaptive), 1 = Manual
+  uint8_t refreshRateHz;     // Manual refresh rate 1-60 Hz (only used if refreshRateMode = 1)
+  bool boostAnimationRefresh; // Enable smooth animations by temporarily boosting refresh rate during active animations
+
+  // Network configuration
+  bool useStaticIP;      // true = Static IP, false = DHCP (default)
+  char staticIP[16];     // Static IP address (e.g., "192.168.1.100")
+  char gateway[16];      // Gateway address (e.g., "192.168.1.1")
+  char subnet[16];       // Subnet mask (e.g., "255.255.255.0")
+  char dns1[16];         // Primary DNS (e.g., "8.8.8.8")
+  char dns2[16];         // Secondary DNS (e.g., "8.8.4.4")
 };
 
 Settings settings;
@@ -156,6 +190,7 @@ bool ntpSynced = false;  // Track NTP sync status
 unsigned long wifiDisconnectTime = 0;  // Track WiFi disconnect time
 const unsigned long WIFI_RECONNECT_TIMEOUT = 30000;  // 30s before restart
 bool displayAvailable = false;  // Track if display is working
+unsigned long lastDisplayUpdate = 0;  // Track last display refresh time for refresh rate control
 
 // ========== Mario Animation Variables ==========
 float mario_x = -15;
@@ -308,6 +343,9 @@ void saveSettings();
 void setupWebServer();
 void handleRoot();
 void handleSave();
+bool shouldShowColon();
+bool isAnimationActive();
+int getOptimalRefreshRate();
 void handleReset();
 void handleMetricsAPI();
 void handleExportConfig();
@@ -385,14 +423,20 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);
 
   // Attempt display initialization with retries
-  // Serial.println("Initializing display...");
   for (int attempt = 0; attempt < 3; attempt++) {
-    if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+    #if DISPLAY_TYPE == 1
+      // SH1106: Try 0x3C first (most common), then 0x3D
+      byte addrToTry = (attempt == 0) ? 0x3C : 0x3D;
+      display.begin(addrToTry);
+      display.setContrast(255);
       displayAvailable = true;
-      // Serial.println("Display initialized successfully");
       break;
-    }
-    // Serial.printf("Display init failed (attempt %d/3)\n", attempt + 1);
+    #else
+      if(display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
+        displayAvailable = true;
+        break;
+      }
+    #endif
     delay(500);
   }
 
@@ -400,7 +444,7 @@ void setup() {
     Serial.println("WARNING: Display not available, continuing without display");
   } else {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(DISPLAY_WHITE);
     display.setTextSize(1);
     display.setCursor(10, 20);
     display.println("PC Monitor");
@@ -424,6 +468,27 @@ void setup() {
   }
 
   if (!useManualWiFi) {
+    // Apply static IP configuration if enabled (before WiFiManager)
+    if (settings.useStaticIP) {
+      IPAddress local_IP, gateway_IP, subnet_IP, dns1_IP;
+
+      if (local_IP.fromString(settings.staticIP) &&
+          gateway_IP.fromString(settings.gateway) &&
+          subnet_IP.fromString(settings.subnet) &&
+          dns1_IP.fromString(settings.dns1)) {
+
+        Serial.println("Configuring Static IP...");
+        Serial.print("IP: "); Serial.println(local_IP);
+        Serial.print("Gateway: "); Serial.println(gateway_IP);
+        Serial.print("Subnet: "); Serial.println(subnet_IP);
+        Serial.print("DNS1: "); Serial.println(dns1_IP);
+
+        wifiManager.setSTAStaticIPConfig(local_IP, gateway_IP, subnet_IP, dns1_IP);
+      } else {
+        Serial.println("Invalid static IP configuration, using DHCP");
+      }
+    }
+
     // Use WiFiManager portal (default behavior)
     // Serial.println("\n\n========== WIFI MANAGER SETUP ==========");
     wifiManager.setConnectTimeout(30);
@@ -555,6 +620,28 @@ bool connectManualWiFi(const char* ssid, const char* password) {
   }
 
   WiFi.mode(WIFI_STA);
+
+  // Apply static IP configuration if enabled
+  if (settings.useStaticIP) {
+    IPAddress local_IP, gateway_IP, subnet_IP, dns1_IP, dns2_IP;
+
+    if (local_IP.fromString(settings.staticIP) &&
+        gateway_IP.fromString(settings.gateway) &&
+        subnet_IP.fromString(settings.subnet) &&
+        dns1_IP.fromString(settings.dns1)) {
+
+      // Try to parse DNS2, but it's optional
+      dns2_IP.fromString(settings.dns2);
+
+      Serial.println("Configuring Static IP for manual WiFi...");
+      if (!WiFi.config(local_IP, gateway_IP, subnet_IP, dns1_IP, dns2_IP)) {
+        Serial.println("Static IP configuration failed!");
+      }
+    } else {
+      Serial.println("Invalid static IP configuration, using DHCP");
+    }
+  }
+
   WiFi.begin(ssid, password);
 
   int attempts = 0;
@@ -608,6 +695,11 @@ void loadSettings() {
     settings.showClock = true;
     settings.displayRowMode = 0;  // Default: 5 rows with more spacing
     settings.useRpmKFormat = false;  // Default: Full RPM format (1800RPM)
+    settings.colonBlinkMode = 1;  // Default: Blink
+    settings.colonBlinkRate = 10;  // Default: 1.0 Hz (10 = 1.0Hz in tenths)
+    settings.refreshRateMode = 0;  // Default: Auto
+    settings.refreshRateHz = 10;  // Default manual rate: 10 Hz
+    settings.boostAnimationRefresh = true;  // Default: Enable smooth animation boost
     // Initialize all metrics with defaults
     for (int i = 0; i < MAX_METRICS; i++) {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
@@ -639,6 +731,11 @@ void loadSettings() {
     preferences.putBool("showClock", true);
     preferences.putInt("rowMode", 0);  // Default: 5 rows
     preferences.putBool("rpmKFormat", false);  // Default: Full RPM format
+    preferences.putUChar("colonBlink", 1);  // Default: Blink
+    preferences.putUChar("colonRate", 10);  // Default: 1.0 Hz
+    preferences.putUChar("refreshMode", 0);  // Default: Auto
+    preferences.putUChar("refreshHz", 10);  // Default: 10 Hz
+    preferences.putBool("boostAnim", true);  // Default: Enable animation boost
 
     // Initialize all metrics with default values
     uint8_t defaultOrder[MAX_METRICS];
@@ -663,6 +760,30 @@ void loadSettings() {
   settings.showClock = preferences.getBool("showClock", true);
   settings.displayRowMode = preferences.getInt("rowMode", 0);  // Default: 5 rows
   settings.useRpmKFormat = preferences.getBool("rpmKFormat", false);  // Default: Full RPM format
+  settings.colonBlinkMode = preferences.getUChar("colonBlink", 1);  // Default: Blink
+  settings.colonBlinkRate = preferences.getUChar("colonRate", 10);  // Default: 1.0 Hz
+  settings.refreshRateMode = preferences.getUChar("refreshMode", 0);  // Default: Auto
+  settings.refreshRateHz = preferences.getUChar("refreshHz", 10);  // Default: 10 Hz
+  settings.boostAnimationRefresh = preferences.getBool("boostAnim", true);  // Default: Enable
+
+  // Load network configuration
+  settings.useStaticIP = preferences.getBool("useStaticIP", false);  // Default: DHCP
+  String loadedIP = preferences.getString("staticIP", "192.168.1.100");
+  String loadedGW = preferences.getString("gateway", "192.168.1.1");
+  String loadedSN = preferences.getString("subnet", "255.255.255.0");
+  String loadedDNS1 = preferences.getString("dns1", "8.8.8.8");
+  String loadedDNS2 = preferences.getString("dns2", "8.8.4.4");
+
+  strncpy(settings.staticIP, loadedIP.c_str(), 15);
+  settings.staticIP[15] = '\0';
+  strncpy(settings.gateway, loadedGW.c_str(), 15);
+  settings.gateway[15] = '\0';
+  strncpy(settings.subnet, loadedSN.c_str(), 15);
+  settings.subnet[15] = '\0';
+  strncpy(settings.dns1, loadedDNS1.c_str(), 15);
+  settings.dns1[15] = '\0';
+  strncpy(settings.dns2, loadedDNS2.c_str(), 15);
+  settings.dns2[15] = '\0';
 
   // Note: Visibility is now determined by position (255 = hidden, 0-11 = visible)
 
@@ -769,6 +890,19 @@ void saveSettings() {
   preferences.putBool("showClock", settings.showClock);
   preferences.putInt("rowMode", settings.displayRowMode);
   preferences.putBool("rpmKFormat", settings.useRpmKFormat);
+  preferences.putUChar("colonBlink", settings.colonBlinkMode);
+  preferences.putUChar("colonRate", settings.colonBlinkRate);
+  preferences.putUChar("refreshMode", settings.refreshRateMode);
+  preferences.putUChar("refreshHz", settings.refreshRateHz);
+  preferences.putBool("boostAnim", settings.boostAnimationRefresh);
+
+  // Save network configuration
+  preferences.putBool("useStaticIP", settings.useStaticIP);
+  preferences.putString("staticIP", settings.staticIP);
+  preferences.putString("gateway", settings.gateway);
+  preferences.putString("subnet", settings.subnet);
+  preferences.putString("dns1", settings.dns1);
+  preferences.putString("dns2", settings.dns2);
 
   // Save metric display order
   preferences.putBytes("metricOrd", settings.metricOrder, MAX_METRICS);
@@ -837,6 +971,33 @@ void setupWebServer() {
   server.on("/metrics", handleMetricsAPI);  // New API endpoint
   server.on("/api/export", HTTP_GET, handleExportConfig);
   server.on("/api/import", HTTP_POST, handleImportConfig);
+
+  // OTA Firmware Update handlers
+  server.on("/update", HTTP_POST, []() {
+    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    delay(1000);
+    ESP.restart();
+  }, []() {
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      Serial.printf("Update: %s\n", upload.filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {  // Start with max available size
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      // Write uploaded data
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) {  // true = set size to current progress
+        Serial.printf("Update Success: %u bytes\nRebooting...\n", upload.totalSize);
+      } else {
+        Update.printError(Serial);
+      }
+    }
+  });
+
   server.begin();
 }
 
@@ -1139,7 +1300,7 @@ void handleRoot() {
         <h3>&#128348; Clock Settings</h3>
         <span class="section-arrow">&#9660;</span>
       </div>
-      <div id="clockSection" class="section-content">
+      <div id="clockSection" class="section-content collapsed">
         <div class="card">
         
         <label for="clockStyle">Idle Clock Style</label>
@@ -1166,12 +1327,90 @@ void handleRoot() {
         </div>
       </div>
 
+      <!-- Display Performance Section -->
+      <div class="section-header" onclick="toggleSection('displayPerfSection')">
+        <h3>&#9889; Display Performance</h3>
+        <span class="section-arrow">&#9660;</span>
+      </div>
+      <div id="displayPerfSection" class="section-content collapsed">
+        <div class="card">
+
+        <label for="colonBlinkMode">Clock Colon Display</label>
+        <select name="colonBlinkMode" id="colonBlinkMode">
+          <option value="0" )rawliteral" + String(settings.colonBlinkMode == 0 ? "selected" : "") + R"rawliteral(>Always On (Static)</option>
+          <option value="1" )rawliteral" + String(settings.colonBlinkMode == 1 ? "selected" : "") + R"rawliteral(>Blinking (Recommended)</option>
+          <option value="2" )rawliteral" + String(settings.colonBlinkMode == 2 ? "selected" : "") + R"rawliteral(>Always Off (Hidden)</option>
+        </select>
+
+        <label for="colonBlinkRate">Blink Rate (Hz)</label>
+        <input type="range" name="colonBlinkRate" id="colonBlinkRate"
+               min="5" max="50" step="5"
+               value=")rawliteral" + String(settings.colonBlinkRate) + R"rawliteral("
+               oninput="document.getElementById('blinkRateValue').textContent = (this.value / 10).toFixed(1)">
+        <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+          <span id="blinkRateValue">)rawliteral" + String(settings.colonBlinkRate / 10.0, 1) + R"rawliteral(</span> Hz
+        </span>
+        <p style="color: #888; font-size: 12px; margin-top: 5px;">
+          Blink frequency for clock colon. Higher values blink faster. 1.0 Hz (once per second) recommended.
+        </p>
+
+        <label for="refreshRateMode" style="margin-top: 15px;">Refresh Rate Mode</label>
+        <select name="refreshRateMode" id="refreshRateMode" onchange="toggleRefreshRateFields()">
+          <option value="0" )rawliteral" + String(settings.refreshRateMode == 0 ? "selected" : "") + R"rawliteral(>Auto (Recommended)</option>
+          <option value="1" )rawliteral" + String(settings.refreshRateMode == 1 ? "selected" : "") + R"rawliteral(>Manual</option>
+        </select>
+
+        <div id="refreshRateFields" style="display: )rawliteral" + String(settings.refreshRateMode == 1 ? "block" : "none") + R"rawliteral(;">
+          <label for="refreshRateHz">Manual Refresh Rate (Hz)</label>
+          <input type="range" name="refreshRateHz" id="refreshRateHz"
+                 min="1" max="60" step="1"
+                 value=")rawliteral" + String(settings.refreshRateHz) + R"rawliteral("
+                 oninput="document.getElementById('refreshRateValue').textContent = this.value">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="refreshRateValue">)rawliteral" + String(settings.refreshRateHz) + R"rawliteral(</span> Hz
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            Display updates per second. Higher = smoother but more power usage. Range: 1-60 Hz.
+          </p>
+        </div>
+
+        <div style="margin-top: 15px;">
+          <label style="display: flex; align-items: center; cursor: pointer;">
+            <input type="checkbox" name="boostAnim" id="boostAnim" style="margin-right: 10px;" )rawliteral" + String(settings.boostAnimationRefresh ? "checked" : "") + R"rawliteral(>
+            <span style="font-size: 14px;">
+              <strong>Enable Smooth Animations</strong> (Boost refresh during action)
+            </span>
+          </label>
+          <p style="color: #888; font-size: 12px; margin-top: 5px; margin-left: 30px;">
+            Temporarily increases refresh rate to 40 Hz when animations are active (Mario bouncing, invader shooting, explosions).
+            Returns to normal rate when idle. Provides silky-smooth motion during action while maintaining power efficiency.
+          </p>
+        </div>
+
+        <div style="margin-top: 15px; padding: 10px; background: #0f172a; border-radius: 5px; border-left: 3px solid #3b82f6;">
+          <p style="color: #93c5fd; font-size: 12px; margin: 0;">
+            <strong>&#128161; Auto Mode:</strong> Adapts refresh rate based on content.<br>
+            • Static Clocks: 2 Hz (saves power)<br>
+            • Idle Animations: 20 Hz (character movement)<br>
+            • Active Animations: 40 Hz (with boost enabled, during bounces/explosions)<br>
+            • PC Metrics: 10 Hz (balanced)<br>
+            <br>
+            <strong>Benefits:</strong> Blinking colon extends OLED life 2×. Dynamic refresh rates balance smoothness with power efficiency.
+          </p>
+        </div>
+
+        <p style="color: #fbbf24; font-size: 12px; margin-top: 10px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #fbbf24;">
+          <strong>&#9888; Note:</strong> Very low refresh rates (&lt;5 Hz) may cause visible flicker. Very high rates (&gt;30 Hz) increase heat and power consumption with minimal visual benefit.
+        </p>
+        </div>
+      </div>
+
       <!-- Timezone Section -->
       <div class="section-header" onclick="toggleSection('timezoneSection')">
         <h3>&#127760; Timezone</h3>
         <span class="section-arrow">&#9660;</span>
       </div>
-      <div id="timezoneSection" class="section-content">
+      <div id="timezoneSection" class="section-content collapsed">
         <div class="card">
         
         <label for="gmtOffset">GMT Offset (hours)</label>
@@ -1196,12 +1435,49 @@ void handleRoot() {
         </div>
       </div>
 
-      <!-- Display Layout Section -->
-      <div class="section-header" onclick="toggleSection('layoutSection')">
-        <h3>&#128202; Display Layout</h3>
+      <!-- Network Configuration Section -->
+      <div class="section-header" onclick="toggleSection('networkSection')">
+        <h3>&#127760; Network Configuration</h3>
         <span class="section-arrow">&#9660;</span>
       </div>
-      <div id="layoutSection" class="section-content">
+      <div id="networkSection" class="section-content collapsed">
+        <div class="card">
+
+        <label for="useStaticIP">IP Address Mode</label>
+        <select name="useStaticIP" id="useStaticIP" onchange="toggleStaticIPFields()">
+          <option value="0" )rawliteral" + String(!settings.useStaticIP ? "selected" : "") + R"rawliteral(>DHCP (Automatic)</option>
+          <option value="1" )rawliteral" + String(settings.useStaticIP ? "selected" : "") + R"rawliteral(>Static IP</option>
+        </select>
+
+        <div id="staticIPFields" style="display: )rawliteral" + String(settings.useStaticIP ? "block" : "none") + R"rawliteral(;">
+          <label for="staticIP" style="margin-top: 15px;">Static IP Address</label>
+          <input type="text" name="staticIP" id="staticIP" value=")rawliteral" + String(settings.staticIP) + R"rawliteral(" placeholder="192.168.1.100" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$">
+
+          <label for="gateway">Gateway</label>
+          <input type="text" name="gateway" id="gateway" value=")rawliteral" + String(settings.gateway) + R"rawliteral(" placeholder="192.168.1.1" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$">
+
+          <label for="subnet">Subnet Mask</label>
+          <input type="text" name="subnet" id="subnet" value=")rawliteral" + String(settings.subnet) + R"rawliteral(" placeholder="255.255.255.0" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$">
+
+          <label for="dns1">Primary DNS</label>
+          <input type="text" name="dns1" id="dns1" value=")rawliteral" + String(settings.dns1) + R"rawliteral(" placeholder="8.8.8.8" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$">
+
+          <label for="dns2">Secondary DNS</label>
+          <input type="text" name="dns2" id="dns2" value=")rawliteral" + String(settings.dns2) + R"rawliteral(" placeholder="8.8.4.4" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$">
+        </div>
+
+        <p style="color: #888; font-size: 12px; margin-top: 15px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #fbbf24;">
+          <strong>&#9888; Warning:</strong> Changing to Static IP will require a device restart. Make sure the IP address does not conflict with other devices on your network.
+        </p>
+        </div>
+      </div>
+
+      <!-- Display Layout Section -->
+      <div class="section-header" onclick="toggleSection('layoutSection')">
+        <h3>&#128202; Display Layout (PC Monitor only)</h3>
+        <span class="section-arrow">&#9660;</span>
+      </div>
+      <div id="layoutSection" class="section-content collapsed">
         <div class="card">
         <label for="clockPosition">Clock Position</label>
         <select name="clockPosition" id="clockPosition">
@@ -1243,10 +1519,10 @@ void handleRoot() {
 
       <!-- Visible Metrics Section -->
       <div class="section-header" onclick="toggleSection('metricsSection')">
-        <h3>&#128195; Visible Metrics</h3>
+        <h3>&#128195; Visible Metrics (PC Monitor only)</h3>
         <span class="section-arrow">&#9660;</span>
       </div>
-      <div id="metricsSection" class="section-content">
+      <div id="metricsSection" class="section-content collapsed">
         <div class="card">
         <p style="color: #888; font-size: 14px; margin-top: 0; text-align: left;">
           Select which metrics to show on OLED
@@ -1595,6 +1871,40 @@ void handleRoot() {
       </div>
     </form>
 
+    <!-- Firmware Update Section (Outside main form) -->
+    <div class="section-header" onclick="toggleSection('firmwareSection')">
+      <h3>&#128190; Firmware Update</h3>
+      <span class="section-arrow">&#9660;</span>
+    </div>
+    <div id="firmwareSection" class="section-content collapsed">
+      <div class="card">
+      <p style="color: #888; font-size: 14px; margin-top: 0;">
+        Upload new firmware (.bin file) to update the device
+      </p>
+
+      <form id="uploadForm" method="POST" action="/update" enctype="multipart/form-data" style="margin-top: 15px;">
+        <input type="file" id="firmwareFile" name="firmware" accept=".bin" style="width: 100%; padding: 10px; margin-bottom: 10px; background: #16213e; border: 1px solid #334155; color: #eee; border-radius: 5px;">
+
+        <button type="submit" style="width: 100%; padding: 14px; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 10px;">
+          &#128190; Upload & Update Firmware
+        </button>
+      </form>
+
+      <div id="uploadProgress" style="display: none; margin-top: 15px;">
+        <div style="background: #1e293b; border-radius: 8px; overflow: hidden; height: 30px; margin-bottom: 10px;">
+          <div id="progressBar" style="background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: #0f0c29; font-weight: bold; font-size: 14px;">
+            0%
+          </div>
+        </div>
+        <p id="uploadStatus" style="text-align: center; color: #00d4ff; font-size: 14px;">Uploading...</p>
+      </div>
+
+      <p style="color: #888; font-size: 12px; margin-top: 15px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #ef4444;">
+        <strong>&#9888; Warning:</strong> Do not disconnect power during firmware update! Device will restart automatically after update completes.
+      </p>
+      </div>
+    </div>
+
     <form action="/reset" method="GET" onsubmit="return confirm('Reset WiFi settings? Device will restart in AP mode.');">
       <button type="submit" class="reset-btn">&#128260; Reset WiFi Settings</button>
     </form>
@@ -1608,7 +1918,8 @@ void handleRoot() {
   <!-- Sticky Save Button -->
   <div class="sticky-save">
     <div class="container">
-      <button type="button" class="save-btn" onclick="document.querySelector('form[action=\'/save\']').submit()">&#128190; Save Settings</button>
+      <button type="button" class="save-btn" onclick="saveSettings()">&#128190; Save Settings</button>
+      <span id="saveMessage" style="margin-left: 15px; color: #4CAF50; font-weight: bold; display: none;">&#10004; Settings Saved!</span>
     </div>
   </div>
 
@@ -1619,6 +1930,26 @@ void handleRoot() {
       const arrow = event.currentTarget.querySelector('.section-arrow');
       content.classList.toggle('collapsed');
       arrow.classList.toggle('collapsed');
+
+      // Save expanded sections to localStorage
+      const isCollapsed = content.classList.contains('collapsed');
+      if (!isCollapsed) {
+        localStorage.setItem('lastExpandedSection', sectionId);
+      }
+    }
+
+    // Toggle static IP fields visibility
+    function toggleStaticIPFields() {
+      const useStaticIP = document.getElementById('useStaticIP').value === '1';
+      const staticIPFields = document.getElementById('staticIPFields');
+      staticIPFields.style.display = useStaticIP ? 'block' : 'none';
+    }
+
+    // Toggle refresh rate fields visibility
+    function toggleRefreshRateFields() {
+      const refreshRateMode = document.getElementById('refreshRateMode').value === '1';
+      const refreshRateFields = document.getElementById('refreshRateFields');
+      refreshRateFields.style.display = refreshRateMode ? 'block' : 'none';
     }
 
     // Export configuration
@@ -1672,6 +2003,153 @@ void handleRoot() {
       };
       reader.readAsText(file);
     }
+
+    // Save settings via AJAX (no page reload)
+    function saveSettings() {
+      const form = document.querySelector('form[action="/save"]');
+      const formData = new FormData(form);
+      const saveMessage = document.getElementById('saveMessage');
+      const saveBtn = document.querySelector('.save-btn');
+
+      // Convert FormData to URL-encoded format (ESP32 WebServer expects this)
+      const urlEncoded = new URLSearchParams(formData);
+
+      // Disable button during save
+      saveBtn.disabled = true;
+      saveBtn.textContent = '💾 Saving...';
+
+      fetch('/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: urlEncoded
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Show success message
+          saveMessage.style.display = 'inline';
+          setTimeout(() => {
+            saveMessage.style.display = 'none';
+          }, 3000);
+
+          // Re-enable button
+          saveBtn.disabled = false;
+          saveBtn.textContent = '💾 Save Settings';
+
+          // If network settings changed, warn user and reload
+          if (data.networkChanged) {
+            alert('Network settings changed! Device is restarting. You may need to reconnect to the new IP address.');
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 3000);
+          }
+        } else {
+          alert('Error saving settings');
+          saveBtn.disabled = false;
+          saveBtn.textContent = '💾 Save Settings';
+        }
+      })
+      .catch(err => {
+        alert('Error saving settings: ' + err);
+        saveBtn.disabled = false;
+        saveBtn.textContent = '💾 Save Settings';
+      });
+    }
+
+    // Firmware upload handler
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const fileInput = document.getElementById('firmwareFile');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select a firmware file (.bin)');
+        return;
+      }
+
+      if (!file.name.endsWith('.bin')) {
+        alert('Please select a valid .bin firmware file');
+        return;
+      }
+
+      // Show progress
+      document.getElementById('uploadProgress').style.display = 'block';
+      document.querySelector('#uploadForm button').disabled = true;
+
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.addEventListener('progress', function(e) {
+        if (e.lengthComputable) {
+          const percent = Math.round((e.loaded / e.total) * 100);
+          document.getElementById('progressBar').style.width = percent + '%';
+          document.getElementById('progressBar').textContent = percent + '%';
+          document.getElementById('uploadStatus').textContent = 'Uploading: ' + percent + '%';
+        }
+      });
+
+      // Handle completion
+      xhr.addEventListener('load', function() {
+        if (xhr.status === 200) {
+          document.getElementById('progressBar').style.width = '100%';
+          document.getElementById('progressBar').textContent = '100%';
+          document.getElementById('uploadStatus').textContent = 'Update successful! Device is rebooting...';
+          document.getElementById('uploadStatus').style.color = '#10b981';
+
+          // Redirect after delay
+          setTimeout(function() {
+            window.location.href = '/';
+          }, 8000);
+        } else {
+          document.getElementById('uploadStatus').textContent = 'Upload failed! Please try again.';
+          document.getElementById('uploadStatus').style.color = '#ef4444';
+          document.querySelector('#uploadForm button').disabled = false;
+        }
+      });
+
+      // Handle errors
+      xhr.addEventListener('error', function() {
+        document.getElementById('uploadStatus').textContent = 'Upload error! Please try again.';
+        document.getElementById('uploadStatus').style.color = '#ef4444';
+        document.querySelector('#uploadForm button').disabled = false;
+      });
+
+      // Send the file
+      const formData = new FormData();
+      formData.append('firmware', file);
+
+      xhr.open('POST', '/update');
+      xhr.send(formData);
+    });
+
+    // On page load, restore previously expanded section
+    window.addEventListener('DOMContentLoaded', function() {
+      // Initialize toggle fields
+      toggleStaticIPFields();
+      toggleRefreshRateFields();
+
+      // Restore last expanded section
+      const lastExpandedSection = localStorage.getItem('lastExpandedSection');
+      if (lastExpandedSection) {
+        const content = document.getElementById(lastExpandedSection);
+        const headers = document.querySelectorAll('.section-header');
+
+        if (content) {
+          // Find the corresponding header
+          for (let header of headers) {
+            if (header.getAttribute('onclick') && header.getAttribute('onclick').includes(lastExpandedSection)) {
+              const arrow = header.querySelector('.section-arrow');
+              content.classList.remove('collapsed');
+              if (arrow) arrow.classList.remove('collapsed');
+              break;
+            }
+          }
+        }
+      }
+    });
   </script>
 </body>
 </html>
@@ -1717,6 +2195,51 @@ void handleSave() {
 
   // Save RPM format preference
   settings.useRpmKFormat = server.hasArg("rpmKFormat");
+
+  // Save colon blink settings
+  if (server.hasArg("colonBlinkMode")) {
+    settings.colonBlinkMode = server.arg("colonBlinkMode").toInt();
+  }
+  if (server.hasArg("colonBlinkRate")) {
+    settings.colonBlinkRate = server.arg("colonBlinkRate").toInt();
+  }
+
+  // Save refresh rate settings
+  if (server.hasArg("refreshRateMode")) {
+    settings.refreshRateMode = server.arg("refreshRateMode").toInt();
+  }
+  if (server.hasArg("refreshRateHz")) {
+    settings.refreshRateHz = server.arg("refreshRateHz").toInt();
+  }
+
+  // Save animation boost checkbox
+  settings.boostAnimationRefresh = server.hasArg("boostAnim");
+
+  // Save network configuration
+  bool previousStaticIPSetting = settings.useStaticIP;
+  if (server.hasArg("useStaticIP")) {
+    settings.useStaticIP = server.arg("useStaticIP").toInt() == 1;
+  }
+  if (server.hasArg("staticIP")) {
+    strncpy(settings.staticIP, server.arg("staticIP").c_str(), 15);
+    settings.staticIP[15] = '\0';
+  }
+  if (server.hasArg("gateway")) {
+    strncpy(settings.gateway, server.arg("gateway").c_str(), 15);
+    settings.gateway[15] = '\0';
+  }
+  if (server.hasArg("subnet")) {
+    strncpy(settings.subnet, server.arg("subnet").c_str(), 15);
+    settings.subnet[15] = '\0';
+  }
+  if (server.hasArg("dns1")) {
+    strncpy(settings.dns1, server.arg("dns1").c_str(), 15);
+    settings.dns1[15] = '\0';
+  }
+  if (server.hasArg("dns2")) {
+    strncpy(settings.dns2, server.arg("dns2").c_str(), 15);
+    settings.dns2[15] = '\0';
+  }
 
   // Save custom labels
   for (int i = 0; i < MAX_METRICS; i++) {
@@ -1857,29 +2380,20 @@ void handleSave() {
   // Reset Space Ship animation state when switching modes
   ship_state = SHIP_PATROL;
   ship_x = 64;  // Center of screen
-  
-  String html = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta http-equiv="refresh" content="2;url=/">
-  <title>Settings Saved</title>
-  <style>
-    body { font-family: Arial; background: #1a1a2e; color: #00d4ff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-    .msg { text-align: center; }
-    h1 { font-size: 48px; }
-  </style>
-</head>
-<body>
-  <div class="msg">
-    <h1>&#9989;</h1>
-    <p>Settings saved! Redirecting...</p>
-  </div>
-</body>
-</html>
-)rawliteral";
-  
-  server.send(200, "text/html", html);
+
+  // Check if network settings changed - if so, restart is required
+  bool networkChanged = (previousStaticIPSetting != settings.useStaticIP);
+
+  // Return JSON response for AJAX
+  String json = "{\"success\":true,\"networkChanged\":" + String(networkChanged ? "true" : "false") + "}";
+  server.send(200, "application/json", json);
+
+  // If network settings changed, restart after a delay
+  if (networkChanged) {
+    delay(1000);  // Give time for response to be sent
+    Serial.println("Network settings changed, restarting...");
+    ESP.restart();
+  }
 }
 
 void handleReset() {
@@ -2143,7 +2657,7 @@ void displaySetupInstructions() {
   
   display.setCursor(20, 0);
   display.println("WiFi Setup");
-  display.drawLine(0, 10, 128, 10, SSD1306_WHITE);
+  display.drawLine(0, 10, 128, 10, DISPLAY_WHITE);
   
   display.setCursor(0, 14);
   display.println("1.Connect to WiFi:");
@@ -2188,7 +2702,7 @@ void displayConnected() {
   display.setCursor(ip_x, 30);
   display.println(ip);
   
-  display.drawLine(0, 42, 128, 42, SSD1306_WHITE);
+  display.drawLine(0, 42, 128, 42, DISPLAY_WHITE);
   
   display.setCursor(4, 48);
   display.println("Open IP in browser");
@@ -2265,29 +2779,40 @@ void loop() {
   stats.online = (millis() - lastReceived) < TIMEOUT;
   metricData.online = stats.online;  // Sync both for backward compatibility
 
-  if (displayAvailable) {
-    display.clearDisplay();
+  // ========== Adaptive Refresh Rate Control ==========
+  // Calculate optimal refresh interval based on settings
+  int refreshHz = getOptimalRefreshRate();
+  unsigned long refreshInterval = 1000 / refreshHz;  // Convert Hz to milliseconds
 
-    if (metricData.online) {
-      displayStats();
-    } else {
-      if (settings.clockStyle == 0) {
-        displayClockWithMario();
-      } else if (settings.clockStyle == 1) {
-        displayStandardClock();
-      } else if (settings.clockStyle == 2) {
-        displayLargeClock();
-      } else if (settings.clockStyle == 3) {
-        displayClockWithInvader();
-      } else if (settings.clockStyle == 4) {
-        displayClockWithShip();
+  // Check if it's time to update the display
+  unsigned long now = millis();
+  if (now - lastDisplayUpdate >= refreshInterval) {
+    if (displayAvailable) {
+      display.clearDisplay();
+
+      if (metricData.online) {
+        displayStats();
+      } else {
+        if (settings.clockStyle == 0) {
+          displayClockWithMario();
+        } else if (settings.clockStyle == 1) {
+          displayStandardClock();
+        } else if (settings.clockStyle == 2) {
+          displayLargeClock();
+        } else if (settings.clockStyle == 3) {
+          displayClockWithInvader();
+        } else if (settings.clockStyle == 4) {
+          displayClockWithShip();
+        }
       }
-    }
 
-    display.display();
+      display.display();
+      lastDisplayUpdate = now;
+    }
   }
 
-  delay(30);
+  // Small delay to prevent CPU spinning, much shorter than before
+  delay(5);  // 5ms delay allows up to 200 Hz theoretical max, CPU usage ~2-5%
 }
 
 // Helper function to trim trailing whitespace (only from Python names, not custom labels)
@@ -2307,6 +2832,115 @@ void convertCaretToSpaces(char* str) {
     if (str[i] == '^') {
       str[i] = ' ';
     }
+  }
+}
+
+// ========== Colon Blink Helper ==========
+// Determines whether to show the colon based on blink settings
+bool shouldShowColon() {
+  if (settings.colonBlinkMode == 0) {
+    return true;  // Always on
+  } else if (settings.colonBlinkMode == 2) {
+    return false;  // Always off
+  } else {
+    // Blink mode - calculate blink state based on rate
+    // colonBlinkRate is in tenths of Hz (10 = 1Hz, 20 = 2Hz, 5 = 0.5Hz)
+    float hz = settings.colonBlinkRate / 10.0;
+    unsigned long period_ms = (unsigned long)(1000.0 / hz);
+    return (millis() % period_ms) < (period_ms / 2);  // 50% duty cycle
+  }
+}
+
+// ========== Animation Detection Helper ==========
+// Detects if any animation is currently active for refresh rate boosting
+bool isAnimationActive() {
+  // Only check for animations in clock mode (when offline)
+  if (metricData.online) {
+    return false;  // No animations in metrics mode
+  }
+
+  // Check Mario clock animations (clockStyle == 0)
+  if (settings.clockStyle == 0) {
+    // Check if Mario is jumping
+    if (mario_state == MARIO_JUMPING) {
+      return true;
+    }
+    // Check if any digit is bouncing (digit_offset_y != 0)
+    for (int i = 0; i < 5; i++) {
+      if (digit_offset_y[i] != 0.0) {
+        return true;
+      }
+    }
+  }
+
+  // Check Space Invader clock animations (clockStyle == 3)
+  if (settings.clockStyle == 3) {
+    // Check if invader is in action state (not just patrolling)
+    if (invader_state != INVADER_PATROL) {
+      return true;
+    }
+    // Check if laser is active
+    if (invader_laser.active) {
+      return true;
+    }
+    // Check if explosion fragments are active
+    if (!allInvaderFragmentsInactive()) {
+      return true;
+    }
+  }
+
+  // Check Space Ship clock animations (clockStyle == 4)
+  if (settings.clockStyle == 4) {
+    // Check if ship is in action state (not just patrolling)
+    if (ship_state != SHIP_PATROL) {
+      return true;
+    }
+    // Check if laser is active
+    if (ship_laser.active) {
+      return true;
+    }
+    // Check if explosion fragments are active
+    for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
+      if (ship_fragments[i].active) {
+        return true;
+      }
+    }
+  }
+
+  // Standard and Large clocks (clockStyle 1 & 2) have no animations
+  return false;
+}
+
+// ========== Optimal Refresh Rate Helper ==========
+// Returns optimal refresh rate in Hz based on current display mode
+int getOptimalRefreshRate() {
+  if (settings.refreshRateMode == 1) {
+    // Manual mode - use user-specified rate
+    return settings.refreshRateHz;
+  }
+
+  // Auto mode - adaptive based on content
+  if (!metricData.online) {
+    // Clock mode (offline)
+
+    // Check for animation boost (smooth animations during active motion)
+    if (settings.boostAnimationRefresh && isAnimationActive()) {
+      // Animation is happening - boost to 40 Hz for silky smooth motion!
+      // (Mario bouncing, invader shooting, explosion fragments, etc.)
+      return 40;
+    }
+
+    if (settings.clockStyle == 0 || settings.clockStyle == 3 || settings.clockStyle == 4) {
+      // Animated clocks (Mario, Space Invaders, Space Ship)
+      // Base rate when idle (patrolling/walking but not bouncing/shooting)
+      return 20;  // 20 Hz keeps character movement smooth
+    } else {
+      // Static clocks (Standard, Large)
+      return 2;  // 2 Hz is plenty for clock that updates once/second
+    }
+  } else {
+    // Metrics mode (online)
+    return 10;  // 10 Hz for PC stats (updates every 500ms from Python)
   }
 }
 
@@ -2684,17 +3318,17 @@ void displayStatsProgressBars() {
     if (strcmp(m.unit, "%") == 0) {
       int barWidth = map(m.value, 0, 100, 0, 56);
       barWidth = constrain(barWidth, 0, 56);
-      display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+      display.drawRect(70, currentY, 58, 8, DISPLAY_WHITE);
       if (barWidth > 0) {
-        display.fillRect(71, currentY + 1, barWidth, 6, SSD1306_WHITE);
+        display.fillRect(71, currentY + 1, barWidth, 6, DISPLAY_WHITE);
       }
     } else if (strcmp(m.unit, "C") == 0) {
       // Temperature bar (0-100C scale)
       int barWidth = map(m.value, 0, 100, 0, 56);
       barWidth = constrain(barWidth, 0, 56);
-      display.drawRect(70, currentY, 58, 8, SSD1306_WHITE);
+      display.drawRect(70, currentY, 58, 8, DISPLAY_WHITE);
       if (barWidth > 0) {
-        display.fillRect(71, currentY + 1, barWidth, 6, SSD1306_WHITE);
+        display.fillRect(71, currentY + 1, barWidth, 6, DISPLAY_WHITE);
       }
     }
 
@@ -2703,10 +3337,15 @@ void displayStatsProgressBars() {
 
   // No metrics shown edge case
   if (sortedCount == 0) {
-    display.setCursor(0, 24);
-    display.print("No metrics");
-    display.setCursor(0, 36);
-    display.print("selected");
+    display.setTextSize(1);
+    display.setCursor(0, 10);
+    display.print("Go to:");
+    display.setCursor(0, 22);
+    display.print(WiFi.localIP().toString());
+    display.setCursor(0, 34);
+    display.print("to configure");
+    display.setCursor(0, 46);
+    display.print("metrics");
   }
 }
 
@@ -2827,8 +3466,15 @@ void displayStatsCompactGrid() {
 
   // No metrics edge case
   if (visibleCount == 0) {
-    display.setCursor(20, 28);
-    display.print("No metrics");
+    display.setTextSize(1);
+    display.setCursor(0, 10);
+    display.print("Go to:");
+    display.setCursor(0, 22);
+    display.print(WiFi.localIP().toString());
+    display.setCursor(0, 34);
+    display.print("to configure");
+    display.setCursor(0, 46);
+    display.print("metrics");
   }
 }
 
@@ -2908,11 +3554,11 @@ void drawProgressBar(int x, int y, int width, Metric* m) {
   int fillWidth = map(valueInRange, 0, range, 0, actualWidth - 2);
 
   // Draw bar outline (8px tall, full row height)
-  display.drawRect(actualX, y, actualWidth, 8, SSD1306_WHITE);
+  display.drawRect(actualX, y, actualWidth, 8, DISPLAY_WHITE);
 
   // Fill bar based on value
   if (fillWidth > 0) {
-    display.fillRect(actualX + 1, y + 1, fillWidth, 6, SSD1306_WHITE);
+    display.fillRect(actualX + 1, y + 1, fillWidth, 6, DISPLAY_WHITE);
   }
 }
 
@@ -2947,8 +3593,10 @@ void displayStandardClock() {
     displayHour = displayHour % 12;
     if (displayHour == 0) displayHour = 12;
   }
-  
-  sprintf(timeStr, "%02d:%02d", displayHour, timeinfo.tm_min);
+
+  // Use blinking colon based on settings
+  char separator = shouldShowColon() ? ':' : ' ';
+  sprintf(timeStr, "%02d%c%02d", displayHour, separator, timeinfo.tm_min);
   
   // Center time
   int time_width = 5 * 18;  // 5 chars * 18px
@@ -3018,7 +3666,9 @@ void displayLargeClock() {
   // Large time display - size 4 (24px per char)
   display.setTextSize(4);
   char timeStr[6];
-  sprintf(timeStr, "%02d:%02d", displayHour, timeinfo.tm_min);
+  // Use blinking colon based on settings
+  char separator = shouldShowColon() ? ':' : ' ';
+  sprintf(timeStr, "%02d%c%02d", displayHour, separator, timeinfo.tm_min);
   
   // Center time: 5 chars * 24px = 120px, centered in 128px
   int time_x = (SCREEN_WIDTH - 120) / 2;
@@ -3076,11 +3726,11 @@ void updateDigitBounce() {
 
 void drawTimeWithBounce() {
   display.setTextSize(3);
-  
+
   char digits[5];
   digits[0] = '0' + (displayed_hour / 10);
   digits[1] = '0' + (displayed_hour % 10);
-  digits[2] = ':';
+  digits[2] = shouldShowColon() ? ':' : ' ';  // Blinking colon
   digits[3] = '0' + (displayed_min / 10);
   digits[4] = '0' + (displayed_min % 10);
   
@@ -3335,38 +3985,38 @@ void drawMario(int x, int y, bool facingRight, int frame, bool jumping) {
   int sy = y - 10;
 
   if (jumping) {
-    display.fillRect(sx + 2, sy, 4, 3, SSD1306_WHITE);
-    display.fillRect(sx + 2, sy + 3, 4, 3, SSD1306_WHITE);
-    display.drawPixel(sx + 1, sy + 2, SSD1306_WHITE);
-    display.drawPixel(sx + 6, sy + 2, SSD1306_WHITE);
-    display.drawPixel(sx + 0, sy + 1, SSD1306_WHITE);
-    display.drawPixel(sx + 7, sy + 1, SSD1306_WHITE);
-    display.fillRect(sx + 2, sy + 6, 2, 3, SSD1306_WHITE);
-    display.fillRect(sx + 4, sy + 6, 2, 3, SSD1306_WHITE);
+    display.fillRect(sx + 2, sy, 4, 3, DISPLAY_WHITE);
+    display.fillRect(sx + 2, sy + 3, 4, 3, DISPLAY_WHITE);
+    display.drawPixel(sx + 1, sy + 2, DISPLAY_WHITE);
+    display.drawPixel(sx + 6, sy + 2, DISPLAY_WHITE);
+    display.drawPixel(sx + 0, sy + 1, DISPLAY_WHITE);
+    display.drawPixel(sx + 7, sy + 1, DISPLAY_WHITE);
+    display.fillRect(sx + 2, sy + 6, 2, 3, DISPLAY_WHITE);
+    display.fillRect(sx + 4, sy + 6, 2, 3, DISPLAY_WHITE);
   } else {
-    display.fillRect(sx + 2, sy, 4, 3, SSD1306_WHITE);
+    display.fillRect(sx + 2, sy, 4, 3, DISPLAY_WHITE);
     if (facingRight) {
-      display.drawPixel(sx + 6, sy + 1, SSD1306_WHITE);
+      display.drawPixel(sx + 6, sy + 1, DISPLAY_WHITE);
     } else {
-      display.drawPixel(sx + 1, sy + 1, SSD1306_WHITE);
+      display.drawPixel(sx + 1, sy + 1, DISPLAY_WHITE);
     }
 
-    display.fillRect(sx + 2, sy + 3, 4, 3, SSD1306_WHITE);
+    display.fillRect(sx + 2, sy + 3, 4, 3, DISPLAY_WHITE);
 
     if (facingRight) {
-      display.drawPixel(sx + 1, sy + 4, SSD1306_WHITE);
-      display.drawPixel(sx + 6, sy + 3 + (frame % 2), SSD1306_WHITE);
+      display.drawPixel(sx + 1, sy + 4, DISPLAY_WHITE);
+      display.drawPixel(sx + 6, sy + 3 + (frame % 2), DISPLAY_WHITE);
     } else {
-      display.drawPixel(sx + 6, sy + 4, SSD1306_WHITE);
-      display.drawPixel(sx + 1, sy + 3 + (frame % 2), SSD1306_WHITE);
+      display.drawPixel(sx + 6, sy + 4, DISPLAY_WHITE);
+      display.drawPixel(sx + 1, sy + 3 + (frame % 2), DISPLAY_WHITE);
     }
 
     if (frame == 0) {
-      display.fillRect(sx + 2, sy + 6, 2, 3, SSD1306_WHITE);
-      display.fillRect(sx + 4, sy + 6, 2, 3, SSD1306_WHITE);
+      display.fillRect(sx + 2, sy + 6, 2, 3, DISPLAY_WHITE);
+      display.fillRect(sx + 4, sy + 6, 2, 3, DISPLAY_WHITE);
     } else {
-      display.fillRect(sx + 1, sy + 6, 2, 3, SSD1306_WHITE);
-      display.fillRect(sx + 5, sy + 6, 2, 3, SSD1306_WHITE);
+      display.fillRect(sx + 1, sy + 6, 2, 3, DISPLAY_WHITE);
+      display.fillRect(sx + 5, sy + 6, 2, 3, DISPLAY_WHITE);
     }
   }
 }
@@ -3383,40 +4033,40 @@ void drawInvader(int x, int y, int frame) {
   int sy = y - 4;
 
   // Antennae
-  display.drawPixel(sx + 2, sy, SSD1306_WHITE);
-  display.drawPixel(sx + 8, sy, SSD1306_WHITE);
+  display.drawPixel(sx + 2, sy, DISPLAY_WHITE);
+  display.drawPixel(sx + 8, sy, DISPLAY_WHITE);
 
   // Head
-  display.fillRect(sx + 3, sy + 1, 5, 1, SSD1306_WHITE);
+  display.fillRect(sx + 3, sy + 1, 5, 1, DISPLAY_WHITE);
 
   // Body
-  display.fillRect(sx + 2, sy + 2, 7, 1, SSD1306_WHITE);
-  display.fillRect(sx + 1, sy + 3, 9, 1, SSD1306_WHITE);
+  display.fillRect(sx + 2, sy + 2, 7, 1, DISPLAY_WHITE);
+  display.fillRect(sx + 1, sy + 3, 9, 1, DISPLAY_WHITE);
 
   // Eyes
-  display.fillRect(sx, sy + 4, 3, 1, SSD1306_WHITE);
-  display.drawPixel(sx + 5, sy + 4, SSD1306_WHITE);
-  display.fillRect(sx + 8, sy + 4, 3, 1, SSD1306_WHITE);
+  display.fillRect(sx, sy + 4, 3, 1, DISPLAY_WHITE);
+  display.drawPixel(sx + 5, sy + 4, DISPLAY_WHITE);
+  display.fillRect(sx + 8, sy + 4, 3, 1, DISPLAY_WHITE);
 
   // Mouth
-  display.fillRect(sx, sy + 5, 11, 1, SSD1306_WHITE);
+  display.fillRect(sx, sy + 5, 11, 1, DISPLAY_WHITE);
 
   // Legs (frame-dependent)
   if (frame == 0) {
     // Legs down
-    display.drawPixel(sx + 1, sy + 6, SSD1306_WHITE);
-    display.fillRect(sx + 4, sy + 6, 3, 1, SSD1306_WHITE);
-    display.drawPixel(sx + 9, sy + 6, SSD1306_WHITE);
-    display.fillRect(sx, sy + 7, 2, 1, SSD1306_WHITE);
-    display.drawPixel(sx + 5, sy + 7, SSD1306_WHITE);
-    display.fillRect(sx + 9, sy + 7, 2, 1, SSD1306_WHITE);
+    display.drawPixel(sx + 1, sy + 6, DISPLAY_WHITE);
+    display.fillRect(sx + 4, sy + 6, 3, 1, DISPLAY_WHITE);
+    display.drawPixel(sx + 9, sy + 6, DISPLAY_WHITE);
+    display.fillRect(sx, sy + 7, 2, 1, DISPLAY_WHITE);
+    display.drawPixel(sx + 5, sy + 7, DISPLAY_WHITE);
+    display.fillRect(sx + 9, sy + 7, 2, 1, DISPLAY_WHITE);
   } else {
     // Legs up
-    display.fillRect(sx + 2, sy + 6, 7, 1, SSD1306_WHITE);
-    display.drawPixel(sx + 1, sy + 7, SSD1306_WHITE);
-    display.drawPixel(sx + 9, sy + 7, SSD1306_WHITE);
-    display.fillRect(sx, sy + 8, 2, 1, SSD1306_WHITE);
-    display.fillRect(sx + 9, sy + 8, 2, 1, SSD1306_WHITE);
+    display.fillRect(sx + 2, sy + 6, 7, 1, DISPLAY_WHITE);
+    display.drawPixel(sx + 1, sy + 7, DISPLAY_WHITE);
+    display.drawPixel(sx + 9, sy + 7, DISPLAY_WHITE);
+    display.fillRect(sx, sy + 8, 2, 1, DISPLAY_WHITE);
+    display.fillRect(sx + 9, sy + 8, 2, 1, DISPLAY_WHITE);
   }
 }
 
@@ -3520,16 +4170,16 @@ void drawInvaderLaser(Laser* laser) {
   for (int i = 0; i < (int)laser->length; i += 2) {
     int ly = (int)laser->y - i;  // Subtract to go upward
     if (ly >= 0 && ly < SCREEN_HEIGHT) {
-      display.drawPixel((int)laser->x, ly, SSD1306_WHITE);
-      display.drawPixel((int)laser->x + 1, ly, SSD1306_WHITE);
+      display.drawPixel((int)laser->x, ly, DISPLAY_WHITE);
+      display.drawPixel((int)laser->x + 1, ly, DISPLAY_WHITE);
     }
   }
 
   // Impact flash at end (top of beam)
   int end_y = (int)(laser->y - laser->length);
   if (end_y >= 0 && end_y < SCREEN_HEIGHT) {
-    display.drawPixel((int)laser->x - 1, end_y, SSD1306_WHITE);
-    display.drawPixel((int)laser->x + 2, end_y, SSD1306_WHITE);
+    display.drawPixel((int)laser->x - 1, end_y, DISPLAY_WHITE);
+    display.drawPixel((int)laser->x + 2, end_y, DISPLAY_WHITE);
   }
 }
 
@@ -3613,7 +4263,7 @@ void drawInvaderFragments() {
   for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
     if (invader_fragments[i].active) {
       display.fillRect((int)invader_fragments[i].x,
-                      (int)invader_fragments[i].y, 2, 2, SSD1306_WHITE);
+                      (int)invader_fragments[i].y, 2, 2, DISPLAY_WHITE);
     }
   }
 }
@@ -3745,7 +4395,7 @@ void displayClockWithInvader() {
   char digits[5];
   digits[0] = '0' + (displayed_hour / 10);
   digits[1] = '0' + (displayed_hour % 10);
-  digits[2] = ':';
+  digits[2] = shouldShowColon() ? ':' : ' ';  // Blinking colon
   digits[3] = '0' + (displayed_min / 10);
   digits[4] = '0' + (displayed_min % 10);
 
@@ -3779,29 +4429,29 @@ void drawShip(int x, int y, int frame) {
   int sy = y - 3;
 
   // Top point
-  display.drawPixel(sx + 5, sy, SSD1306_WHITE);
+  display.drawPixel(sx + 5, sy, DISPLAY_WHITE);
 
   // Upper body
-  display.fillRect(sx + 4, sy + 1, 3, 1, SSD1306_WHITE);
-  display.fillRect(sx + 3, sy + 2, 5, 1, SSD1306_WHITE);
+  display.fillRect(sx + 4, sy + 1, 3, 1, DISPLAY_WHITE);
+  display.fillRect(sx + 3, sy + 2, 5, 1, DISPLAY_WHITE);
 
   // Main body
-  display.fillRect(sx + 1, sy + 3, 9, 1, SSD1306_WHITE);
-  display.fillRect(sx, sy + 4, 11, 1, SSD1306_WHITE);
+  display.fillRect(sx + 1, sy + 3, 9, 1, DISPLAY_WHITE);
+  display.fillRect(sx, sy + 4, 11, 1, DISPLAY_WHITE);
 
   // Wings - animate between two frames for thruster effect
   if (frame == 0) {
     // Wings down
-    display.fillRect(sx, sy + 5, 3, 1, SSD1306_WHITE);
-    display.fillRect(sx + 8, sy + 5, 3, 1, SSD1306_WHITE);
-    display.drawPixel(sx, sy + 6, SSD1306_WHITE);
-    display.drawPixel(sx + 10, sy + 6, SSD1306_WHITE);
+    display.fillRect(sx, sy + 5, 3, 1, DISPLAY_WHITE);
+    display.fillRect(sx + 8, sy + 5, 3, 1, DISPLAY_WHITE);
+    display.drawPixel(sx, sy + 6, DISPLAY_WHITE);
+    display.drawPixel(sx + 10, sy + 6, DISPLAY_WHITE);
   } else {
     // Wings up (thruster pulse)
-    display.fillRect(sx + 1, sy + 5, 2, 1, SSD1306_WHITE);
-    display.fillRect(sx + 8, sy + 5, 2, 1, SSD1306_WHITE);
-    display.drawPixel(sx + 1, sy + 6, SSD1306_WHITE);
-    display.drawPixel(sx + 9, sy + 6, SSD1306_WHITE);
+    display.fillRect(sx + 1, sy + 5, 2, 1, DISPLAY_WHITE);
+    display.fillRect(sx + 8, sy + 5, 2, 1, DISPLAY_WHITE);
+    display.drawPixel(sx + 1, sy + 6, DISPLAY_WHITE);
+    display.drawPixel(sx + 9, sy + 6, DISPLAY_WHITE);
   }
 }
 
@@ -3905,16 +4555,16 @@ void drawShipLaser(Laser* laser) {
   for (int i = 0; i < (int)laser->length; i += 2) {
     int ly = (int)laser->y - i;  // Subtract to go upward
     if (ly >= 0 && ly < SCREEN_HEIGHT) {
-      display.drawPixel((int)laser->x, ly, SSD1306_WHITE);
-      display.drawPixel((int)laser->x + 1, ly, SSD1306_WHITE);
+      display.drawPixel((int)laser->x, ly, DISPLAY_WHITE);
+      display.drawPixel((int)laser->x + 1, ly, DISPLAY_WHITE);
     }
   }
 
   // Impact flash at end (top of beam)
   int end_y = (int)(laser->y - laser->length);
   if (end_y >= 0 && end_y < SCREEN_HEIGHT) {
-    display.drawPixel((int)laser->x - 1, end_y, SSD1306_WHITE);
-    display.drawPixel((int)laser->x + 2, end_y, SSD1306_WHITE);
+    display.drawPixel((int)laser->x - 1, end_y, DISPLAY_WHITE);
+    display.drawPixel((int)laser->x + 2, end_y, DISPLAY_WHITE);
   }
 }
 
@@ -3998,7 +4648,7 @@ void drawShipFragments() {
   for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
     if (ship_fragments[i].active) {
       display.fillRect((int)ship_fragments[i].x,
-                      (int)ship_fragments[i].y, 2, 2, SSD1306_WHITE);
+                      (int)ship_fragments[i].y, 2, 2, DISPLAY_WHITE);
     }
   }
 }
@@ -4127,7 +4777,7 @@ void displayClockWithShip() {
   char digits[5];
   digits[0] = '0' + (displayed_hour / 10);
   digits[1] = '0' + (displayed_hour % 10);
-  digits[2] = ':';
+  digits[2] = shouldShowColon() ? ':' : ' ';  // Blinking colon
   digits[3] = '0' + (displayed_min / 10);
   digits[4] = '0' + (displayed_min % 10);
 
