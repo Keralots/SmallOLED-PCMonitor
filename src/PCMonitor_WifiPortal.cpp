@@ -158,6 +158,16 @@ struct Settings {
   uint8_t refreshRateHz;     // Manual refresh rate 1-60 Hz (only used if refreshRateMode = 1)
   bool boostAnimationRefresh; // Enable smooth animations by temporarily boosting refresh rate during active animations
 
+  // Mario clock bounce settings
+  uint8_t marioBounceHeight; // Bounce height in tenths (e.g., 35 = 3.5, range: 10-80)
+  uint8_t marioBounceSpeed;  // Fall speed in tenths (e.g., 6 = 0.6, range: 2-15)
+
+  // Pong clock settings
+  uint8_t pongBallSpeed;       // Ball speed (e.g., 18 = 1.125 px/frame, range: 10-30)
+  uint8_t pongBounceStrength;  // Spring strength in tenths (e.g., 3 = 0.3, range: 1-8)
+  uint8_t pongBounceDamping;   // Damping in hundredths (e.g., 85 = 0.85, range: 50-95)
+  uint8_t pongPaddleWidth;     // Paddle width in pixels (e.g., 20, range: 10-40)
+
   // Network configuration
   bool useStaticIP;      // true = Static IP, false = DHCP (default)
   char staticIP[16];     // Static IP address (e.g., "192.168.1.100")
@@ -431,7 +441,7 @@ const int BREAKOUT_PADDLE_Y = 60;           // Fixed Y at bottom
 const int BREAKOUT_PADDLE_HEIGHT = 2;
 const int PONG_PLAY_AREA_TOP = 10;          // Above digits (digits at Y=16)
 const int PONG_PLAY_AREA_BOTTOM = 58;       // Above paddle
-const int PONG_BALL_SPEED_NORMAL = 18;      // 1.125 px/frame
+// Ball speed now configured via settings.pongBallSpeed (default: 18)
 const int PONG_BALL_SPEED_BOOST = 32;       // 2.0 px/frame
 const float PONG_FRAG_SPEED = 2.0;
 const float PONG_FRAG_GRAVITY = 0.4;        // Fragment gravity
@@ -475,6 +485,7 @@ void calculateTargetDigits(int hour, int min);
 void advanceDisplayedTime();
 void updateSpecificDigit(int digitIndex, int newValue);
 void updateDigitBounce();
+void updateDigitBouncePong();  // Spring-based physics for Pong clock
 void triggerDigitBounce(int digitIndex);
 void drawTimeWithBounce();
 void applyTimezone();
@@ -832,6 +843,12 @@ void loadSettings() {
     settings.refreshRateMode = 0;  // Default: Auto
     settings.refreshRateHz = 10;  // Default manual rate: 10 Hz
     settings.boostAnimationRefresh = true;  // Default: Enable smooth animation boost
+    settings.marioBounceHeight = 35;  // Default: 3.5 (35 = 3.5 in tenths)
+    settings.marioBounceSpeed = 6;   // Default: 0.6 (6 = 0.6 in tenths)
+    settings.pongBallSpeed = 18;      // Default: 18 (1.125 px/frame)
+    settings.pongBounceStrength = 3;  // Default: 0.3 (3 = 0.3 in tenths)
+    settings.pongBounceDamping = 85;  // Default: 0.85 (85 = 0.85 in hundredths)
+    settings.pongPaddleWidth = 20;    // Default: 20 pixels
     // Initialize all metrics with defaults
     for (int i = 0; i < MAX_METRICS; i++) {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
@@ -868,6 +885,12 @@ void loadSettings() {
     preferences.putUChar("refreshMode", 0);  // Default: Auto
     preferences.putUChar("refreshHz", 10);  // Default: 10 Hz
     preferences.putBool("boostAnim", true);  // Default: Enable animation boost
+    preferences.putUChar("marioBnceH", 35);  // Default: 3.5
+    preferences.putUChar("marioBnceS", 6);   // Default: 0.6
+    preferences.putUChar("pongBallSpd", 18);  // Default: 18
+    preferences.putUChar("pongBncStr", 3);   // Default: 0.3
+    preferences.putUChar("pongBncDmp", 85);  // Default: 0.85
+    preferences.putUChar("pongPadWid", 20);  // Default: 20
 
     // Initialize all metrics with default values
     uint8_t defaultOrder[MAX_METRICS];
@@ -897,6 +920,12 @@ void loadSettings() {
   settings.refreshRateMode = preferences.getUChar("refreshMode", 0);  // Default: Auto
   settings.refreshRateHz = preferences.getUChar("refreshHz", 10);  // Default: 10 Hz
   settings.boostAnimationRefresh = preferences.getBool("boostAnim", true);  // Default: Enable
+  settings.marioBounceHeight = preferences.getUChar("marioBnceH", 35);  // Default: 3.5
+  settings.marioBounceSpeed = preferences.getUChar("marioBnceS", 6);   // Default: 0.6
+  settings.pongBallSpeed = preferences.getUChar("pongBallSpd", 18);     // Default: 18
+  settings.pongBounceStrength = preferences.getUChar("pongBncStr", 3);  // Default: 0.3
+  settings.pongBounceDamping = preferences.getUChar("pongBncDmp", 85);  // Default: 0.85
+  settings.pongPaddleWidth = preferences.getUChar("pongPadWid", 20);    // Default: 20
 
   // Load network configuration
   settings.useStaticIP = preferences.getBool("useStaticIP", false);  // Default: DHCP
@@ -1027,6 +1056,12 @@ void saveSettings() {
   preferences.putUChar("refreshMode", settings.refreshRateMode);
   preferences.putUChar("refreshHz", settings.refreshRateHz);
   preferences.putBool("boostAnim", settings.boostAnimationRefresh);
+  preferences.putUChar("marioBnceH", settings.marioBounceHeight);
+  preferences.putUChar("marioBnceS", settings.marioBounceSpeed);
+  preferences.putUChar("pongBallSpd", settings.pongBallSpeed);
+  preferences.putUChar("pongBncStr", settings.pongBounceStrength);
+  preferences.putUChar("pongBncDmp", settings.pongBounceDamping);
+  preferences.putUChar("pongPadWid", settings.pongPaddleWidth);
 
   // Save network configuration
   preferences.putBool("useStaticIP", settings.useStaticIP);
@@ -1436,7 +1471,7 @@ void handleRoot() {
         <div class="card">
         
         <label for="clockStyle">Idle Clock Style</label>
-        <select name="clockStyle" id="clockStyle">
+        <select name="clockStyle" id="clockStyle" onchange="toggleMarioSettings()">
           <option value="0" )rawliteral" + String(settings.clockStyle == 0 ? "selected" : "") + R"rawliteral(>Mario Animation</option>
           <option value="1" )rawliteral" + String(settings.clockStyle == 1 ? "selected" : "") + R"rawliteral(>Standard Clock</option>
           <option value="2" )rawliteral" + String(settings.clockStyle == 2 ? "selected" : "") + R"rawliteral(>Large Clock</option>
@@ -1444,7 +1479,89 @@ void handleRoot() {
           <option value="4" )rawliteral" + String(settings.clockStyle == 4 ? "selected" : "") + R"rawliteral(>Space Ship</option>
           <option value="5" )rawliteral" + String(settings.clockStyle == 5 ? "selected" : "") + R"rawliteral(>Pong Clock</option>
         </select>
-        
+
+        <!-- Mario Clock Settings (only visible when Mario is selected) -->
+        <div id="marioSettings" style="display: )rawliteral" + String(settings.clockStyle == 0 ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #3b82f6;">
+          <h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">&#127922; Mario Animation Settings</h4>
+
+          <label for="marioBounceHeight">Bounce Height</label>
+          <input type="range" name="marioBounceHeight" id="marioBounceHeight"
+                 min="10" max="80" step="5"
+                 value=")rawliteral" + String(settings.marioBounceHeight) + R"rawliteral("
+                 oninput="document.getElementById('bounceHeightValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="bounceHeightValue">)rawliteral" + String(settings.marioBounceHeight / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How high digits bounce when Mario hits them. Higher = more dramatic bounce. Default: 3.5
+          </p>
+
+          <label for="marioBounceSpeed" style="margin-top: 15px;">Fall Speed</label>
+          <input type="range" name="marioBounceSpeed" id="marioBounceSpeed"
+                 min="2" max="15" step="1"
+                 value=")rawliteral" + String(settings.marioBounceSpeed) + R"rawliteral("
+                 oninput="document.getElementById('bounceSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="bounceSpeedValue">)rawliteral" + String(settings.marioBounceSpeed / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast digits fall back down. Higher = faster fall. Default: 0.6
+          </p>
+        </div>
+
+        <!-- Pong Clock Settings (only visible when Pong is selected) -->
+        <div id="pongSettings" style="display: )rawliteral" + String(settings.clockStyle == 5 ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #3b82f6;">
+          <h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">🎮 Pong Animation Settings</h4>
+
+          <label for="pongBallSpeed">Ball Speed</label>
+          <input type="range" name="pongBallSpeed" id="pongBallSpeed"
+                 min="16" max="30" step="1"
+                 value=")rawliteral" + String(settings.pongBallSpeed) + R"rawliteral("
+                 oninput="document.getElementById('ballSpeedValue').textContent = this.value">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="ballSpeedValue">)rawliteral" + String(settings.pongBallSpeed) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast the ball moves. Lower = relaxed, Higher = fast & exciting. Default: 18
+          </p>
+
+          <label for="pongBounceStrength" style="margin-top: 15px;">Bounce Strength</label>
+          <input type="range" name="pongBounceStrength" id="pongBounceStrength"
+                 min="1" max="8" step="1"
+                 value=")rawliteral" + String(settings.pongBounceStrength) + R"rawliteral("
+                 oninput="document.getElementById('bounceStrengthValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="bounceStrengthValue">)rawliteral" + String(settings.pongBounceStrength / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How much digits wobble when hit. Lower = subtle, Higher = bouncy. Default: 0.3
+          </p>
+
+          <label for="pongBounceDamping" style="margin-top: 15px;">Bounce Damping</label>
+          <input type="range" name="pongBounceDamping" id="pongBounceDamping"
+                 min="50" max="95" step="5"
+                 value=")rawliteral" + String(settings.pongBounceDamping) + R"rawliteral("
+                 oninput="document.getElementById('bounceDampingValue').textContent = (this.value / 100).toFixed(2)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="bounceDampingValue">)rawliteral" + String(settings.pongBounceDamping / 100.0, 2) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How quickly wobble stops. Lower = wobbles longer, Higher = stops quickly. Default: 0.85
+          </p>
+
+          <label for="pongPaddleWidth" style="margin-top: 15px;">Paddle Width</label>
+          <input type="range" name="pongPaddleWidth" id="pongPaddleWidth"
+                 min="10" max="40" step="2"
+                 value=")rawliteral" + String(settings.pongPaddleWidth) + R"rawliteral("
+                 oninput="document.getElementById('paddleWidthValue').textContent = this.value">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="paddleWidthValue">)rawliteral" + String(settings.pongPaddleWidth) + R"rawliteral(</span> px
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            Size of the paddle. Narrower = harder, Wider = easier. Default: 20px
+          </p>
+        </div>
+
         <label for="use24Hour">Time Format</label>
         <select name="use24Hour" id="use24Hour">
           <option value="1" )rawliteral" + String(settings.use24Hour ? "selected" : "") + R"rawliteral(>24-Hour (14:30)</option>
@@ -2083,6 +2200,15 @@ void handleRoot() {
       refreshRateFields.style.display = refreshRateMode ? 'block' : 'none';
     }
 
+    // Toggle Mario settings visibility
+    function toggleMarioSettings() {
+      const clockStyle = document.getElementById('clockStyle').value;
+      const marioSettings = document.getElementById('marioSettings');
+      const pongSettings = document.getElementById('pongSettings');
+      marioSettings.style.display = (clockStyle === '0') ? 'block' : 'none';
+      pongSettings.style.display = (clockStyle === '5') ? 'block' : 'none';
+    }
+
     // Export configuration
     function exportConfig() {
       fetch('/api/export')
@@ -2345,6 +2471,28 @@ void handleSave() {
 
   // Save animation boost checkbox
   settings.boostAnimationRefresh = server.hasArg("boostAnim");
+
+  // Save Mario bounce settings
+  if (server.hasArg("marioBounceHeight")) {
+    settings.marioBounceHeight = server.arg("marioBounceHeight").toInt();
+  }
+  if (server.hasArg("marioBounceSpeed")) {
+    settings.marioBounceSpeed = server.arg("marioBounceSpeed").toInt();
+  }
+
+  // Save Pong settings
+  if (server.hasArg("pongBallSpeed")) {
+    settings.pongBallSpeed = server.arg("pongBallSpeed").toInt();
+  }
+  if (server.hasArg("pongBounceStrength")) {
+    settings.pongBounceStrength = server.arg("pongBounceStrength").toInt();
+  }
+  if (server.hasArg("pongBounceDamping")) {
+    settings.pongBounceDamping = server.arg("pongBounceDamping").toInt();
+  }
+  if (server.hasArg("pongPaddleWidth")) {
+    settings.pongPaddleWidth = server.arg("pongPaddleWidth").toInt();
+  }
 
   // Save network configuration
   bool previousStaticIPSetting = settings.useStaticIP;
@@ -3848,13 +3996,32 @@ void displayLargeClock() {
 // ========== Mario Clock Functions ==========
 void triggerDigitBounce(int digitIndex) {
   if (digitIndex >= 0 && digitIndex < 5) {
-    digit_velocity[digitIndex] = DIGIT_BOUNCE_POWER;
+    // Use user-configured bounce height (stored as tenths, convert to float, negate for upward velocity)
+    digit_velocity[digitIndex] = -(settings.marioBounceHeight / 10.0);
   }
 }
 
+// Gravity-based bounce for Mario clock (original v1.3.0 behavior)
 void updateDigitBounce() {
-  const float SPRING_STRENGTH = 0.3;  // Pull back to center (reduced for more bounce)
-  const float DAMPING = 0.85;         // Less damping = more visible bounce
+  for (int i = 0; i < 5; i++) {
+    if (digit_offset_y[i] != 0 || digit_velocity[i] != 0) {
+      // Use user-configured fall speed (stored as tenths, convert to float)
+      digit_velocity[i] += (settings.marioBounceSpeed / 10.0);
+      digit_offset_y[i] += digit_velocity[i];
+
+      if (digit_offset_y[i] >= 0) {
+        digit_offset_y[i] = 0;
+        digit_velocity[i] = 0;
+      }
+    }
+  }
+}
+
+// Spring-based bounce for Pong clock (oscillating physics)
+void updateDigitBouncePong() {
+  // Use user-configured bounce physics (stored as tenths/hundredths, convert to floats)
+  const float SPRING_STRENGTH = settings.pongBounceStrength / 10.0;  // Pull back to center
+  const float DAMPING = settings.pongBounceDamping / 100.0;          // Damping factor
 
   for (int i = 0; i < 5; i++) {
     if (digit_offset_y[i] != 0 || digit_velocity[i] != 0) {
@@ -4980,11 +5147,11 @@ void initPongAnimation() {
 
   // Always start upward (negative Y) with random X direction
   if (random(0, 2) == 0) {
-    pong_balls[0].vx = PONG_BALL_SPEED_NORMAL;  // Right
+    pong_balls[0].vx = settings.pongBallSpeed;  // Right
   } else {
-    pong_balls[0].vx = -PONG_BALL_SPEED_NORMAL;  // Left
+    pong_balls[0].vx = -settings.pongBallSpeed;  // Left
   }
-  pong_balls[0].vy = -PONG_BALL_SPEED_NORMAL;  // Up
+  pong_balls[0].vy = -settings.pongBallSpeed;  // Up
 
   pong_balls[0].state = PONG_BALL_SPAWNING;
   pong_balls[0].spawn_timer = millis();
@@ -4998,6 +5165,7 @@ void initPongAnimation() {
   // Reset paddle to center bottom
   breakout_paddle.x = 64;
   breakout_paddle.target_x = 64;
+  breakout_paddle.width = settings.pongPaddleWidth;  // Use user-configured width
 
   // Clear digit transitions
   for (int i = 0; i < 5; i++) {
@@ -5042,11 +5210,11 @@ void spawnPongBall(int ballIndex) {
 
   // Random X direction, always upward
   if (random(0, 2) == 0) {
-    pong_balls[ballIndex].vx = PONG_BALL_SPEED_NORMAL;
+    pong_balls[ballIndex].vx = settings.pongBallSpeed;
   } else {
-    pong_balls[ballIndex].vx = -PONG_BALL_SPEED_NORMAL;
+    pong_balls[ballIndex].vx = -settings.pongBallSpeed;
   }
-  pong_balls[ballIndex].vy = -PONG_BALL_SPEED_NORMAL;  // Always up
+  pong_balls[ballIndex].vy = -settings.pongBallSpeed;  // Always up
 
   pong_balls[ballIndex].state = PONG_BALL_NORMAL;
   pong_balls[ballIndex].active = true;
@@ -5393,17 +5561,17 @@ void updatePongBall(int ballIndex) {
       // Set horizontal velocity based on paddle movement direction
       if (paddle_velocity > 0) {
         // Paddle moving right - launch ball right
-        pong_balls[ballIndex].vx = PONG_BALL_SPEED_NORMAL + (paddle_velocity * PADDLE_MOMENTUM_MULTIPLIER);
+        pong_balls[ballIndex].vx = settings.pongBallSpeed + (paddle_velocity * PADDLE_MOMENTUM_MULTIPLIER);
       } else if (paddle_velocity < 0) {
         // Paddle moving left - launch ball left
-        pong_balls[ballIndex].vx = -PONG_BALL_SPEED_NORMAL + (paddle_velocity * PADDLE_MOMENTUM_MULTIPLIER);
+        pong_balls[ballIndex].vx = -settings.pongBallSpeed + (paddle_velocity * PADDLE_MOMENTUM_MULTIPLIER);
       } else {
         // Paddle stationary - random direction
-        pong_balls[ballIndex].vx = random(0, 2) == 0 ? PONG_BALL_SPEED_NORMAL : -PONG_BALL_SPEED_NORMAL;
+        pong_balls[ballIndex].vx = random(0, 2) == 0 ? settings.pongBallSpeed : -settings.pongBallSpeed;
       }
 
       // Always launch upward
-      pong_balls[ballIndex].vy = -PONG_BALL_SPEED_NORMAL;
+      pong_balls[ballIndex].vy = -settings.pongBallSpeed;
 
       // Add small random variation for natural movement
       pong_balls[ballIndex].vx += random(-BALL_RELEASE_RANDOM_VARIATION, BALL_RELEASE_RANDOM_VARIATION + 1);
@@ -5802,7 +5970,7 @@ void updatePongAnimation(struct tm* timeinfo) {
 
     // Normal speed for ball 0
     if (pong_balls[0].active && pong_balls[0].state == PONG_BALL_NORMAL) {
-      int speed = PONG_BALL_SPEED_NORMAL;
+      int speed = settings.pongBallSpeed;
       if (pong_balls[0].vx > 0) pong_balls[0].vx = speed;
       else pong_balls[0].vx = -speed;
       if (pong_balls[0].vy > 0) pong_balls[0].vy = speed;
@@ -5825,7 +5993,7 @@ void updatePongAnimation(struct tm* timeinfo) {
   updateDigitTransitions();
   updatePongFragments();
   updateAssemblyFragments();  // Update assembling digit fragments
-  updateDigitBounce();  // Reuse existing bounce system
+  updateDigitBouncePong();  // Spring-based bounce physics for Pong
 }
 
 // Main display function for Pong Clock
