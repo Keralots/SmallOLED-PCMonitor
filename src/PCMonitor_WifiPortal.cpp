@@ -148,6 +148,7 @@ struct Settings {
 
   // RPM display format
   bool useRpmKFormat;    // true = "1.8K", false = "1800RPM"
+  bool useNetworkMBFormat;  // true = "1.2M", false = "1200KB/s"
 
   // Colon blink settings
   uint8_t colonBlinkMode;    // 0 = Always On, 1 = Blink, 2 = Always Off
@@ -186,21 +187,6 @@ struct Settings {
 
 Settings settings;
 
-// ========== Legacy PC Stats Structure (for backward compatibility) ==========
-struct PCStats {
-  float cpu_percent;
-  float ram_percent;
-  float ram_used_gb;
-  float ram_total_gb;
-  float disk_percent;
-  int cpu_temp;
-  int gpu_temp;
-  int fan_speed;
-  char timestamp[6];
-  bool online;
-};
-
-PCStats stats;  // Keep for backward compatibility with old Python script
 unsigned long lastReceived = 0;
 const unsigned long TIMEOUT = 6000;
 bool ntpSynced = false;  // Track NTP sync status
@@ -790,6 +776,7 @@ void loadSettings() {
     settings.showClock = true;
     settings.displayRowMode = 0;  // Default: 5 rows with more spacing
     settings.useRpmKFormat = false;  // Default: Full RPM format (1800RPM)
+    settings.useNetworkMBFormat = false;  // Default: Full KB/s format
     settings.colonBlinkMode = 1;  // Default: Blink
     settings.colonBlinkRate = 10;  // Default: 1.0 Hz (10 = 1.0Hz in tenths)
     settings.refreshRateMode = 0;  // Default: Auto
@@ -877,6 +864,7 @@ void loadSettings() {
   settings.showClock = preferences.getBool("showClock", true);
   settings.displayRowMode = preferences.getInt("rowMode", 0);  // Default: 5 rows
   settings.useRpmKFormat = preferences.getBool("rpmKFormat", false);  // Default: Full RPM format
+  settings.useNetworkMBFormat = preferences.getBool("netMBFormat", false);  // Default: Full KB/s format
   settings.colonBlinkMode = preferences.getUChar("colonBlink", 1);  // Default: Blink
   settings.colonBlinkRate = preferences.getUChar("colonRate", 10);  // Default: 1.0 Hz
   settings.refreshRateMode = preferences.getUChar("refreshMode", 0);  // Default: Auto
@@ -1018,6 +1006,7 @@ void saveSettings() {
   preferences.putBool("showClock", settings.showClock);
   preferences.putInt("rowMode", settings.displayRowMode);
   preferences.putBool("rpmKFormat", settings.useRpmKFormat);
+  preferences.putBool("netMBFormat", settings.useNetworkMBFormat);
   preferences.putUChar("colonBlink", settings.colonBlinkMode);
   preferences.putUChar("colonRate", settings.colonBlinkRate);
   preferences.putUChar("refreshMode", settings.refreshRateMode);
@@ -1802,6 +1791,16 @@ void handleRoot() {
             Applies to all fan and pump speed metrics with RPM unit.
           </p>
         </div>
+
+        <div style="margin-top: 20px;">
+          <label>
+            <input type="checkbox" name="netMBFormat" id="netMBFormat" )rawliteral" + String(settings.useNetworkMBFormat ? "checked" : "") + R"rawliteral(>
+            Use M-format for network speeds (e.g., 1.2M instead of 1200KB/s)
+          </label>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            Applies to all network speed metrics with KB/s unit.
+          </p>
+        </div>
         </div>
       </div>
 
@@ -2488,6 +2487,9 @@ void handleSave() {
   // Save RPM format preference
   settings.useRpmKFormat = server.hasArg("rpmKFormat");
 
+  // Save network speed format preference
+  settings.useNetworkMBFormat = server.hasArg("netMBFormat");
+
   // Save colon blink settings
   if (server.hasArg("colonBlinkMode")) {
     settings.colonBlinkMode = server.arg("colonBlinkMode").toInt();
@@ -2768,6 +2770,7 @@ void handleExportConfig() {
   json += "\"showClock\":" + String(settings.showClock ? "true" : "false") + ",";
   json += "\"displayRowMode\":" + String(settings.displayRowMode) + ",";
   json += "\"useRpmKFormat\":" + String(settings.useRpmKFormat ? "true" : "false") + ",";
+  json += "\"useNetworkMBFormat\":" + String(settings.useNetworkMBFormat ? "true" : "false") + ",";
 
   // Metric labels
   json += "\"metricLabels\":[";
@@ -2874,6 +2877,7 @@ void handleImportConfig() {
     if (!doc["showClock"].isNull()) settings.showClock = doc["showClock"];
     if (!doc["displayRowMode"].isNull()) settings.displayRowMode = doc["displayRowMode"];
     if (!doc["useRpmKFormat"].isNull()) settings.useRpmKFormat = doc["useRpmKFormat"];
+    if (!doc["useNetworkMBFormat"].isNull()) settings.useNetworkMBFormat = doc["useNetworkMBFormat"];
 
     // Import metric labels
     if (!doc["metricLabels"].isNull()) {
@@ -3106,8 +3110,7 @@ void loop() {
     }
   }
   
-  stats.online = (millis() - lastReceived) < TIMEOUT;
-  metricData.online = stats.online;  // Sync both for backward compatibility
+  metricData.online = (millis() - lastReceived) < TIMEOUT;
 
   // ========== Adaptive Refresh Rate Control ==========
   // Calculate optimal refresh interval based on settings
@@ -3262,146 +3265,6 @@ int getOptimalRefreshRate() {
   }
 }
 
-// Helper function to add a legacy metric to the new system
-void addLegacyMetric(uint8_t id, const char* name, int value, const char* unit) {
-  if (metricData.count >= MAX_METRICS) return;
-
-  Metric& m = metricData.metrics[metricData.count];
-  m.id = id;
-  strncpy(m.name, name, METRIC_NAME_LEN - 1);
-  m.name[METRIC_NAME_LEN - 1] = '\0';
-  trimTrailingSpaces(m.name);
-
-  strncpy(m.unit, unit, METRIC_UNIT_LEN - 1);
-  m.unit[METRIC_UNIT_LEN - 1] = '\0';
-  m.value = value;
-
-  // Load settings (ID-based indexing)
-  if (id > 0 && id <= MAX_METRICS) {
-    // Check if stored metric name matches current metric name
-    // If no stored name exists OR name matches, apply settings
-    // If name exists but doesn't match, this is a different sensor - use defaults
-    bool nameMatches = (settings.metricNames[id - 1][0] == '\0' ||  // No stored name
-                        strcmp(settings.metricNames[id - 1], m.name) == 0);  // Name matches
-
-    if (nameMatches) {
-      // Apply stored settings
-      // Apply custom label if set (preserve '^' character - it will be converted during display)
-      if (settings.metricLabels[id - 1][0] != '\0') {
-        strncpy(m.label, settings.metricLabels[id - 1], METRIC_NAME_LEN - 1);
-        m.label[METRIC_NAME_LEN - 1] = '\0';
-      } else {
-        strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
-        m.label[METRIC_NAME_LEN - 1] = '\0';
-      }
-
-      m.displayOrder = settings.metricOrder[id - 1];
-
-      // Load companion metric
-      m.companionId = settings.metricCompanions[id - 1];
-
-      // Load position assignment (255 = hidden, 0-11 = visible)
-      m.position = settings.metricPositions[id - 1];
-
-      // Load progress bar settings
-      m.barPosition = settings.metricBarPositions[id - 1];
-      m.barMin = settings.metricBarMin[id - 1];
-      m.barMax = settings.metricBarMax[id - 1];
-      m.barWidth = settings.metricBarWidths[id - 1];
-      m.barOffsetX = settings.metricBarOffsets[id - 1];
-
-      // Store/update the metric name for future validation
-      strncpy(settings.metricNames[id - 1], m.name, METRIC_NAME_LEN - 1);
-      settings.metricNames[id - 1][METRIC_NAME_LEN - 1] = '\0';
-    } else {
-      // Name mismatch - this is a different sensor now, use defaults
-      Serial.printf("Metric ID %d name changed: '%s' -> '%s', using defaults\n",
-                    id, settings.metricNames[id - 1], m.name);
-
-      strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
-      m.label[METRIC_NAME_LEN - 1] = '\0';
-      m.displayOrder = metricData.count;
-      m.companionId = 0;
-      m.position = 255;  // Default: None/Hidden
-      m.barPosition = 255;  // Default: No bar
-      m.barMin = 0;
-      m.barMax = 100;
-      m.barWidth = 60;
-      m.barOffsetX = 0;
-
-      // Update stored name to the new sensor
-      strncpy(settings.metricNames[id - 1], m.name, METRIC_NAME_LEN - 1);
-      settings.metricNames[id - 1][METRIC_NAME_LEN - 1] = '\0';
-
-      // Clear stored label since it's for a different sensor
-      settings.metricLabels[id - 1][0] = '\0';
-    }
-  } else {
-    // Default values for new metrics
-    strncpy(m.label, m.name, METRIC_NAME_LEN - 1);
-    m.label[METRIC_NAME_LEN - 1] = '\0';
-    m.displayOrder = metricData.count;
-    m.companionId = 0;  // No companion for new metrics
-    m.position = 255;  // Default: None/Hidden
-    m.barPosition = 255;  // Default: No bar
-    m.barMin = 0;
-    m.barMax = 100;
-    m.barWidth = 60;  // Default width
-    m.barOffsetX = 0;  // Default: no offset
-  }
-
-  metricData.count++;
-}
-
-// Parse v1.0 protocol (legacy format)
-void parseStatsV1(JsonDocument& doc) {
-  metricData.count = 0;
-
-  // Map legacy fields to metrics array (using modern ArduinoJson API)
-  if (!doc["cpu_percent"].isNull()) {
-    addLegacyMetric(1, "CPU", (int)doc["cpu_percent"].as<float>(), "%");
-  }
-  if (!doc["ram_percent"].isNull()) {
-    addLegacyMetric(2, "RAM", (int)doc["ram_percent"].as<float>(), "%");
-  }
-  if (!doc["cpu_temp"].isNull()) {
-    addLegacyMetric(3, "CPU_TEMP", doc["cpu_temp"] | 0, "C");
-  }
-  if (!doc["gpu_temp"].isNull()) {
-    addLegacyMetric(4, "GPU_TEMP", doc["gpu_temp"] | 0, "C");
-  }
-  if (!doc["fan_speed"].isNull()) {
-    addLegacyMetric(5, "FAN", doc["fan_speed"] | 0, "RPM");
-  }
-  if (!doc["disk_percent"].isNull()) {
-    addLegacyMetric(6, "DISK", (int)doc["disk_percent"].as<float>(), "%");
-  }
-
-  // Extract timestamp
-  const char* ts = doc["timestamp"];
-  if (ts) {
-    strncpy(metricData.timestamp, ts, 5);
-    metricData.timestamp[5] = '\0';
-  }
-
-  // Also update legacy stats struct for backward compatibility
-  stats.cpu_percent = doc["cpu_percent"] | 0.0;
-  stats.ram_percent = doc["ram_percent"] | 0.0;
-  stats.ram_used_gb = doc["ram_used_gb"] | 0.0;
-  stats.ram_total_gb = doc["ram_total_gb"] | 0.0;
-  stats.disk_percent = doc["disk_percent"] | 0.0;
-  stats.cpu_temp = doc["cpu_temp"] | 0;
-  stats.gpu_temp = doc["gpu_temp"] | 0;
-  stats.fan_speed = doc["fan_speed"] | 0;
-  if (ts) {
-    strncpy(stats.timestamp, ts, 5);
-    stats.timestamp[5] = '\0';
-  }
-  stats.online = true;
-
-  metricData.online = true;
-}
-
 // Parse v2.0 protocol (dynamic metrics)
 void parseStatsV2(JsonDocument& doc) {
   // Extract timestamp
@@ -3541,130 +3404,7 @@ void parseStats(const char* json) {
     return;
   }
 
-  // Version detection
-  const char* version = doc["version"];
-  if (version && strcmp(version, "2.0") == 0) {
-    // New dynamic protocol
-    parseStatsV2(doc);
-    Serial.println("Parsed v2.0 protocol");
-  } else {
-    // Legacy fixed protocol (backward compatibility)
-    parseStatsV1(doc);
-    Serial.println("Parsed v1.0 protocol (legacy)");
-  }
-}
-
-// Progress bars layout (legacy, 4-5 metrics)
-void displayStatsProgressBars() {
-  display.setTextSize(1);
-  int currentY = 0;
-  const int LINE_HEIGHT = 14;
-
-  // Create sorted array of metric indices by displayOrder
-  int sortedIndices[MAX_METRICS];
-  int sortedCount = 0;
-
-  // Build sorted index array (only include metrics with assigned positions)
-  for (int order = 0; order < MAX_METRICS; order++) {
-    for (int i = 0; i < metricData.count; i++) {
-      if (metricData.metrics[i].displayOrder == order && metricData.metrics[i].position != 255) {
-        sortedIndices[sortedCount++] = i;
-        break;
-      }
-    }
-  }
-
-  // Dynamic rendering loop with sorted order
-  for (int idx = 0; idx < sortedCount && currentY < 64; idx++) {
-    Metric& m = metricData.metrics[sortedIndices[idx]];
-
-    // Label + Value (use custom label, strip trailing % if present)
-    display.setCursor(0, currentY);
-
-    // Process label: convert '^' to spaces, strip trailing '%', move trailing spaces to after colon
-    char displayLabel[METRIC_NAME_LEN];
-    strncpy(displayLabel, m.label, METRIC_NAME_LEN - 1);
-    displayLabel[METRIC_NAME_LEN - 1] = '\0';
-
-    // Convert '^' to spaces for custom alignment
-    convertCaretToSpaces(displayLabel);
-
-    // Count and remove trailing spaces (to be added after colon)
-    int len = strlen(displayLabel);
-    int trailingSpaces = 0;
-    while (len > 0 && displayLabel[len - 1] == ' ') {
-      trailingSpaces++;
-      displayLabel[len - 1] = '\0';
-      len--;
-    }
-
-    // Strip trailing '%' if present (after removing spaces)
-    if (len > 0 && displayLabel[len - 1] == '%') {
-      displayLabel[len - 1] = '\0';
-    }
-
-    // Display: Label, colon, spaces, value, unit
-    display.print(displayLabel);
-    display.print(":");
-    for (int i = 0; i < trailingSpaces; i++) {
-      display.print(" ");
-    }
-    display.print(m.value);
-    display.print(m.unit);
-
-    // Check for companion metric (display on same line)
-    if (m.companionId > 0) {
-      // Find companion metric by ID
-      for (int c = 0; c < metricData.count; c++) {
-        if (metricData.metrics[c].id == m.companionId) {
-          Metric& companion = metricData.metrics[c];
-          display.print(" ");
-          display.print(companion.value);
-          display.print(companion.unit);
-          break;
-        }
-      }
-    }
-
-    // Show timestamp on first visible metric (if clock enabled)
-    if (idx == 0 && settings.showClock) {
-      display.setCursor(85, currentY);
-      display.print(metricData.timestamp);
-    }
-
-    // Progress bar for percentage metrics
-    if (strcmp(m.unit, "%") == 0) {
-      int barWidth = map(m.value, 0, 100, 0, 56);
-      barWidth = constrain(barWidth, 0, 56);
-      display.drawRect(70, currentY, 58, 8, DISPLAY_WHITE);
-      if (barWidth > 0) {
-        display.fillRect(71, currentY + 1, barWidth, 6, DISPLAY_WHITE);
-      }
-    } else if (strcmp(m.unit, "C") == 0) {
-      // Temperature bar (0-100C scale)
-      int barWidth = map(m.value, 0, 100, 0, 56);
-      barWidth = constrain(barWidth, 0, 56);
-      display.drawRect(70, currentY, 58, 8, DISPLAY_WHITE);
-      if (barWidth > 0) {
-        display.fillRect(71, currentY + 1, barWidth, 6, DISPLAY_WHITE);
-      }
-    }
-
-    currentY += LINE_HEIGHT;
-  }
-
-  // No metrics shown edge case
-  if (sortedCount == 0) {
-    display.setTextSize(1);
-    display.setCursor(0, 10);
-    display.print("Go to:");
-    display.setCursor(0, 22);
-    display.print(WiFi.localIP().toString());
-    display.setCursor(0, 34);
-    display.print("to configure");
-    display.setCursor(0, 46);
-    display.print("metrics");
-  }
+  parseStatsV2(doc);
 }
 
 // Compact grid layout - position-based (6 rows max)
@@ -3831,8 +3571,11 @@ void displayMetricCompact(Metric* m) {
   if (settings.useRpmKFormat && strcmp(m->unit, "RPM") == 0 && m->value >= 1000) {
     // RPM with K suffix: "FAN1: 1.2K"
     snprintf(text, 40, "%s:%s%.1fK", displayLabel, spaces, m->value / 1000.0);
+  } else if (settings.useNetworkMBFormat && strcmp(m->unit, "KB/s") == 0) {
+    // Network speed with M suffix: "DL: 1.2M" or "DL: 0.5M"
+    snprintf(text, 40, "%s:%s%.1fM", displayLabel, spaces, m->value / 1000.0);
   } else {
-    // Normal: "CPU: 45%" or "FAN1: 1800RPM"
+    // Normal: "CPU: 45%" or "FAN1: 1800RPM" or "DL: 1200KB/s"
     snprintf(text, 40, "%s:%s%d%s", displayLabel, spaces, m->value, m->unit);
   }
 
