@@ -168,6 +168,13 @@ struct Settings {
   uint8_t pongBounceDamping;   // Damping in hundredths (e.g., 85 = 0.85, range: 50-95)
   uint8_t pongPaddleWidth;     // Paddle width in pixels (e.g., 20, range: 10-40)
 
+  // Space clock settings (Invader/Ship)
+  uint8_t spaceCharacterType;  // 0 = Invader, 1 = Ship (default: 1)
+  uint8_t spacePatrolSpeed;    // Patrol drift speed in tenths (e.g., 5 = 0.5, range: 2-15)
+  uint8_t spaceAttackSpeed;    // Slide speed in tenths (e.g., 25 = 2.5, range: 10-40)
+  uint8_t spaceLaserSpeed;     // Laser extend speed in tenths (e.g., 40 = 4.0, range: 20-80)
+  uint8_t spaceExplosionGravity; // Fragment gravity in tenths (e.g., 5 = 0.5, range: 3-10)
+
   // Network configuration
   bool useStaticIP;      // true = Static IP, false = DHCP (default)
   char staticIP[16];     // Static IP address (e.g., "192.168.1.100")
@@ -251,38 +258,37 @@ const float DIGIT_GRAVITY = 0.6;
 const int DIGIT_X[5] = {19, 37, 55, 73, 91};
 const int TIME_Y = 26;  // Mario and standard clocks use this position
 
-// ========== Space Invader Animation Variables (Clock Style 3 - Sliding) ==========
-enum InvaderState {
-  INVADER_PATROL,
-  INVADER_SLIDING,
-  INVADER_SHOOTING,
-  INVADER_EXPLODING_DIGIT,
-  INVADER_MOVING_NEXT,
-  INVADER_RETURNING
+// ========== Space Clock Animation Variables (Clock Style 3 & 4 merged) ==========
+// This animation works for both Invader (character type 0) and Ship (character type 1)
+enum SpaceState {
+  SPACE_PATROL,
+  SPACE_SLIDING,
+  SPACE_SHOOTING,
+  SPACE_EXPLODING_DIGIT,
+  SPACE_MOVING_NEXT,
+  SPACE_RETURNING
 };
 
-// Invader fragment (same structure as ShipFragment)
-struct InvaderFragment {
+// Space fragment (explosion debris - works for both Invader and Ship)
+struct SpaceFragment {
   float x, y;
   float vx, vy;
   bool active;
 };
 
-float invader_x = 64;                    // Horizontal position
-const float invader_y = 56;              // Fixed Y position (always at bottom)
-int invader_anim_frame = 0;              // Sprite animation frame
-int invader_patrol_direction = 1;        // 1 = right, -1 = left
-InvaderState invader_state = INVADER_PATROL;
+float space_x = 64;                    // Horizontal position
+const float space_y = 56;              // Fixed Y position (always at bottom)
+int space_anim_frame = 0;              // Sprite animation frame
+int space_patrol_direction = 1;        // 1 = right, -1 = left
+SpaceState space_state = SPACE_PATROL;
 
 // Timing
-unsigned long last_invader_update = 0;
-unsigned long last_invader_sprite_toggle = 0;
+unsigned long last_space_update = 0;
+unsigned long last_space_sprite_toggle = 0;
 
-// Movement constants
-const float INVADER_PATROL_SPEED = 0.5;       // Slow patrol drift
-const float INVADER_SLIDE_SPEED = 2.5;        // Fast slide to target
-const int INVADER_PATROL_LEFT = 15;           // Left boundary
-const int INVADER_PATROL_RIGHT = 113;         // Right boundary
+// Movement constants (boundaries shared by both characters)
+const int SPACE_PATROL_LEFT = 15;           // Left boundary
+const int SPACE_PATROL_RIGHT = 113;         // Right boundary
 
 // Laser system
 struct Laser {
@@ -292,57 +298,20 @@ struct Laser {
   int target_digit_idx;
 };
 
-// Invader uses same laser and fragment systems as ship
-Laser invader_laser = {0, 0, false, 0, -1};
-const float LASER_EXTEND_SPEED = 4.0;
-const float LASER_MAX_LENGTH = 30.0;
+// Unified laser (used by both Invader and Ship characters)
+Laser space_laser = {0, 0, false, 0, -1};
+const float LASER_MAX_LENGTH = 30.0;  // Max visual length
 
-#define MAX_INVADER_FRAGMENTS 16
-InvaderFragment invader_fragments[MAX_INVADER_FRAGMENTS] = {0};
-const float INVADER_FRAG_GRAVITY = 0.5;
-const float INVADER_FRAG_SPEED = 2.0;
-int invader_explosion_timer = 0;
-const int INVADER_EXPLOSION_DURATION = 25;
+#define MAX_SPACE_FRAGMENTS 16
+SpaceFragment space_fragments[MAX_SPACE_FRAGMENTS] = {0};
+int space_explosion_timer = 0;
+const int SPACE_EXPLOSION_DURATION = 25;
 
-// ========== Space Ship Animation Variables (Clock Style 4) ==========
-enum ShipState {
-  SHIP_PATROL,
-  SHIP_SLIDING,
-  SHIP_SHOOTING,
-  SHIP_EXPLODING_DIGIT,
-  SHIP_MOVING_NEXT,
-  SHIP_RETURNING
-};
-
-// Ship fragment (same structure as InvaderFragment)
-struct ShipFragment {
-  float x, y;
-  float vx, vy;
-  bool active;
-};
-
-float ship_x = 64;                    // Horizontal position
-const float ship_y = 56;              // Fixed Y position (always at bottom)
-int ship_anim_frame = 0;              // Sprite animation frame
-int ship_patrol_direction = 1;        // 1 = right, -1 = left
-ShipState ship_state = SHIP_PATROL;
-
-// Timing
-unsigned long last_ship_update = 0;
-unsigned long last_ship_sprite_toggle = 0;
-const int SHIP_ANIM_SPEED = 50;            // 50ms = 20 FPS
-const int SHIP_SPRITE_TOGGLE_SPEED = 200;  // Slow retro animation
-
-// Movement constants
-const float SHIP_PATROL_SPEED = 0.5;       // Slow patrol drift
-const float SHIP_SLIDE_SPEED = 2.5;        // Fast slide to target
-const int SHIP_PATROL_LEFT = 15;           // Left boundary
-const int SHIP_PATROL_RIGHT = 113;         // Right boundary
-
-// Ship uses same laser and fragment systems as invader
-Laser ship_laser = {0, 0, 0, false, -1};
-ShipFragment ship_fragments[MAX_INVADER_FRAGMENTS] = {0};
-int ship_explosion_timer = 0;
+// Note: Speed values now come from settings (configured via web UI):
+// - settings.spacePatrolSpeed (tenths) = patrol drift speed (default: 5 = 0.5)
+// - settings.spaceAttackSpeed (tenths) = slide speed (default: 25 = 2.5)
+// - settings.spaceLaserSpeed (tenths) = laser extend speed (default: 40 = 4.0)
+// - settings.spaceExplosionGravity (tenths) = fragment gravity (default: 5 = 0.5)
 
 // ========== Breakout Clock Animation Variables (Clock Style 5) ==========
 
@@ -398,10 +367,10 @@ DigitTransition digit_transitions[5] = {
   {DIGIT_NORMAL, 0, 0, 0, 0, 0, 0.0}
 };
 
-// Fragment pool (reuse InvaderFragment structure)
+// Fragment pool (reuse SpaceFragment structure)
 // Extended for fragment assembly - need to track target positions
 #define MAX_PONG_FRAGMENTS 32   // Increased for progressive break + assembly
-InvaderFragment pong_fragments[MAX_PONG_FRAGMENTS] = {0};
+SpaceFragment pong_fragments[MAX_PONG_FRAGMENTS] = {0};
 
 // Fragment target tracking for assembly animation
 struct FragmentTarget {
@@ -496,40 +465,23 @@ void parseStats(const char* json);
 void displayStats();
 void displayMetricCompact(Metric* m);
 void drawProgressBar(int x, int y, int width, Metric* m);
-void displayClockWithInvader();
-void updateInvaderAnimation(struct tm* timeinfo);
-void handleInvaderPatrolState();
-void handleInvaderSlidingState();
-void handleInvaderShootingState();
-void handleInvaderExplodingState();
-void handleInvaderMovingNextState();
-void handleInvaderReturningState();
-void drawInvader(int x, int y, int frame);
-void drawInvaderLaser(Laser* laser);
-void updateInvaderLaser();
-void fireInvaderLaser(int target_digit_idx);
-void spawnInvaderExplosion(int digitIndex);
-void updateInvaderFragments();
-void drawInvaderFragments();
-bool allInvaderFragmentsInactive();
-InvaderFragment* findFreeInvaderFragment();
-void displayClockWithShip();
-void updateShipAnimation(struct tm* timeinfo);
-void handleShipPatrolState();
-void handleShipSlidingState();
-void handleShipShootingState();
-void handleShipExplodingState();
-void handleShipMovingNextState();
-void handleShipReturningState();
-void drawShip(int x, int y, int frame);
-void drawShipLaser(Laser* laser);
-void updateShipLaser();
-void fireShipLaser(int target_digit_idx);
-void spawnShipExplosion(int digitIndex);
-void updateShipFragments();
-void drawShipFragments();
-bool allShipFragmentsInactive();
-ShipFragment* findFreeShipFragment();
+void displayClockWithSpace();
+void updateSpaceAnimation(struct tm* timeinfo);
+void handleSpacePatrolState();
+void handleSpaceSlidingState();
+void handleSpaceShootingState();
+void handleSpaceExplodingState();
+void handleSpaceMovingNextState();
+void handleSpaceReturningState();
+void drawSpaceCharacter(int x, int y, int frame);
+void drawSpaceLaser(Laser* laser);
+void updateSpaceLaser();
+void fireSpaceLaser(int target_digit_idx);
+void spawnSpaceExplosion(int digitIndex);
+void updateSpaceFragments();
+void drawSpaceFragments();
+bool allSpaceFragmentsInactive();
+SpaceFragment* findFreeSpaceFragment();
 void displayClockWithPong();
 void updatePongAnimation(struct tm* timeinfo);
 void initPongAnimation();
@@ -549,7 +501,7 @@ void drawBreakoutPaddle();
 void drawPongBall();
 void drawPongFragments();
 void drawPongDigits();
-InvaderFragment* findFreePongFragment();
+SpaceFragment* findFreePongFragment();
 bool allPongFragmentsInactive();
 
 void setup() {
@@ -849,6 +801,11 @@ void loadSettings() {
     settings.pongBounceStrength = 3;  // Default: 0.3 (3 = 0.3 in tenths)
     settings.pongBounceDamping = 85;  // Default: 0.85 (85 = 0.85 in hundredths)
     settings.pongPaddleWidth = 20;    // Default: 20 pixels
+    settings.spaceCharacterType = 1;  // Default: Ship (1 = Ship, 0 = Invader)
+    settings.spacePatrolSpeed = 5;    // Default: 0.5 (5 = 0.5 in tenths)
+    settings.spaceAttackSpeed = 25;   // Default: 2.5 (25 = 2.5 in tenths)
+    settings.spaceLaserSpeed = 40;    // Default: 4.0 (40 = 4.0 in tenths)
+    settings.spaceExplosionGravity = 5; // Default: 0.5 (5 = 0.5 in tenths)
     // Initialize all metrics with defaults
     for (int i = 0; i < MAX_METRICS; i++) {
       settings.metricLabels[i][0] = '\0';  // Empty = use Python name
@@ -891,6 +848,11 @@ void loadSettings() {
     preferences.putUChar("pongBncStr", 3);   // Default: 0.3
     preferences.putUChar("pongBncDmp", 85);  // Default: 0.85
     preferences.putUChar("pongPadWid", 20);  // Default: 20
+    preferences.putUChar("spaceChar", 1);    // Default: Ship
+    preferences.putUChar("spacePatrol", 5);  // Default: 0.5
+    preferences.putUChar("spaceAttack", 25); // Default: 2.5
+    preferences.putUChar("spaceLaser", 40);  // Default: 4.0
+    preferences.putUChar("spaceExpGrv", 5);  // Default: 0.5
 
     // Initialize all metrics with default values
     uint8_t defaultOrder[MAX_METRICS];
@@ -926,6 +888,11 @@ void loadSettings() {
   settings.pongBounceStrength = preferences.getUChar("pongBncStr", 3);  // Default: 0.3
   settings.pongBounceDamping = preferences.getUChar("pongBncDmp", 85);  // Default: 0.85
   settings.pongPaddleWidth = preferences.getUChar("pongPadWid", 20);    // Default: 20
+  settings.spaceCharacterType = preferences.getUChar("spaceChar", 1);   // Default: Ship
+  settings.spacePatrolSpeed = preferences.getUChar("spacePatrol", 5);   // Default: 0.5
+  settings.spaceAttackSpeed = preferences.getUChar("spaceAttack", 25);  // Default: 2.5
+  settings.spaceLaserSpeed = preferences.getUChar("spaceLaser", 40);    // Default: 4.0
+  settings.spaceExplosionGravity = preferences.getUChar("spaceExpGrv", 5); // Default: 0.5
 
   // Load network configuration
   settings.useStaticIP = preferences.getBool("useStaticIP", false);  // Default: DHCP
@@ -1062,6 +1029,11 @@ void saveSettings() {
   preferences.putUChar("pongBncStr", settings.pongBounceStrength);
   preferences.putUChar("pongBncDmp", settings.pongBounceDamping);
   preferences.putUChar("pongPadWid", settings.pongPaddleWidth);
+  preferences.putUChar("spaceChar", settings.spaceCharacterType);
+  preferences.putUChar("spacePatrol", settings.spacePatrolSpeed);
+  preferences.putUChar("spaceAttack", settings.spaceAttackSpeed);
+  preferences.putUChar("spaceLaser", settings.spaceLaserSpeed);
+  preferences.putUChar("spaceExpGrv", settings.spaceExplosionGravity);
 
   // Save network configuration
   preferences.putBool("useStaticIP", settings.useStaticIP);
@@ -1475,8 +1447,7 @@ void handleRoot() {
           <option value="0" )rawliteral" + String(settings.clockStyle == 0 ? "selected" : "") + R"rawliteral(>Mario Animation</option>
           <option value="1" )rawliteral" + String(settings.clockStyle == 1 ? "selected" : "") + R"rawliteral(>Standard Clock</option>
           <option value="2" )rawliteral" + String(settings.clockStyle == 2 ? "selected" : "") + R"rawliteral(>Large Clock</option>
-          <option value="3" )rawliteral" + String(settings.clockStyle == 3 ? "selected" : "") + R"rawliteral(>Space Invader</option>
-          <option value="4" )rawliteral" + String(settings.clockStyle == 4 ? "selected" : "") + R"rawliteral(>Space Ship</option>
+          <option value="3" )rawliteral" + String(settings.clockStyle == 3 ? "selected" : "") + R"rawliteral(>Space Invaders</option>
           <option value="5" )rawliteral" + String(settings.clockStyle == 5 ? "selected" : "") + R"rawliteral(>Pong Clock</option>
         </select>
 
@@ -1559,6 +1530,68 @@ void handleRoot() {
           </span>
           <p style="color: #888; font-size: 12px; margin-top: 5px;">
             Size of the paddle. Narrower = harder, Wider = easier. Default: 20px
+          </p>
+        </div>
+
+        <!-- Space Clock Settings (visible when Invader or Ship is selected) -->
+        <div id="spaceSettings" style="display: )rawliteral" + String((settings.clockStyle == 3 || settings.clockStyle == 4) ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #3b82f6;">
+          <h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">🚀 Space Clock Animation Settings</h4>
+
+          <label for="spaceCharacterType">Character Type</label>
+          <select name="spaceCharacterType" id="spaceCharacterType">
+            <option value="0" )rawliteral" + String(settings.spaceCharacterType == 0 ? "selected" : "") + R"rawliteral(>Space Invader</option>
+            <option value="1" )rawliteral" + String(settings.spaceCharacterType == 1 ? "selected" : "") + R"rawliteral(>Space Ship (Default)</option>
+          </select>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            Choose the character that patrols and attacks the time digits. Default: Space Ship
+          </p>
+
+          <label for="spacePatrolSpeed" style="margin-top: 15px;">Patrol Speed</label>
+          <input type="range" name="spacePatrolSpeed" id="spacePatrolSpeed"
+                 min="2" max="15" step="1"
+                 value=")rawliteral" + String(settings.spacePatrolSpeed) + R"rawliteral("
+                 oninput="document.getElementById('patrolSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="patrolSpeedValue">)rawliteral" + String(settings.spacePatrolSpeed / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast the character drifts during patrol. Lower = zen-like, Higher = zippy. Default: 0.5
+          </p>
+
+          <label for="spaceAttackSpeed" style="margin-top: 15px;">Attack Speed</label>
+          <input type="range" name="spaceAttackSpeed" id="spaceAttackSpeed"
+                 min="10" max="40" step="5"
+                 value=")rawliteral" + String(settings.spaceAttackSpeed) + R"rawliteral("
+                 oninput="document.getElementById('attackSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="attackSpeedValue">)rawliteral" + String(settings.spaceAttackSpeed / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast the character slides to attack position. Higher = more aggressive. Default: 2.5
+          </p>
+
+          <label for="spaceLaserSpeed" style="margin-top: 15px;">Laser Speed</label>
+          <input type="range" name="spaceLaserSpeed" id="spaceLaserSpeed"
+                 min="20" max="80" step="5"
+                 value=")rawliteral" + String(settings.spaceLaserSpeed) + R"rawliteral("
+                 oninput="document.getElementById('laserSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="laserSpeedValue">)rawliteral" + String(settings.spaceLaserSpeed / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast the laser extends downward. Higher = dramatic quick strikes. Default: 4.0
+          </p>
+
+          <label for="spaceExplosionGravity" style="margin-top: 15px;">Explosion Intensity</label>
+          <input type="range" name="spaceExplosionGravity" id="spaceExplosionGravity"
+                 min="3" max="10" step="1"
+                 value=")rawliteral" + String(settings.spaceExplosionGravity) + R"rawliteral("
+                 oninput="document.getElementById('explosionGravityValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="explosionGravityValue">)rawliteral" + String(settings.spaceExplosionGravity / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            Controls fragment gravity (how fast debris falls). Lower = floating, Higher = heavy chunks. Default: 0.5
           </p>
         </div>
 
@@ -2205,8 +2238,10 @@ void handleRoot() {
       const clockStyle = document.getElementById('clockStyle').value;
       const marioSettings = document.getElementById('marioSettings');
       const pongSettings = document.getElementById('pongSettings');
+      const spaceSettings = document.getElementById('spaceSettings');
       marioSettings.style.display = (clockStyle === '0') ? 'block' : 'none';
       pongSettings.style.display = (clockStyle === '5') ? 'block' : 'none';
+      spaceSettings.style.display = (clockStyle === '3' || clockStyle === '4') ? 'block' : 'none';
     }
 
     // Export configuration
@@ -2494,6 +2529,23 @@ void handleSave() {
     settings.pongPaddleWidth = server.arg("pongPaddleWidth").toInt();
   }
 
+  // Save Space Clock settings
+  if (server.hasArg("spaceCharacterType")) {
+    settings.spaceCharacterType = server.arg("spaceCharacterType").toInt();
+  }
+  if (server.hasArg("spacePatrolSpeed")) {
+    settings.spacePatrolSpeed = server.arg("spacePatrolSpeed").toInt();
+  }
+  if (server.hasArg("spaceAttackSpeed")) {
+    settings.spaceAttackSpeed = server.arg("spaceAttackSpeed").toInt();
+  }
+  if (server.hasArg("spaceLaserSpeed")) {
+    settings.spaceLaserSpeed = server.arg("spaceLaserSpeed").toInt();
+  }
+  if (server.hasArg("spaceExplosionGravity")) {
+    settings.spaceExplosionGravity = server.arg("spaceExplosionGravity").toInt();
+  }
+
   // Save network configuration
   bool previousStaticIPSetting = settings.useStaticIP;
   if (server.hasArg("useStaticIP")) {
@@ -2652,13 +2704,9 @@ void handleSave() {
   time_overridden = false;
   last_minute = -1;
 
-  // Reset Space Invader animation state when switching modes
-  invader_state = INVADER_PATROL;
-  invader_x = 64;  // Center of screen (invader_y is const at 56)
-
-  // Reset Space Ship animation state when switching modes
-  ship_state = SHIP_PATROL;
-  ship_x = 64;  // Center of screen
+  // Reset Space clock animation state when switching modes
+  space_state = SPACE_PATROL;
+  space_x = 64;  // Center of screen (space_y is const at 56)
 
   // Reset Pong animation state when switching modes
   resetPongAnimation();
@@ -3081,10 +3129,8 @@ void loop() {
           displayStandardClock();
         } else if (settings.clockStyle == 2) {
           displayLargeClock();
-        } else if (settings.clockStyle == 3) {
-          displayClockWithInvader();
-        } else if (settings.clockStyle == 4) {
-          displayClockWithShip();
+        } else if (settings.clockStyle == 3 || settings.clockStyle == 4) {
+          displayClockWithSpace();
         } else if (settings.clockStyle == 5) {
           displayClockWithPong();
         }
@@ -3157,37 +3203,19 @@ bool isAnimationActive() {
     }
   }
 
-  // Check Space Invader clock animations (clockStyle == 3)
-  if (settings.clockStyle == 3) {
-    // Check if invader is in action state (not just patrolling)
-    if (invader_state != INVADER_PATROL) {
+  // Check Space clock animations (clockStyle == 3 or 4)
+  if (settings.clockStyle == 3 || settings.clockStyle == 4) {
+    // Check if space character is in action state (not just patrolling)
+    if (space_state != SPACE_PATROL) {
       return true;
     }
     // Check if laser is active
-    if (invader_laser.active) {
+    if (space_laser.active) {
       return true;
     }
     // Check if explosion fragments are active
-    if (!allInvaderFragmentsInactive()) {
+    if (!allSpaceFragmentsInactive()) {
       return true;
-    }
-  }
-
-  // Check Space Ship clock animations (clockStyle == 4)
-  if (settings.clockStyle == 4) {
-    // Check if ship is in action state (not just patrolling)
-    if (ship_state != SHIP_PATROL) {
-      return true;
-    }
-    // Check if laser is active
-    if (ship_laser.active) {
-      return true;
-    }
-    // Check if explosion fragments are active
-    for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-      if (ship_fragments[i].active) {
-        return true;
-      }
     }
   }
 
@@ -4345,149 +4373,182 @@ void drawMario(int x, int y, bool facingRight, int frame, bool jumping) {
   }
 }
 
-// ========== Space Invader Animation Functions (Clock Style 3 - Sliding) ==========
+// ========== Space Clock Animation Functions (Clock Style 3 - Unified) ==========
 
-// Draw Space Invaders alien sprite (11x11 pixels, classic invader design)
-void drawInvader(int x, int y, int frame) {
+// Draw Space character sprite (Invader or Ship based on settings.spaceCharacterType)
+void drawSpaceCharacter(int x, int y, int frame) {
   // Bounds check
   if (x < -12 || x > SCREEN_WIDTH + 12) return;
   if (y < -10 || y > SCREEN_HEIGHT + 10) return;
 
-  int sx = x - 5;
-  int sy = y - 4;
+  if (settings.spaceCharacterType == 0) {
+    // Draw Invader sprite (11x11 pixels, classic invader design)
+    int sx = x - 5;
+    int sy = y - 4;
 
-  // Antennae
-  display.drawPixel(sx + 2, sy, DISPLAY_WHITE);
-  display.drawPixel(sx + 8, sy, DISPLAY_WHITE);
+    // Antennae
+    display.drawPixel(sx + 2, sy, DISPLAY_WHITE);
+    display.drawPixel(sx + 8, sy, DISPLAY_WHITE);
 
-  // Head
-  display.fillRect(sx + 3, sy + 1, 5, 1, DISPLAY_WHITE);
+    // Head
+    display.fillRect(sx + 3, sy + 1, 5, 1, DISPLAY_WHITE);
 
-  // Body
-  display.fillRect(sx + 2, sy + 2, 7, 1, DISPLAY_WHITE);
-  display.fillRect(sx + 1, sy + 3, 9, 1, DISPLAY_WHITE);
+    // Body
+    display.fillRect(sx + 2, sy + 2, 7, 1, DISPLAY_WHITE);
+    display.fillRect(sx + 1, sy + 3, 9, 1, DISPLAY_WHITE);
 
-  // Eyes
-  display.fillRect(sx, sy + 4, 3, 1, DISPLAY_WHITE);
-  display.drawPixel(sx + 5, sy + 4, DISPLAY_WHITE);
-  display.fillRect(sx + 8, sy + 4, 3, 1, DISPLAY_WHITE);
+    // Eyes
+    display.fillRect(sx, sy + 4, 3, 1, DISPLAY_WHITE);
+    display.drawPixel(sx + 5, sy + 4, DISPLAY_WHITE);
+    display.fillRect(sx + 8, sy + 4, 3, 1, DISPLAY_WHITE);
 
-  // Mouth
-  display.fillRect(sx, sy + 5, 11, 1, DISPLAY_WHITE);
+    // Mouth
+    display.fillRect(sx, sy + 5, 11, 1, DISPLAY_WHITE);
 
-  // Legs (frame-dependent)
-  if (frame == 0) {
-    // Legs down
-    display.drawPixel(sx + 1, sy + 6, DISPLAY_WHITE);
-    display.fillRect(sx + 4, sy + 6, 3, 1, DISPLAY_WHITE);
-    display.drawPixel(sx + 9, sy + 6, DISPLAY_WHITE);
-    display.fillRect(sx, sy + 7, 2, 1, DISPLAY_WHITE);
-    display.drawPixel(sx + 5, sy + 7, DISPLAY_WHITE);
-    display.fillRect(sx + 9, sy + 7, 2, 1, DISPLAY_WHITE);
+    // Legs (frame-dependent)
+    if (frame == 0) {
+      // Legs down
+      display.drawPixel(sx + 1, sy + 6, DISPLAY_WHITE);
+      display.fillRect(sx + 4, sy + 6, 3, 1, DISPLAY_WHITE);
+      display.drawPixel(sx + 9, sy + 6, DISPLAY_WHITE);
+      display.fillRect(sx, sy + 7, 2, 1, DISPLAY_WHITE);
+      display.drawPixel(sx + 5, sy + 7, DISPLAY_WHITE);
+      display.fillRect(sx + 9, sy + 7, 2, 1, DISPLAY_WHITE);
+    } else {
+      // Legs up
+      display.fillRect(sx + 2, sy + 6, 7, 1, DISPLAY_WHITE);
+      display.drawPixel(sx + 1, sy + 7, DISPLAY_WHITE);
+      display.drawPixel(sx + 9, sy + 7, DISPLAY_WHITE);
+      display.fillRect(sx, sy + 8, 2, 1, DISPLAY_WHITE);
+      display.fillRect(sx + 9, sy + 8, 2, 1, DISPLAY_WHITE);
+    }
   } else {
-    // Legs up
-    display.fillRect(sx + 2, sy + 6, 7, 1, DISPLAY_WHITE);
-    display.drawPixel(sx + 1, sy + 7, DISPLAY_WHITE);
-    display.drawPixel(sx + 9, sy + 7, DISPLAY_WHITE);
-    display.fillRect(sx, sy + 8, 2, 1, DISPLAY_WHITE);
-    display.fillRect(sx + 9, sy + 8, 2, 1, DISPLAY_WHITE);
+    // Draw Ship sprite (11x7 pixels, classic ship design)
+    int sx = x - 5;
+    int sy = y - 3;
+
+    // Top point
+    display.drawPixel(sx + 5, sy, DISPLAY_WHITE);
+
+    // Upper body
+    display.fillRect(sx + 4, sy + 1, 3, 1, DISPLAY_WHITE);
+    display.fillRect(sx + 3, sy + 2, 5, 1, DISPLAY_WHITE);
+
+    // Main body
+    display.fillRect(sx + 1, sy + 3, 9, 1, DISPLAY_WHITE);
+    display.fillRect(sx, sy + 4, 11, 1, DISPLAY_WHITE);
+
+    // Wings - animate between two frames for thruster effect
+    if (frame == 0) {
+      // Wings down
+      display.fillRect(sx, sy + 5, 3, 1, DISPLAY_WHITE);
+      display.fillRect(sx + 8, sy + 5, 3, 1, DISPLAY_WHITE);
+      display.drawPixel(sx, sy + 6, DISPLAY_WHITE);
+      display.drawPixel(sx + 10, sy + 6, DISPLAY_WHITE);
+    } else {
+      // Wings up (thruster pulse)
+      display.fillRect(sx + 1, sy + 5, 2, 1, DISPLAY_WHITE);
+      display.fillRect(sx + 8, sy + 5, 2, 1, DISPLAY_WHITE);
+      display.drawPixel(sx + 1, sy + 6, DISPLAY_WHITE);
+      display.drawPixel(sx + 9, sy + 6, DISPLAY_WHITE);
+    }
   }
 }
 
 // Handle patrol state - slow left-right drift
-void handleInvaderPatrolState() {
-  invader_x += INVADER_PATROL_SPEED * invader_patrol_direction;
+void handleSpacePatrolState() {
+  space_x += (settings.spacePatrolSpeed / 10.0) * space_patrol_direction;
 
   // Reverse direction at boundaries
-  if (invader_x <= INVADER_PATROL_LEFT) {
-    invader_x = INVADER_PATROL_LEFT;
-    invader_patrol_direction = 1;
-  } else if (invader_x >= INVADER_PATROL_RIGHT) {
-    invader_x = INVADER_PATROL_RIGHT;
-    invader_patrol_direction = -1;
+  if (space_x <= SPACE_PATROL_LEFT) {
+    space_x = SPACE_PATROL_LEFT;
+    space_patrol_direction = 1;
+  } else if (space_x >= SPACE_PATROL_RIGHT) {
+    space_x = SPACE_PATROL_RIGHT;
+    space_patrol_direction = -1;
   }
 }
 
 // Handle sliding to target position - fast horizontal movement
-void handleInvaderSlidingState() {
+void handleSpaceSlidingState() {
   float target_x = target_x_positions[current_target_index];
 
   // Slide horizontally to target
-  if (abs(invader_x - target_x) > 1.0) {
-    if (invader_x < target_x) {
-      invader_x += INVADER_SLIDE_SPEED;
-      if (invader_x > target_x) invader_x = target_x;
+  if (abs(space_x - target_x) > 1.0) {
+    if (space_x < target_x) {
+      space_x += (settings.spaceAttackSpeed / 10.0);
+      if (space_x > target_x) space_x = target_x;
     } else {
-      invader_x -= INVADER_SLIDE_SPEED;
-      if (invader_x < target_x) invader_x = target_x;
+      space_x -= (settings.spaceAttackSpeed / 10.0);
+      if (space_x < target_x) space_x = target_x;
     }
   } else {
     // Reached target position - start shooting
-    invader_x = target_x;
-    invader_state = INVADER_SHOOTING;
-    fireInvaderLaser(target_digit_index[current_target_index]);
+    space_x = target_x;
+    space_state = SPACE_SHOOTING;
+    fireSpaceLaser(target_digit_index[current_target_index]);
   }
 }
 
 // Handle shooting state - laser update handles transition
-void handleInvaderShootingState() {
+void handleSpaceShootingState() {
   // Laser update handles transition to EXPLODING_DIGIT
 }
 
 // Handle exploding state - move away quickly after 5 frames
-void handleInvaderExplodingState() {
-  invader_explosion_timer++;
+void handleSpaceExplodingState() {
+  space_explosion_timer++;
   // Move away quickly - don't wait for explosion to finish
-  if (invader_explosion_timer >= 5) {
+  if (space_explosion_timer >= 5) {
     current_target_index++;
     if (current_target_index < num_targets) {
-      invader_state = INVADER_MOVING_NEXT;
+      space_state = SPACE_MOVING_NEXT;
     } else {
-      invader_state = INVADER_RETURNING;
+      space_state = SPACE_RETURNING;
     }
   }
 }
 
 // Handle moving to next target - slide to next digit
-void handleInvaderMovingNextState() {
+void handleSpaceMovingNextState() {
   float target_x = target_x_positions[current_target_index];
 
-  if (abs(invader_x - target_x) > 1.0) {
-    if (invader_x < target_x) {
-      invader_x += INVADER_SLIDE_SPEED;
-      if (invader_x > target_x) invader_x = target_x;
+  if (abs(space_x - target_x) > 1.0) {
+    if (space_x < target_x) {
+      space_x += (settings.spaceAttackSpeed / 10.0);
+      if (space_x > target_x) space_x = target_x;
     } else {
-      invader_x -= INVADER_SLIDE_SPEED;
-      if (invader_x < target_x) invader_x = target_x;
+      space_x -= (settings.spaceAttackSpeed / 10.0);
+      if (space_x < target_x) space_x = target_x;
     }
   } else {
-    invader_x = target_x;
-    invader_state = INVADER_SHOOTING;
-    fireInvaderLaser(target_digit_index[current_target_index]);
+    space_x = target_x;
+    space_state = SPACE_SHOOTING;
+    fireSpaceLaser(target_digit_index[current_target_index]);
   }
 }
 
 // Handle returning to patrol - slide back to center
-void handleInvaderReturningState() {
+void handleSpaceReturningState() {
   float center_x = 64;
 
-  if (abs(invader_x - center_x) > 1.0) {
-    if (invader_x < center_x) {
-      invader_x += INVADER_PATROL_SPEED;
-      if (invader_x > center_x) invader_x = center_x;
+  if (abs(space_x - center_x) > 1.0) {
+    if (space_x < center_x) {
+      space_x += (settings.spacePatrolSpeed / 10.0);
+      if (space_x > center_x) space_x = center_x;
     } else {
-      invader_x -= INVADER_PATROL_SPEED;
-      if (invader_x < center_x) invader_x = center_x;
+      space_x -= (settings.spacePatrolSpeed / 10.0);
+      if (space_x < center_x) space_x = center_x;
     }
   } else {
-    invader_x = center_x;
-    invader_state = INVADER_PATROL;
+    space_x = center_x;
+    space_state = SPACE_PATROL;
     time_overridden = false;  // Allow time to resync
   }
 }
 
-// Draw invader laser beam (upward)
-void drawInvaderLaser(Laser* laser) {
+// Draw space laser beam (upward)
+void drawSpaceLaser(Laser* laser) {
   if (!laser->active) return;
 
   // Vertical laser beam shooting UPWARD
@@ -4507,55 +4568,55 @@ void drawInvaderLaser(Laser* laser) {
   }
 }
 
-// Update invader laser
-void updateInvaderLaser() {
-  if (!invader_laser.active) return;
+// Update space laser
+void updateSpaceLaser() {
+  if (!space_laser.active) return;
 
-  invader_laser.length += LASER_EXTEND_SPEED;
+  space_laser.length += (settings.spaceLaserSpeed / 10.0);
 
   // Check if reached digit (bottom of time digits)
-  const int INVADER_TIME_Y = 16;
-  int digit_bottom_y = INVADER_TIME_Y + 24;
-  int laser_end_y = invader_laser.y - invader_laser.length;
+  const int SPACE_TIME_Y = 16;
+  int digit_bottom_y = SPACE_TIME_Y + 24;
+  int laser_end_y = space_laser.y - space_laser.length;
 
   if (laser_end_y <= digit_bottom_y) {
-    invader_laser.active = false;
-    spawnInvaderExplosion(invader_laser.target_digit_idx);
+    space_laser.active = false;
+    spawnSpaceExplosion(space_laser.target_digit_idx);
     updateSpecificDigit(target_digit_index[current_target_index],
                        target_digit_values[current_target_index]);
-    invader_explosion_timer = 0;
-    invader_state = INVADER_EXPLODING_DIGIT;
+    space_explosion_timer = 0;
+    space_state = SPACE_EXPLODING_DIGIT;
   }
 
-  if (invader_laser.length > LASER_MAX_LENGTH) {
-    invader_laser.length = LASER_MAX_LENGTH;
+  if (space_laser.length > LASER_MAX_LENGTH) {
+    space_laser.length = LASER_MAX_LENGTH;
   }
 }
 
-// Fire invader laser
-void fireInvaderLaser(int target_digit_idx) {
-  invader_laser.x = invader_x;
-  invader_laser.y = invader_y - 4;  // Start from top of invader
-  invader_laser.length = 0;
-  invader_laser.active = true;
-  invader_laser.target_digit_idx = target_digit_idx;
+// Fire space laser
+void fireSpaceLaser(int target_digit_idx) {
+  space_laser.x = space_x;
+  space_laser.y = space_y - 4;  // Start from top of character
+  space_laser.length = 0;
+  space_laser.active = true;
+  space_laser.target_digit_idx = target_digit_idx;
 }
 
-// Spawn invader explosion fragments
-void spawnInvaderExplosion(int digitIndex) {
-  const int INVADER_TIME_Y = 16;
+// Spawn space explosion fragments
+void spawnSpaceExplosion(int digitIndex) {
+  const int SPACE_TIME_Y = 16;
   int digit_x = DIGIT_X[digitIndex] + 9;
-  int digit_y = INVADER_TIME_Y + 12;
+  int digit_y = SPACE_TIME_Y + 12;
 
   int frag_count = 10;
   float angle_step = (2 * PI) / frag_count;
 
   for (int i = 0; i < frag_count; i++) {
-    InvaderFragment* f = findFreeInvaderFragment();
+    SpaceFragment* f = findFreeSpaceFragment();
     if (!f) break;
 
     float angle = i * angle_step + random(-30, 30) / 100.0;
-    float speed = INVADER_FRAG_SPEED + random(-50, 50) / 100.0;
+    float speed = 3.0 + random(-50, 50) / 100.0;  // Base speed ~3.0
 
     f->x = digit_x + random(-4, 4);
     f->y = digit_y + random(-6, 6);
@@ -4565,58 +4626,58 @@ void spawnInvaderExplosion(int digitIndex) {
   }
 }
 
-// Update invader fragments
-void updateInvaderFragments() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (invader_fragments[i].active) {
-      invader_fragments[i].vy += INVADER_FRAG_GRAVITY;
-      invader_fragments[i].x += invader_fragments[i].vx;
-      invader_fragments[i].y += invader_fragments[i].vy;
+// Update space fragments
+void updateSpaceFragments() {
+  for (int i = 0; i < MAX_SPACE_FRAGMENTS; i++) {
+    if (space_fragments[i].active) {
+      space_fragments[i].vy += (settings.spaceExplosionGravity / 10.0);
+      space_fragments[i].x += space_fragments[i].vx;
+      space_fragments[i].y += space_fragments[i].vy;
 
-      if (invader_fragments[i].y > 70 ||
-          invader_fragments[i].x < -5 ||
-          invader_fragments[i].x > 133) {
-        invader_fragments[i].active = false;
+      if (space_fragments[i].y > 70 ||
+          space_fragments[i].x < -5 ||
+          space_fragments[i].x > 133) {
+        space_fragments[i].active = false;
       }
     }
   }
 }
 
-// Draw invader fragments
-void drawInvaderFragments() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (invader_fragments[i].active) {
-      display.fillRect((int)invader_fragments[i].x,
-                      (int)invader_fragments[i].y, 2, 2, DISPLAY_WHITE);
+// Draw space fragments
+void drawSpaceFragments() {
+  for (int i = 0; i < MAX_SPACE_FRAGMENTS; i++) {
+    if (space_fragments[i].active) {
+      display.fillRect((int)space_fragments[i].x,
+                      (int)space_fragments[i].y, 2, 2, DISPLAY_WHITE);
     }
   }
 }
 
-// Check if all invader fragments are inactive
-bool allInvaderFragmentsInactive() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (invader_fragments[i].active) return false;
+// Check if all space fragments are inactive
+bool allSpaceFragmentsInactive() {
+  for (int i = 0; i < MAX_SPACE_FRAGMENTS; i++) {
+    if (space_fragments[i].active) return false;
   }
   return true;
 }
 
-// Find free invader fragment
-InvaderFragment* findFreeInvaderFragment() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (!invader_fragments[i].active) return &invader_fragments[i];
+// Find free space fragment
+SpaceFragment* findFreeSpaceFragment() {
+  for (int i = 0; i < MAX_SPACE_FRAGMENTS; i++) {
+    if (!space_fragments[i].active) return &space_fragments[i];
   }
   return nullptr;
 }
 
-// Main invader animation update
-void updateInvaderAnimation(struct tm* timeinfo) {
+// Main space animation update
+void updateSpaceAnimation(struct tm* timeinfo) {
   unsigned long currentMillis = millis();
 
-  const int INVADER_ANIM_SPEED = 50;  // 50ms = 20 FPS
+  const int SPACE_ANIM_SPEED = 50;  // 50ms = 20 FPS
   const int SPRITE_TOGGLE_SPEED = 200;  // Slow retro animation
 
-  if (currentMillis - last_invader_update < INVADER_ANIM_SPEED) return;
-  last_invader_update = currentMillis;
+  if (currentMillis - last_space_update < SPACE_ANIM_SPEED) return;
+  last_space_update = currentMillis;
 
   int seconds = timeinfo->tm_sec;
   int current_minute = timeinfo->tm_min;
@@ -4628,50 +4689,50 @@ void updateInvaderAnimation(struct tm* timeinfo) {
   }
 
   // Toggle sprite
-  if (currentMillis - last_invader_sprite_toggle >= SPRITE_TOGGLE_SPEED) {
-    invader_anim_frame = 1 - invader_anim_frame;
-    last_invader_sprite_toggle = currentMillis;
+  if (currentMillis - last_space_sprite_toggle >= SPRITE_TOGGLE_SPEED) {
+    space_anim_frame = 1 - space_anim_frame;
+    last_space_sprite_toggle = currentMillis;
   }
 
   // Trigger at 55 seconds - transition from PATROL to SLIDING
-  if (seconds >= 55 && !animation_triggered && invader_state == INVADER_PATROL) {
+  if (seconds >= 55 && !animation_triggered && space_state == SPACE_PATROL) {
     animation_triggered = true;
     time_overridden = true;
     calculateTargetDigits(displayed_hour, displayed_min);
 
     if (num_targets > 0) {
       current_target_index = 0;
-      invader_state = INVADER_SLIDING;
+      space_state = SPACE_SLIDING;
     }
   }
 
-  updateInvaderFragments();
-  updateInvaderLaser();
+  updateSpaceFragments();
+  updateSpaceLaser();
 
-  switch (invader_state) {
-    case INVADER_PATROL:
-      handleInvaderPatrolState();
+  switch (space_state) {
+    case SPACE_PATROL:
+      handleSpacePatrolState();
       break;
-    case INVADER_SLIDING:
-      handleInvaderSlidingState();
+    case SPACE_SLIDING:
+      handleSpaceSlidingState();
       break;
-    case INVADER_SHOOTING:
-      handleInvaderShootingState();
+    case SPACE_SHOOTING:
+      handleSpaceShootingState();
       break;
-    case INVADER_EXPLODING_DIGIT:
-      handleInvaderExplodingState();
+    case SPACE_EXPLODING_DIGIT:
+      handleSpaceExplodingState();
       break;
-    case INVADER_MOVING_NEXT:
-      handleInvaderMovingNextState();
+    case SPACE_MOVING_NEXT:
+      handleSpaceMovingNextState();
       break;
-    case INVADER_RETURNING:
-      handleInvaderReturningState();
+    case SPACE_RETURNING:
+      handleSpaceReturningState();
       break;
   }
 }
 
-// Display clock with invader animation
-void displayClockWithInvader() {
+// Display clock with space animation
+void displayClockWithSpace() {
   struct tm timeinfo;
   if(!getTimeWithTimeout(&timeinfo)) {
     display.setTextSize(1);
@@ -4685,17 +4746,17 @@ void displayClockWithInvader() {
   }
 
   // Update animation FIRST so time advances before drawing
-  updateInvaderAnimation(&timeinfo);
+  updateSpaceAnimation(&timeinfo);
 
-  // Time management (same as ship)
+  // Time management
   if (!time_overridden) {
     displayed_hour = timeinfo.tm_hour;
     displayed_min = timeinfo.tm_min;
   }
 
-  // Reset time_overridden when real time catches up AND invader is in PATROL state
+  // Reset time_overridden when real time catches up AND space character is in PATROL state
   if (time_overridden && timeinfo.tm_hour == displayed_hour &&
-      timeinfo.tm_min == displayed_min && invader_state == INVADER_PATROL) {
+      timeinfo.tm_min == displayed_min && space_state == SPACE_PATROL) {
     time_overridden = false;
   }
 
@@ -4713,8 +4774,8 @@ void displayClockWithInvader() {
   display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
   display.print(dateStr);
 
-  // Time digits (Invader uses Y=16, same as ship)
-  const int INVADER_TIME_Y = 16;
+  // Time digits
+  const int SPACE_TIME_Y = 16;
   display.setTextSize(3);
   char digits[5];
   digits[0] = '0' + (displayed_hour / 10);
@@ -4724,408 +4785,26 @@ void displayClockWithInvader() {
   digits[4] = '0' + (displayed_min % 10);
 
   for (int i = 0; i < 5; i++) {
-    display.setCursor(DIGIT_X[i], INVADER_TIME_Y);
+    display.setCursor(DIGIT_X[i], SPACE_TIME_Y);
     display.print(digits[i]);
   }
 
-  // Render invader (ALWAYS visible - either patrolling or attacking)
-  drawInvader((int)invader_x, (int)invader_y, invader_anim_frame);
+  // Render space character (ALWAYS visible - either patrolling or attacking)
+  drawSpaceCharacter((int)space_x, (int)space_y, space_anim_frame);
 
   // Render laser if active
-  if (invader_laser.active) {
-    drawInvaderLaser(&invader_laser);
+  if (space_laser.active) {
+    drawSpaceLaser(&space_laser);
   }
 
   // Render explosion fragments
-  drawInvaderFragments();
-}
-
-
-// ========== Space Ship Animation Functions (Clock Style 4) ==========
-
-// Draw Space Invaders ship sprite (11x7 pixels, classic ship design)
-void drawShip(int x, int y, int frame) {
-  // Bounds check
-  if (x < -12 || x > SCREEN_WIDTH + 12) return;
-  if (y < -10 || y > SCREEN_HEIGHT + 10) return;
-
-  int sx = x - 5;
-  int sy = y - 3;
-
-  // Top point
-  display.drawPixel(sx + 5, sy, DISPLAY_WHITE);
-
-  // Upper body
-  display.fillRect(sx + 4, sy + 1, 3, 1, DISPLAY_WHITE);
-  display.fillRect(sx + 3, sy + 2, 5, 1, DISPLAY_WHITE);
-
-  // Main body
-  display.fillRect(sx + 1, sy + 3, 9, 1, DISPLAY_WHITE);
-  display.fillRect(sx, sy + 4, 11, 1, DISPLAY_WHITE);
-
-  // Wings - animate between two frames for thruster effect
-  if (frame == 0) {
-    // Wings down
-    display.fillRect(sx, sy + 5, 3, 1, DISPLAY_WHITE);
-    display.fillRect(sx + 8, sy + 5, 3, 1, DISPLAY_WHITE);
-    display.drawPixel(sx, sy + 6, DISPLAY_WHITE);
-    display.drawPixel(sx + 10, sy + 6, DISPLAY_WHITE);
-  } else {
-    // Wings up (thruster pulse)
-    display.fillRect(sx + 1, sy + 5, 2, 1, DISPLAY_WHITE);
-    display.fillRect(sx + 8, sy + 5, 2, 1, DISPLAY_WHITE);
-    display.drawPixel(sx + 1, sy + 6, DISPLAY_WHITE);
-    display.drawPixel(sx + 9, sy + 6, DISPLAY_WHITE);
-  }
-}
-
-// Handle patrol state - slow left-right drift
-void handleShipPatrolState() {
-  ship_x += SHIP_PATROL_SPEED * ship_patrol_direction;
-
-  // Reverse direction at boundaries
-  if (ship_x <= SHIP_PATROL_LEFT) {
-    ship_x = SHIP_PATROL_LEFT;
-    ship_patrol_direction = 1;
-  } else if (ship_x >= SHIP_PATROL_RIGHT) {
-    ship_x = SHIP_PATROL_RIGHT;
-    ship_patrol_direction = -1;
-  }
-}
-
-// Handle sliding to target position - fast horizontal movement
-void handleShipSlidingState() {
-  float target_x = target_x_positions[current_target_index];
-
-  // Slide horizontally to target
-  if (abs(ship_x - target_x) > 1.0) {
-    if (ship_x < target_x) {
-      ship_x += SHIP_SLIDE_SPEED;
-      if (ship_x > target_x) ship_x = target_x;
-    } else {
-      ship_x -= SHIP_SLIDE_SPEED;
-      if (ship_x < target_x) ship_x = target_x;
-    }
-  } else {
-    // Reached target position - start shooting
-    ship_x = target_x;
-    ship_state = SHIP_SHOOTING;
-    fireShipLaser(target_digit_index[current_target_index]);
-  }
-}
-
-// Handle shooting state - laser update handles transition
-void handleShipShootingState() {
-  // Laser update handles transition to EXPLODING_DIGIT
-}
-
-// Handle exploding state - move away quickly after 5 frames
-void handleShipExplodingState() {
-  ship_explosion_timer++;
-  // Move away quickly - don't wait for explosion to finish
-  if (ship_explosion_timer >= 5) {
-    current_target_index++;
-    if (current_target_index < num_targets) {
-      ship_state = SHIP_MOVING_NEXT;
-    } else {
-      ship_state = SHIP_RETURNING;
-    }
-  }
-}
-
-// Handle moving to next target - slide to next digit
-void handleShipMovingNextState() {
-  float target_x = target_x_positions[current_target_index];
-
-  if (abs(ship_x - target_x) > 1.0) {
-    if (ship_x < target_x) {
-      ship_x += SHIP_SLIDE_SPEED;
-      if (ship_x > target_x) ship_x = target_x;
-    } else {
-      ship_x -= SHIP_SLIDE_SPEED;
-      if (ship_x < target_x) ship_x = target_x;
-    }
-  } else {
-    ship_x = target_x;
-    ship_state = SHIP_SHOOTING;
-    fireShipLaser(target_digit_index[current_target_index]);
-  }
-}
-
-// Handle returning to patrol - slide back to center
-void handleShipReturningState() {
-  float center_x = 64;
-
-  if (abs(ship_x - center_x) > 1.0) {
-    if (ship_x < center_x) {
-      ship_x += SHIP_PATROL_SPEED;
-      if (ship_x > center_x) ship_x = center_x;
-    } else {
-      ship_x -= SHIP_PATROL_SPEED;
-      if (ship_x < center_x) ship_x = center_x;
-    }
-  } else {
-    ship_x = center_x;
-    ship_state = SHIP_PATROL;
-    time_overridden = false;  // Allow time to resync
-  }
-}
-
-// Draw ship laser beam (upward)
-void drawShipLaser(Laser* laser) {
-  if (!laser->active) return;
-
-  // Vertical laser beam shooting UPWARD
-  for (int i = 0; i < (int)laser->length; i += 2) {
-    int ly = (int)laser->y - i;  // Subtract to go upward
-    if (ly >= 0 && ly < SCREEN_HEIGHT) {
-      display.drawPixel((int)laser->x, ly, DISPLAY_WHITE);
-      display.drawPixel((int)laser->x + 1, ly, DISPLAY_WHITE);
-    }
-  }
-
-  // Impact flash at end (top of beam)
-  int end_y = (int)(laser->y - laser->length);
-  if (end_y >= 0 && end_y < SCREEN_HEIGHT) {
-    display.drawPixel((int)laser->x - 1, end_y, DISPLAY_WHITE);
-    display.drawPixel((int)laser->x + 2, end_y, DISPLAY_WHITE);
-  }
-}
-
-// Update ship laser
-void updateShipLaser() {
-  if (!ship_laser.active) return;
-
-  ship_laser.length += LASER_EXTEND_SPEED;
-
-  // Check if reached digit (bottom of time digits)
-  const int SHIP_TIME_Y = 16;
-  int digit_bottom_y = SHIP_TIME_Y + 24;
-  int laser_end_y = ship_laser.y - ship_laser.length;
-
-  if (laser_end_y <= digit_bottom_y) {
-    ship_laser.active = false;
-    spawnShipExplosion(ship_laser.target_digit_idx);
-    updateSpecificDigit(target_digit_index[current_target_index],
-                       target_digit_values[current_target_index]);
-    ship_explosion_timer = 0;
-    ship_state = SHIP_EXPLODING_DIGIT;
-  }
-
-  if (ship_laser.length > LASER_MAX_LENGTH) {
-    ship_laser.length = LASER_MAX_LENGTH;
-  }
-}
-
-// Fire ship laser
-void fireShipLaser(int target_digit_idx) {
-  ship_laser.x = ship_x;
-  ship_laser.y = ship_y - 3;  // Start from top of ship
-  ship_laser.length = 0;
-  ship_laser.active = true;
-  ship_laser.target_digit_idx = target_digit_idx;
-}
-
-// Spawn ship explosion fragments
-void spawnShipExplosion(int digitIndex) {
-  const int SHIP_TIME_Y = 16;
-  int digit_x = DIGIT_X[digitIndex] + 9;
-  int digit_y = SHIP_TIME_Y + 12;
-
-  int frag_count = 10;
-  float angle_step = (2 * PI) / frag_count;
-
-  for (int i = 0; i < frag_count; i++) {
-    ShipFragment* f = findFreeShipFragment();
-    if (!f) break;
-
-    float angle = i * angle_step + random(-30, 30) / 100.0;
-    float speed = INVADER_FRAG_SPEED + random(-50, 50) / 100.0;
-
-    f->x = digit_x + random(-4, 4);
-    f->y = digit_y + random(-6, 6);
-    f->vx = cos(angle) * speed;
-    f->vy = sin(angle) * speed - 1.0;
-    f->active = true;
-  }
-}
-
-// Update ship fragments
-void updateShipFragments() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (ship_fragments[i].active) {
-      ship_fragments[i].vy += INVADER_FRAG_GRAVITY;
-      ship_fragments[i].x += ship_fragments[i].vx;
-      ship_fragments[i].y += ship_fragments[i].vy;
-
-      if (ship_fragments[i].y > 70 ||
-          ship_fragments[i].x < -5 ||
-          ship_fragments[i].x > 133) {
-        ship_fragments[i].active = false;
-      }
-    }
-  }
-}
-
-// Draw ship fragments
-void drawShipFragments() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (ship_fragments[i].active) {
-      display.fillRect((int)ship_fragments[i].x,
-                      (int)ship_fragments[i].y, 2, 2, DISPLAY_WHITE);
-    }
-  }
-}
-
-// Check if all ship fragments are inactive
-bool allShipFragmentsInactive() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (ship_fragments[i].active) return false;
-  }
-  return true;
-}
-
-// Find free ship fragment
-ShipFragment* findFreeShipFragment() {
-  for (int i = 0; i < MAX_INVADER_FRAGMENTS; i++) {
-    if (!ship_fragments[i].active) return &ship_fragments[i];
-  }
-  return nullptr;
-}
-
-// Main ship animation update
-void updateShipAnimation(struct tm* timeinfo) {
-  unsigned long currentMillis = millis();
-
-  if (currentMillis - last_ship_update < SHIP_ANIM_SPEED) return;
-  last_ship_update = currentMillis;
-
-  int seconds = timeinfo->tm_sec;
-  int current_minute = timeinfo->tm_min;
-
-  // Reset trigger
-  if (current_minute != last_minute) {
-    last_minute = current_minute;
-    animation_triggered = false;
-  }
-
-  // Toggle sprite
-  if (currentMillis - last_ship_sprite_toggle >= SHIP_SPRITE_TOGGLE_SPEED) {
-    ship_anim_frame = 1 - ship_anim_frame;
-    last_ship_sprite_toggle = currentMillis;
-  }
-
-  // Trigger at 55 seconds - transition from PATROL to SLIDING
-  if (seconds >= 55 && !animation_triggered && ship_state == SHIP_PATROL) {
-    animation_triggered = true;
-    time_overridden = true;
-    calculateTargetDigits(displayed_hour, displayed_min);
-
-    if (num_targets > 0) {
-      current_target_index = 0;
-      ship_state = SHIP_SLIDING;
-    }
-  }
-
-  updateShipFragments();
-  updateShipLaser();
-
-  switch (ship_state) {
-    case SHIP_PATROL:
-      handleShipPatrolState();
-      break;
-    case SHIP_SLIDING:
-      handleShipSlidingState();
-      break;
-    case SHIP_SHOOTING:
-      handleShipShootingState();
-      break;
-    case SHIP_EXPLODING_DIGIT:
-      handleShipExplodingState();
-      break;
-    case SHIP_MOVING_NEXT:
-      handleShipMovingNextState();
-      break;
-    case SHIP_RETURNING:
-      handleShipReturningState();
-      break;
-  }
-}
-
-// Display clock with ship animation
-void displayClockWithShip() {
-  struct tm timeinfo;
-  if(!getTimeWithTimeout(&timeinfo)) {
-    display.setTextSize(1);
-    display.setCursor(20, 28);
-    if (!ntpSynced) {
-      display.print("Syncing time...");
-    } else {
-      display.print("Time Error");
-    }
-    return;
-  }
-
-  // Update animation FIRST so time advances before drawing
-  updateShipAnimation(&timeinfo);
-
-  // Time management (same as invader)
-  if (!time_overridden) {
-    displayed_hour = timeinfo.tm_hour;
-    displayed_min = timeinfo.tm_min;
-  }
-
-  // Reset time_overridden when real time catches up AND ship is in PATROL state
-  if (time_overridden && timeinfo.tm_hour == displayed_hour &&
-      timeinfo.tm_min == displayed_min && ship_state == SHIP_PATROL) {
-    time_overridden = false;
-  }
-
-  // Date (at top, Y=4)
-  display.setTextSize(1);
-  char dateStr[12];
-  switch (settings.dateFormat) {
-    case 0: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mday,
-                    timeinfo.tm_mon + 1, timeinfo.tm_year + 1900); break;
-    case 1: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mon + 1,
-                    timeinfo.tm_mday, timeinfo.tm_year + 1900); break;
-    case 2: sprintf(dateStr, "%04d-%02d-%02d", timeinfo.tm_year + 1900,
-                    timeinfo.tm_mon + 1, timeinfo.tm_mday); break;
-  }
-  display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
-  display.print(dateStr);
-
-  // Time digits (Ship uses Y=16, same as invader)
-  const int SHIP_TIME_Y = 16;
-  display.setTextSize(3);
-  char digits[5];
-  digits[0] = '0' + (displayed_hour / 10);
-  digits[1] = '0' + (displayed_hour % 10);
-  digits[2] = shouldShowColon() ? ':' : ' ';  // Blinking colon
-  digits[3] = '0' + (displayed_min / 10);
-  digits[4] = '0' + (displayed_min % 10);
-
-  for (int i = 0; i < 5; i++) {
-    display.setCursor(DIGIT_X[i], SHIP_TIME_Y);
-    display.print(digits[i]);
-  }
-
-  // Render ship (ALWAYS visible - either patrolling or attacking)
-  drawShip((int)ship_x, (int)ship_y, ship_anim_frame);
-
-  // Render laser if active
-  if (ship_laser.active) {
-    drawShipLaser(&ship_laser);
-  }
-
-  // Render explosion fragments
-  drawShipFragments();
+  drawSpaceFragments();
 }
 
 // ========== Pong Clock Functions (Clock Style 5) ==========
 
 // Fragment pool helper functions
-InvaderFragment* findFreePongFragment() {
+SpaceFragment* findFreePongFragment() {
   for (int i = 0; i < MAX_PONG_FRAGMENTS; i++) {
     if (!pong_fragments[i].active) return &pong_fragments[i];
   }
@@ -5337,7 +5016,7 @@ void spawnPongBallHitFragments(int x, int y) {
   int frag_count = 2 + random(0, 3);  // 2-4 fragments
 
   for (int i = 0; i < frag_count; i++) {
-    InvaderFragment* f = findFreePongFragment();
+    SpaceFragment* f = findFreePongFragment();
     if (!f) break;
 
     f->x = x + random(-2, 3);
@@ -5374,7 +5053,7 @@ void spawnDigitBreakFragments(int digitIndex, char oldChar) {
       bool pixel_lit = (buffer[index] >> bit) & 0x01;
 
       if (pixel_lit && random(0, 8) < 3) {  // 37.5% spawn rate
-        InvaderFragment* f = findFreePongFragment();
+        SpaceFragment* f = findFreePongFragment();
         if (!f) break;
 
         f->x = px;
@@ -5418,7 +5097,7 @@ void spawnProgressiveFragments(int digitIndex, char oldChar, int hitNumber) {
       bool pixel_lit = (buffer[index] >> bit) & 0x01;
 
       if (pixel_lit && random(0, 8) < spawn_chance) {
-        InvaderFragment* f = findFreePongFragment();
+        SpaceFragment* f = findFreePongFragment();
         if (!f) break;
 
         f->x = px;
@@ -5459,7 +5138,7 @@ void spawnAssemblyFragments(int digitIndex, char newChar) {
       bool pixel_lit = (buffer[index] >> bit) & 0x01;
 
       if (pixel_lit && random(0, 8) < 4) {  // 50% spawn rate
-        InvaderFragment* f = findFreePongFragment();
+        SpaceFragment* f = findFreePongFragment();
         if (!f) break;
 
         // Start fragment from random position off-screen edges
