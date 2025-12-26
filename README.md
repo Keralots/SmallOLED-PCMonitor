@@ -25,7 +25,7 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 - **Dual Display Modes:**
   - **PC Online**: Real-time stats with customizable metrics and positions
-  - **PC Offline**: Animated clock (Mario, Space Invaders, Standard, or Large styles)
+  - **PC Offline**: Animated clock (Mario, Space Invaders, Pong, Standard, or Large styles)
 - **v2.0 Python GUI (NEW!)**:
   - Easy graphical configuration - no more editing files!
   - Select from all available sensors on your system
@@ -76,7 +76,7 @@ For detailed instructions, keep reading below.
 
 #### Option A: Pre-built Binary (Easy - No Compilation Needed)
 
-**Download the latest release**: [v1.3.0](release/v1.3.0/)
+**Download the latest release**: [v1.3.2](release/v1.3.2/)
 
 **Easiest Method - Web Flasher (No Installation Required!):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
