@@ -3,3 +3,9 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# ESP32 Configurator - excluded from repository
+esp32-configurator/
+
+# PC Stats Monitor Script - excluded from repository
+pc_stats_monitor_hwinfo-script/
