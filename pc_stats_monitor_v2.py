@@ -374,6 +374,396 @@ def get_unit_from_type(sensor_type):
     return unit_map.get(sensor_type, "")
 
 
+class AutoConfigurator:
+    """
+    Intelligent metric selection based on available sensors
+    Similar to esp32-configurator/core/auto_configurator.py
+    """
+
+    def __init__(self):
+        # Template for 5-row layout - comprehensive with smart fallbacks
+        self.template_5row = [
+            # (label, search_terms, fallback_terms, position, bar_position, bar_range)
+            # Row 1: Position 0 (left) - shown when clock on right or no clock
+            ("FAN", ["fan"], ["pump", "rpm"], 0, 255, None),
+
+            # Row 2: CPU with temp companion and bar
+            ("CPU^^", ["cpu usage", "cpu load", "total cpu", "processor"], ["cpu"], 2, 3, (0, 100)),
+            ("CPUT", ["cpu temp", "cpu package", "core temperature"], ["temperature"], 2, 255, None),
+
+            # Row 3: GPU with temp companion and bar
+            ("GPU^^", ["gpu usage", "gpu load", "gpu core load", "graphics"], ["gpu"], 4, 5, (0, 100)),
+            ("GPUT", ["gpu temp", "gpu core temp"], ["gpu hot spot"], 4, 255, None),
+
+            # Row 4: RAM with bar
+            ("RAM^^", ["ram", "memory"], ["ram_gb"], 6, 7, (0, 100)),
+
+            # Row 5: CPU Power + GPU Power/Clock (with comprehensive fallbacks)
+            ("CPUW", ["cpu power", "package power"], ["power", "watt", "fan"], 8, 255, None),
+            ("GPUW", ["gpu power"], ["gpu clock", "clock", "fan #2", "disk"], 9, 255, None),
+        ]
+
+        # Template for 6-row layout - even more comprehensive
+        self.template_6row = [
+            # Row 1: Position 0 (left) - shown when clock on right or no clock
+            ("FAN", ["fan"], ["pump", "rpm"], 0, 255, None),
+
+            # Row 2: CPU with temp companion and bar
+            ("CPU^^", ["cpu usage", "cpu load", "total cpu", "processor"], ["cpu"], 2, 3, (0, 100)),
+            ("CPUT", ["cpu temp", "cpu package", "core temperature"], ["temperature"], 2, 255, None),
+
+            # Row 3: GPU with temp companion and bar
+            ("GPU^^", ["gpu usage", "gpu load", "gpu core load", "graphics"], ["gpu"], 4, 5, (0, 100)),
+            ("GPUT", ["gpu temp", "gpu core temp"], ["gpu hot spot"], 4, 255, None),
+
+            # Row 4: RAM with bar
+            ("RAM^^", ["ram", "memory"], ["ram_gb"], 6, 7, (0, 100)),
+
+            # Row 5: CPU Power + GPU Power/Clock
+            ("CPUW", ["cpu power", "package power"], ["power", "watt", "fan"], 8, 255, None),
+            ("GPUW", ["gpu power"], ["gpu clock", "clock", "fan #2"], 9, 255, None),
+
+            # Row 6: Disks or additional sensors
+            ("DSK1", ["disk"], ["ssd", "nvme", "hdd", "storage"], 10, 255, None),
+            ("DSK2", ["drive"], ["fan #3", "chassis"], 11, 255, None),
+        ]
+
+    def create_auto_config(self, available_sensors, row_mode=1, clock_position=2):
+        """
+        Create automatic configuration
+
+        Args:
+            available_sensors: Flattened list from sensor_database
+            row_mode: 0=5-row, 1=6-row
+            clock_position: 0=Center, 1=Left, 2=Right, 3=None
+
+        Returns:
+            (metrics_list, description_text)
+        """
+        template = self.template_5row if row_mode == 0 else self.template_6row
+        metrics = []
+        matched_count = 0
+        substitutions = []
+
+        for item in template:
+            if len(item) == 6:
+                label, search_terms, fallback_terms, position, bar_position, bar_range = item
+            else:
+                continue
+
+            # Adjust position if clock conflicts with metrics
+            # clock_position: 0=Center, 1=Left, 2=Right
+            if (clock_position == 1 and position == 0) or (clock_position == 2 and position == 1):
+                position = 255  # Hide metrics that conflict with clock
+
+            # Try primary search terms
+            sensor = self._find_sensor(available_sensors, search_terms)
+
+            # Try fallback if needed
+            if not sensor and fallback_terms:
+                sensor = self._find_sensor(available_sensors, fallback_terms)
+                if sensor:
+                    substitutions.append(f"{label} -> {sensor['name']}")
+
+            if sensor:
+                matched_count += 1
+
+                # Create metric config
+                metric = {
+                    "id": len(metrics) + 1,
+                    "name": sensor["name"],
+                    "display_name": sensor.get("display_name", sensor["name"]),
+                    "source": sensor["source"],
+                    "type": sensor.get("type", "other"),
+                    "unit": sensor.get("unit", ""),
+                    "custom_label": label,
+                    "current_value": sensor.get("current_value", 0),
+                    "position": position,
+                    "bar_position": bar_position,
+                    "companion_id": 0,
+                    "bar_min": bar_range[0] if bar_range else 0,
+                    "bar_max": bar_range[1] if bar_range else 100,
+                    "bar_width": 50,  # Compact bars
+                    "bar_offset": 10,  # Aligned offset
+                }
+
+                # Copy source-specific identifiers
+                if "psutil_method" in sensor:
+                    metric["psutil_method"] = sensor["psutil_method"]
+                if "wmi_identifier" in sensor:
+                    metric["wmi_identifier"] = sensor["wmi_identifier"]
+
+                metrics.append(metric)
+
+        # Set up companion metrics (CPU%+Temp, GPU%+Temp)
+        companion_count = self._setup_companions(metrics)
+
+        # Generate description
+        mode_name = "5-row" if row_mode == 0 else "6-row"
+        description = f"Auto-configured {mode_name} layout:\n"
+        description += f"✓ Matched {matched_count}/{len(template)} metrics\n"
+
+        if companion_count > 0:
+            description += f"✨ {companion_count} companion metric(s) configured\n"
+
+        if substitutions:
+            description += f"⚠ Substitutions made:\n"
+            for sub in substitutions:
+                description += f"  • {sub}\n"
+
+        return metrics, description
+
+    def _find_sensor(self, sensors, search_terms, exclude_terms=None):
+        """
+        Find sensor by partial name match (case-insensitive)
+        with exclusion logic to avoid wrong sensors
+        """
+        if not search_terms:
+            return None
+
+        # Common exclusions to avoid codec/decoder sensors
+        default_exclusions = ["codec", "decoder", "d3d", "encode", "decode", "video encoder", "video decoder"]
+        if exclude_terms:
+            exclusions = default_exclusions + exclude_terms
+        else:
+            exclusions = default_exclusions
+
+        candidates = []
+
+        for sensor in sensors:
+            name = sensor.get("name", "").lower()
+            display_name = sensor.get("display_name", "").lower()
+
+            # Skip excluded sensors
+            if any(excl in name or excl in display_name for excl in exclusions):
+                continue
+
+            # Check if any search term matches
+            for term in search_terms:
+                term_lower = term.lower()
+                if term_lower in name or term_lower in display_name:
+                    # Score the match (higher is better)
+                    score = 0
+                    if term_lower == name or term_lower == display_name:
+                        score = 100  # Exact match
+                    elif name.startswith(term_lower) or display_name.startswith(term_lower):
+                        score = 50  # Starts with term
+                    else:
+                        score = 10  # Contains term
+
+                    # Bonus for "core" or "total" in name (likely main sensor)
+                    if "core" in name or "total" in name or "core" in display_name or "total" in display_name:
+                        score += 20
+
+                    candidates.append((sensor, score))
+                    break
+
+        # Return best match
+        if candidates:
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            return candidates[0][0]
+
+        return None
+
+    def _setup_companions(self, metrics):
+        """Set up companion metrics (CPU%+Temp, GPU%+Temp)"""
+        companions = {
+            "CPU^^": "CPUT",
+            "GPU^^": "GPUT",
+        }
+
+        configured_count = 0
+
+        for primary_label, companion_label in companions.items():
+            primary = None
+            companion = None
+
+            for metric in metrics:
+                if metric.get("custom_label") == primary_label:
+                    primary = metric
+                elif metric.get("custom_label") == companion_label:
+                    companion = metric
+
+            if primary and companion:
+                primary["companion_id"] = companion["id"]
+                companion["position"] = 255  # Hide companion (shown with primary)
+                configured_count += 1
+
+        return configured_count
+
+
+class ESP32ConfigExporter:
+    """
+    Export configuration to ESP32 format (array-based)
+    Based on esp32-configurator/core/config_manager.py
+    """
+
+    @staticmethod
+    def export_to_esp32_format(metrics, settings):
+        """
+        Convert metrics list to ESP32 array-based format
+
+        Args:
+            metrics: List of metric dicts
+            settings: Dict with row_mode, show_clock, clock_position, clock_offset
+
+        Returns:
+            ESP32 config dict
+        """
+        MAX_METRICS = 20
+
+        # Initialize arrays
+        metric_labels = [""] * MAX_METRICS
+        metric_names = [""] * MAX_METRICS
+        metric_order = list(range(MAX_METRICS))
+        metric_companions = [0] * MAX_METRICS
+        metric_positions = [255] * MAX_METRICS
+        metric_bar_positions = [255] * MAX_METRICS
+        metric_bar_min = [0] * MAX_METRICS
+        metric_bar_max = [100] * MAX_METRICS
+        metric_bar_widths = [60] * MAX_METRICS
+        metric_bar_offsets = [0] * MAX_METRICS
+
+        # Populate arrays from metrics
+        for i, metric in enumerate(metrics[:MAX_METRICS]):
+            metric_labels[i] = metric.get("custom_label", "")[:15]
+            metric_names[i] = metric.get("name", "")[:15]
+            metric_companions[i] = metric.get("companion_id", 0)
+            metric_positions[i] = metric.get("position", 255)
+            metric_bar_positions[i] = metric.get("bar_position", 255)
+            metric_bar_min[i] = metric.get("bar_min", 0)
+            metric_bar_max[i] = metric.get("bar_max", 100)
+            metric_bar_widths[i] = metric.get("bar_width", 60)
+            metric_bar_offsets[i] = metric.get("bar_offset", 0)
+
+        # Build ESP32 config
+        esp32_config = {
+            "clockStyle": 0,
+            "gmtOffset": 1,
+            "daylightSaving": True,
+            "use24Hour": True,
+            "dateFormat": 0,
+            "clockPosition": settings.get("clock_position", 1),
+            "clockOffset": settings.get("clock_offset", 0),
+            "showClock": settings.get("show_clock", True),
+            "displayRowMode": settings.get("row_mode", 1),
+            "useRpmKFormat": False,
+            "metricLabels": metric_labels,
+            "metricNames": metric_names,
+            "metricOrder": metric_order,
+            "metricCompanions": metric_companions,
+            "metricPositions": metric_positions,
+            "metricBarPositions": metric_bar_positions,
+            "metricBarMin": metric_bar_min,
+            "metricBarMax": metric_bar_max,
+            "metricBarWidths": metric_bar_widths,
+            "metricBarOffsets": metric_bar_offsets
+        }
+
+        return esp32_config
+
+    @staticmethod
+    def save_esp32_config(file_path, metrics, settings):
+        """Save ESP32 config to JSON file"""
+        try:
+            esp32_config = ESP32ConfigExporter.export_to_esp32_format(metrics, settings)
+            with open(file_path, 'w') as f:
+                json.dump(esp32_config, f, indent=2)
+            return True, f"ESP32 config saved to {file_path}"
+        except Exception as e:
+            return False, f"Failed to save ESP32 config: {str(e)}"
+
+
+class ESP32Uploader:
+    """
+    Upload configuration to ESP32 via HTTP POST
+    Based on esp32-configurator/core/esp32_uploader.py
+    Uses urllib (no external dependencies)
+    """
+
+    @staticmethod
+    def test_connection(esp32_ip):
+        """
+        Test if ESP32 is reachable
+
+        Returns:
+            (success, message)
+        """
+        try:
+            import urllib.request
+            import urllib.error
+
+            url = f"http://{esp32_ip}/"
+            req = urllib.request.Request(url, method='GET')
+
+            with urllib.request.urlopen(req, timeout=3) as response:
+                if response.status == 200:
+                    return True, f"ESP32 is reachable at {esp32_ip}"
+                else:
+                    return False, f"Unexpected response: {response.status}"
+
+        except urllib.error.URLError as e:
+            return False, f"Cannot reach ESP32:\n{str(e.reason)}"
+        except Exception as e:
+            return False, f"Connection test failed: {str(e)}"
+
+    @staticmethod
+    def upload_config(esp32_ip, esp32_config):
+        """
+        Upload config to ESP32 /api/import endpoint
+
+        Args:
+            esp32_ip: IP address
+            esp32_config: ESP32 format dict
+
+        Returns:
+            (success, message)
+        """
+        try:
+            import urllib.request
+            import urllib.error
+
+            # Build URL
+            url = f"http://{esp32_ip}/api/import"
+
+            # Convert to JSON
+            json_data = json.dumps(esp32_config).encode('utf-8')
+
+            # Create request
+            req = urllib.request.Request(
+                url,
+                data=json_data,
+                headers={
+                    'Content-Type': 'application/json',
+                    'Content-Length': str(len(json_data))
+                },
+                method='POST'
+            )
+
+            # Send with timeout
+            with urllib.request.urlopen(req, timeout=5) as response:
+                response_data = response.read().decode('utf-8')
+
+                try:
+                    result = json.loads(response_data)
+                    if result.get("success"):
+                        return True, "Configuration uploaded to ESP32!"
+                    else:
+                        msg = result.get("message", "Unknown error")
+                        return False, f"ESP32 rejected config: {msg}"
+                except json.JSONDecodeError:
+                    return True, "Configuration uploaded (response not JSON)"
+
+        except urllib.error.HTTPError as e:
+            return False, f"HTTP error {e.code}: {e.reason}"
+
+        except urllib.error.URLError as e:
+            return False, f"Cannot reach ESP32 at {esp32_ip}:\n{str(e.reason)}\n\nCheck:\n- ESP32 powered on\n- Same network\n- Correct IP"
+
+        except Exception as e:
+            return False, f"Upload failed: {str(e)}"
+
+
 def load_config():
     """
     Load configuration from file
@@ -444,6 +834,264 @@ def setup_autostart(enable=True):
         else:
             print("\n✗ Autostart shortcut not found")
             return False
+
+
+class AutoConfigPreviewDialog:
+    """
+    Preview dialog for auto-configuration
+    Shows layout preview and user preferences before applying
+    """
+
+    def __init__(self, parent, available_sensors):
+        self.parent = parent
+        self.available_sensors = available_sensors
+        self.result = None  # Will store user's choice
+
+        # User preferences
+        self.row_mode = 1  # Default: 6-row
+        self.clock_position = 1  # Default: Right
+        self.show_clock = True
+
+        # Create dialog
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Auto-Configure Preview")
+        self.dialog.geometry("900x750")
+        self.dialog.resizable(False, False)
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+
+        self._create_widgets()
+        self._update_preview()
+
+    def _create_widgets(self):
+        # Title
+        title_frame = tk.Frame(self.dialog, bg="#1e1e1e", height=50)
+        title_frame.pack(fill=tk.X)
+        title_frame.pack_propagate(False)
+
+        title_label = tk.Label(
+            title_frame,
+            text="Auto-Configuration Preview",
+            font=("Arial", 16, "bold"),
+            bg="#1e1e1e",
+            fg="#00d4ff"
+        )
+        title_label.pack(pady=12)
+
+        # Preferences section
+        pref_frame = tk.LabelFrame(
+            self.dialog,
+            text="Layout Preferences",
+            bg="#2d2d2d",
+            fg="#ffffff",
+            font=("Arial", 11, "bold"),
+            padx=20,
+            pady=15
+        )
+        pref_frame.pack(fill=tk.X, padx=20, pady=10)
+
+        # Row mode
+        row_frame = tk.Frame(pref_frame, bg="#2d2d2d")
+        row_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(
+            row_frame,
+            text="Display Mode:",
+            bg="#2d2d2d",
+            fg="#ffffff",
+            font=("Arial", 10)
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        self.row_mode_var = tk.IntVar(value=1)
+        tk.Radiobutton(
+            row_frame,
+            text="5-row (13px spacing, more readable)",
+            variable=self.row_mode_var,
+            value=0,
+            bg="#2d2d2d",
+            fg="#ffffff",
+            selectcolor="#444444",
+            command=self._update_preview
+        ).pack(side=tk.LEFT, padx=10)
+
+        tk.Radiobutton(
+            row_frame,
+            text="6-row (10px spacing, more metrics)",
+            variable=self.row_mode_var,
+            value=1,
+            bg="#2d2d2d",
+            fg="#ffffff",
+            selectcolor="#444444",
+            command=self._update_preview
+        ).pack(side=tk.LEFT, padx=10)
+
+        # Clock position
+        clock_frame = tk.Frame(pref_frame, bg="#2d2d2d")
+        clock_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(
+            clock_frame,
+            text="Clock Position:",
+            bg="#2d2d2d",
+            fg="#ffffff",
+            font=("Arial", 10)
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        self.clock_position_var = tk.IntVar(value=2)
+
+        for pos_val, pos_name in [(0, "Center"), (1, "Left"), (2, "Right"), (3, "None")]:
+            tk.Radiobutton(
+                clock_frame,
+                text=pos_name,
+                variable=self.clock_position_var,
+                value=pos_val,
+                bg="#2d2d2d",
+                fg="#ffffff",
+                selectcolor="#444444",
+                command=self._update_preview
+            ).pack(side=tk.LEFT, padx=5)
+
+        # Preview section
+        preview_frame = tk.LabelFrame(
+            self.dialog,
+            text="Configuration Preview",
+            bg="#2d2d2d",
+            fg="#ffffff",
+            font=("Arial", 11, "bold"),
+            padx=15,
+            pady=10
+        )
+        preview_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+
+        # Scrollable preview text
+        self.preview_text = scrolledtext.ScrolledText(
+            preview_frame,
+            width=100,
+            height=15,
+            font=("Courier", 9),
+            bg="#1e1e1e",
+            fg="#00ff00",
+            wrap=tk.WORD
+        )
+        self.preview_text.pack(fill=tk.BOTH, expand=True)
+
+        # Instructions section
+        info_frame = tk.LabelFrame(
+            self.dialog,
+            text="ESP32 Configuration Instructions",
+            bg="#2d2d2d",
+            fg="#ffaa00",
+            font=("Arial", 10, "bold"),
+            padx=15,
+            pady=10
+        )
+        info_frame.pack(fill=tk.X, padx=20, pady=5)
+
+        instructions = (
+            "This tool will automatically:\n"
+            "  1. Save configuration to monitor_config.json (for this PC monitor)\n"
+            "  2. Save configuration to pc-monitor-configv2.json (for ESP32)\n"
+            "  3. Attempt to upload to ESP32 via HTTP\n\n"
+            "If upload fails, you can manually:\n"
+            "  • Open ESP32 web interface (http://your-esp32-ip)\n"
+            "  • Go to 'Import/Export' section\n"
+            "  • Upload pc-monitor-configv2.json file"
+        )
+
+        tk.Label(
+            info_frame,
+            text=instructions,
+            bg="#2d2d2d",
+            fg="#cccccc",
+            font=("Arial", 9),
+            justify=tk.LEFT
+        ).pack()
+
+        # Buttons
+        button_frame = tk.Frame(self.dialog, bg="#1e1e1e", height=60)
+        button_frame.pack(fill=tk.X)
+        button_frame.pack_propagate(False)
+
+        tk.Button(
+            button_frame,
+            text="Cancel",
+            command=self._on_cancel,
+            bg="#666666",
+            fg="#ffffff",
+            font=("Arial", 11),
+            relief=tk.FLAT,
+            padx=20,
+            pady=5
+        ).pack(side=tk.LEFT, padx=20, pady=10)
+
+        tk.Button(
+            button_frame,
+            text="Apply Configuration",
+            command=self._on_apply,
+            bg="#00d4ff",
+            fg="#000000",
+            font=("Arial", 11, "bold"),
+            relief=tk.FLAT,
+            padx=20,
+            pady=5
+        ).pack(side=tk.RIGHT, padx=20, pady=10)
+
+    def _update_preview(self):
+        """Update preview based on current preferences"""
+        row_mode = self.row_mode_var.get()
+        clock_position = self.clock_position_var.get()
+
+        # Generate auto-config
+        configurator = AutoConfigurator()
+        metrics, description = configurator.create_auto_config(
+            self.available_sensors,
+            row_mode=row_mode,
+            clock_position=clock_position
+        )
+
+        # Store for later
+        self.metrics = metrics
+        self.description = description
+
+        # Build preview text
+        preview = f"{description}\n\n"
+        preview += "=" * 70 + "\n"
+        preview += "METRICS CONFIGURATION:\n"
+        preview += "=" * 70 + "\n\n"
+
+        for i, metric in enumerate(metrics):
+            preview += f"{i+1}. {metric['custom_label']:10s} ({metric['name']})\n"
+            preview += f"   Source: {metric['source']:10s} | Type: {metric['type']}\n"
+            preview += f"   Position: {metric['position']:3d}"
+            if metric['bar_position'] != 255:
+                preview += f" | Bar: position {metric['bar_position']}"
+            if metric['companion_id'] > 0:
+                preview += f" | Companion: metric #{metric['companion_id']}"
+            preview += "\n\n"
+
+        # Update text widget
+        self.preview_text.delete(1.0, tk.END)
+        self.preview_text.insert(1.0, preview)
+
+    def _on_cancel(self):
+        """User cancelled"""
+        self.result = None
+        self.dialog.destroy()
+
+    def _on_apply(self):
+        """User applied configuration"""
+        self.result = {
+            "metrics": self.metrics,
+            "row_mode": self.row_mode_var.get(),
+            "clock_position": self.clock_position_var.get(),
+            "show_clock": self.clock_position_var.get() != 3
+        }
+        self.dialog.destroy()
+
+    def show(self):
+        """Show dialog and return result"""
+        self.dialog.wait_window()
+        return self.result
 
 
 class MetricSelectorGUI:
@@ -591,6 +1239,19 @@ class MetricSelectorGUI:
             padx=10
         )
         clear_btn.pack(side=tk.RIGHT, padx=20)
+
+        # Auto Configure button
+        auto_btn = tk.Button(
+            counter_frame,
+            text="⚡ Auto Configure",
+            command=self.auto_configure,
+            bg="#00ff88",
+            fg="#000000",
+            font=("Arial", 10, "bold"),
+            relief=tk.FLAT,
+            padx=15
+        )
+        auto_btn.pack(side=tk.RIGHT, padx=10)
 
         # Main scrollable frame
         main_frame = tk.Frame(self.root)
@@ -858,6 +1519,137 @@ class MetricSelectorGUI:
                 messagebox.showwarning("Warning", "Autostart shortcut not found")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to disable autostart:\n{str(e)}")
+
+    def auto_configure(self):
+        """
+        Show auto-configuration preview dialog
+        """
+        # Flatten sensor database
+        all_sensors = []
+        for category in sensor_database.values():
+            all_sensors.extend(category)
+
+        if len(all_sensors) == 0:
+            messagebox.showwarning(
+                "No Sensors",
+                "No sensors available for auto-configuration!\n\n"
+                "Make sure LibreHardwareMonitor is running."
+            )
+            return
+
+        # Show preview dialog
+        preview_dialog = AutoConfigPreviewDialog(self.root, all_sensors)
+        result = preview_dialog.show()
+
+        if result is None:
+            # User cancelled
+            return
+
+        # Apply configuration
+        metrics = result["metrics"]
+        row_mode = result["row_mode"]
+        clock_position = result["clock_position"]
+        show_clock = result["show_clock"]
+
+        # Clear existing selections
+        self.clear_all()
+
+        # Apply metrics to GUI (check corresponding checkboxes)
+        for metric in metrics:
+            # Find matching checkbox
+            for cb, sensor, var, frame in self.checkboxes:
+                sensor_key = f"{sensor['source']}_{sensor['name']}"
+                metric_key = f"{metric['source']}_{metric['name']}"
+
+                if sensor_key == metric_key:
+                    var.set(True)
+                    self.selected_metrics.append(sensor)
+
+                    # Set custom label
+                    if metric.get('custom_label') and sensor_key in self.label_entries:
+                        self.label_entries[sensor_key].delete(0, tk.END)
+                        self.label_entries[sensor_key].insert(0, metric['custom_label'])
+                    break
+
+        self.update_counter()
+
+        # Save and upload
+        self._save_auto_config(metrics, row_mode, clock_position, show_clock)
+
+    def _save_auto_config(self, metrics, row_mode, clock_position, show_clock):
+        """
+        Save auto-configured settings and upload to ESP32
+        """
+        # Get ESP32 IP from GUI
+        esp32_ip = self.ip_var.get().strip()
+        udp_port = int(self.port_var.get())
+        update_interval = float(self.interval_var.get())
+
+        # Build local config (monitor_config.json)
+        local_config = {
+            "version": "2.0",
+            "esp32_ip": esp32_ip,
+            "udp_port": udp_port,
+            "update_interval": update_interval,
+            "metrics": metrics
+        }
+
+        # Save local config
+        if not save_config(local_config):
+            messagebox.showerror("Error", "Failed to save local configuration!")
+            return
+
+        # Build ESP32 config
+        # Add 20px offset when clock is on right to align with progress bars
+        clock_offset = 20 if clock_position == 2 else 0
+
+        settings = {
+            "row_mode": row_mode,
+            "clock_position": clock_position,
+            "show_clock": show_clock,
+            "clock_offset": clock_offset
+        }
+
+        esp32_config = ESP32ConfigExporter.export_to_esp32_format(metrics, settings)
+
+        # Save ESP32 config to file
+        esp32_config_path = "pc-monitor-configv2.json"
+        success, msg = ESP32ConfigExporter.save_esp32_config(
+            esp32_config_path,
+            metrics,
+            settings
+        )
+
+        if not success:
+            messagebox.showerror("Error", f"Failed to save ESP32 config:\n{msg}")
+            return
+
+        # Try to upload to ESP32
+        print(f"\nAttempting to upload configuration to ESP32 at {esp32_ip}...")
+        success, msg = ESP32Uploader.upload_config(esp32_ip, esp32_config)
+
+        if success:
+            messagebox.showinfo(
+                "Success!",
+                f"Auto-configuration complete!\n\n"
+                f"✓ Local config saved to {CONFIG_FILE}\n"
+                f"✓ ESP32 config saved to {esp32_config_path}\n"
+                f"✓ Configuration uploaded to ESP32\n\n"
+                f"{len(metrics)} metrics configured."
+            )
+        else:
+            # Upload failed - show manual instructions
+            messagebox.showwarning(
+                "Upload Failed",
+                f"Configuration saved locally, but ESP32 upload failed:\n\n{msg}\n\n"
+                f"✓ Local config: {CONFIG_FILE}\n"
+                f"✓ ESP32 config: {esp32_config_path}\n\n"
+                f"MANUAL UPLOAD REQUIRED:\n"
+                f"1. Open http://{esp32_ip} in browser\n"
+                f"2. Go to Import/Export section\n"
+                f"3. Upload {esp32_config_path}\n"
+                f"4. Save settings on ESP32"
+            )
 
     def save_and_start(self):
         if len(self.selected_metrics) == 0:
