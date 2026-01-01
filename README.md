@@ -3,11 +3,16 @@
 [![Youtube Video](https://github.com/user-attachments/assets/d5232fde-a2ae-46ae-b4b4-74f2164f222e)](https://www.youtube.com/watch?v=D6zZIyOvWjY)
 
 3D Printable case:
-https://makerworld.com/en/models/2051935
+For 0.96": https://makerworld.com/en/models/2051935
+For 1.3": https://makerworld.com/en/models/2185211
 
-Be aware that there are different sizes of the same SSD1306 OLED screen on aliexpress.
-Im using this one "Original" version (do not purchase dual color, it won't work): 
+Be aware that there are different sizes of the same SSD1306 (0.96") OLED screen on aliexpress.
+Im using this one "Original" version (do not purchase dual color, it won't work):
+It seems that there is also "New" screen version which comes in another 2 sizes. So be sure to pick correct 3D printable case from link above.
 https://aliexpress.com/item/1005006262908701.html
+
+For 1.3" OLED (SH1106) I have used this version: 
+https://aliexpress.com/item/1005009757205826.html
 
 ESP32-C3 SuperMini:
 https://aliexpress.com/item/1005008988143743.html
