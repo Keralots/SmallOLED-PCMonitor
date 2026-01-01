@@ -193,7 +193,8 @@ bool ntpSynced = false;  // Track NTP sync status
 unsigned long wifiDisconnectTime = 0;  // Track WiFi disconnect time
 const unsigned long WIFI_RECONNECT_TIMEOUT = 30000;  // 30s before restart
 bool displayAvailable = false;  // Track if display is working
-unsigned long lastDisplayUpdate = 0;  // Track last display refresh time for refresh rate control
+unsigned long nextDisplayUpdate = 0;  // Scheduled time for next display refresh (prevents frame drops on rate changes)
+unsigned long lastAnimationUpdate = 0;  // Separate timer for animation logic (fixed 50ms intervals)
 
 // ========== Mario Animation Variables ==========
 float mario_x = -15;
@@ -3113,13 +3114,13 @@ void loop() {
   metricData.online = (millis() - lastReceived) < TIMEOUT;
 
   // ========== Adaptive Refresh Rate Control ==========
-  // Calculate optimal refresh interval based on settings
-  int refreshHz = getOptimalRefreshRate();
-  unsigned long refreshInterval = 1000 / refreshHz;  // Convert Hz to milliseconds
+  // Smooth refresh rate system: schedules next update time to prevent frame drops
+  // when transitioning between refresh rates (e.g., 40 Hz animation → 20 Hz idle)
+
+  unsigned long now = millis();
 
   // Check if it's time to update the display
-  unsigned long now = millis();
-  if (now - lastDisplayUpdate >= refreshInterval) {
+  if (now >= nextDisplayUpdate) {
     if (displayAvailable) {
       display.clearDisplay();
 
@@ -3140,7 +3141,12 @@ void loop() {
       }
 
       display.display();
-      lastDisplayUpdate = now;
+
+      // Schedule next update based on current optimal refresh rate
+      // This prevents frame drops when refresh rate changes mid-animation
+      int refreshHz = getOptimalRefreshRate();
+      unsigned long refreshInterval = 1000 / refreshHz;
+      nextDisplayUpdate = now + refreshInterval;
     }
   }
 
@@ -3772,13 +3778,31 @@ void triggerDigitBounce(int digitIndex) {
   }
 }
 
-// Gravity-based bounce for Mario clock (original v1.3.0 behavior)
+// Gravity-based bounce for Mario clock (delta-time independent physics)
 void updateDigitBounce() {
+  static unsigned long lastPhysicsUpdate = 0;
+  unsigned long currentTime = millis();
+
+  // Calculate delta time in seconds (time since last physics update)
+  float deltaTime = (currentTime - lastPhysicsUpdate) / 1000.0;
+
+  // Cap delta time to prevent huge jumps on first call or after long pauses
+  if (deltaTime > 0.1 || lastPhysicsUpdate == 0) {
+    deltaTime = 0.025;  // Default to 25ms (40 Hz) for first frame
+  }
+
+  lastPhysicsUpdate = currentTime;
+
+  // Target physics rate: 50ms (20 FPS) for consistent behavior
+  // Scale physics to match original 50ms timing
+  float physicsScale = deltaTime / 0.05;  // Normalize to 50ms reference frame
+
   for (int i = 0; i < 5; i++) {
     if (digit_offset_y[i] != 0 || digit_velocity[i] != 0) {
       // Use user-configured fall speed (stored as tenths, convert to float)
-      digit_velocity[i] += (settings.marioBounceSpeed / 10.0);
-      digit_offset_y[i] += digit_velocity[i];
+      // Scale by physicsScale to maintain consistent speed regardless of refresh rate
+      digit_velocity[i] += (settings.marioBounceSpeed / 10.0) * physicsScale;
+      digit_offset_y[i] += digit_velocity[i] * physicsScale;
 
       if (digit_offset_y[i] >= 0) {
         digit_offset_y[i] = 0;
@@ -3788,8 +3812,24 @@ void updateDigitBounce() {
   }
 }
 
-// Spring-based bounce for Pong clock (oscillating physics)
+// Spring-based bounce for Pong clock (delta-time independent oscillating physics)
 void updateDigitBouncePong() {
+  static unsigned long lastPhysicsUpdate = 0;
+  unsigned long currentTime = millis();
+
+  // Calculate delta time in seconds
+  float deltaTime = (currentTime - lastPhysicsUpdate) / 1000.0;
+
+  // Cap delta time to prevent huge jumps
+  if (deltaTime > 0.1 || lastPhysicsUpdate == 0) {
+    deltaTime = 0.025;  // Default to 25ms (40 Hz) for first frame
+  }
+
+  lastPhysicsUpdate = currentTime;
+
+  // Scale physics to match original 50ms timing
+  float physicsScale = deltaTime / 0.05;
+
   // Use user-configured bounce physics (stored as tenths/hundredths, convert to floats)
   const float SPRING_STRENGTH = settings.pongBounceStrength / 10.0;  // Pull back to center
   const float DAMPING = settings.pongBounceDamping / 100.0;          // Damping factor
@@ -3799,12 +3839,12 @@ void updateDigitBouncePong() {
       // Spring force: pulls digit back to rest position (0)
       float spring_force = -digit_offset_y[i] * SPRING_STRENGTH;
 
-      // Apply spring force and damping
-      digit_velocity[i] += spring_force;
-      digit_velocity[i] *= DAMPING;
+      // Apply spring force and damping (scaled by physics rate)
+      digit_velocity[i] += spring_force * physicsScale;
+      digit_velocity[i] *= pow(DAMPING, physicsScale);  // Exponential damping scaling
 
       // Update position
-      digit_offset_y[i] += digit_velocity[i];
+      digit_offset_y[i] += digit_velocity[i] * physicsScale;
 
       // Clamp to visible movement range (allow up to 4 pixels)
       if (digit_offset_y[i] > 4) digit_offset_y[i] = 4;
