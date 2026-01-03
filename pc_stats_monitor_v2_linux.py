@@ -12,8 +12,9 @@ import os
 import sys
 import argparse
 from datetime import datetime
-import tkinter as tk
-from tkinter import ttk, messagebox
+
+# Tkinter is imported conditionally only when GUI mode is needed
+# This allows the script to run on headless systems without tkinter
 
 # Configuration file path
 CONFIG_FILE = "monitor_config_linux.json"
@@ -313,6 +314,124 @@ def generate_short_name_linux(label, sensor_type, sensor_key=""):
     return name if name else "SENSOR"
 
 
+# ============================================================================
+# CLI Helper Functions - Validation
+# ============================================================================
+
+def validate_ip(ip: str) -> str:
+    """
+    Validate IPv4 address format
+    """
+    if not ip:
+        raise ValueError("IP address cannot be empty")
+
+    parts = ip.split('.')
+    if len(parts) != 4:
+        raise ValueError("Invalid IP format (must be xxx.xxx.xxx.xxx)")
+
+    for part in parts:
+        try:
+            num = int(part)
+            if num < 0 or num > 255:
+                raise ValueError("IP octets must be 0-255")
+        except ValueError:
+            raise ValueError("IP octets must be numbers")
+
+    return ip
+
+
+def validate_port(port_str: str) -> int:
+    """
+    Validate UDP port number
+    """
+    try:
+        port = int(port_str)
+        if port < 1 or port > 65535:
+            raise ValueError("Port must be between 1 and 65535")
+        return port
+    except ValueError:
+        raise ValueError("Port must be a valid number (1-65535)")
+
+
+def validate_interval(interval_str: str) -> float:
+    """
+    Validate update interval
+    """
+    try:
+        interval = float(interval_str)
+        if interval < 0.5:
+            raise ValueError("Interval must be at least 0.5 seconds")
+        return interval
+    except ValueError:
+        raise ValueError("Interval must be a valid number (>= 0.5)")
+
+
+# ============================================================================
+# CLI Helper Functions - Input
+# ============================================================================
+
+def prompt_with_default(prompt: str, default: str, validator=None) -> str:
+    """
+    Prompt user with a default value
+    Returns default if user presses Enter, otherwise validates and returns input
+    """
+    while True:
+        try:
+            user_input = input(f"{prompt} [{default}]: ").strip()
+
+            # Use default if empty
+            if not user_input:
+                value = default
+            else:
+                value = user_input
+
+            # Validate if validator provided
+            if validator:
+                return str(validator(value))
+            else:
+                return value
+
+        except ValueError as e:
+            print(f"  ✗ Error: {e}")
+            continue
+        except KeyboardInterrupt:
+            print("\n\nConfiguration cancelled.")
+            return None
+
+
+def parse_number_list(input_str: str, max_num: int) -> list:
+    """
+    Parse comma-separated list of numbers with validation
+    Returns list of integers or raises ValueError
+    """
+    if not input_str.strip():
+        raise ValueError("Please enter at least one metric number")
+
+    # Split by comma and parse
+    numbers = []
+    for part in input_str.split(','):
+        try:
+            num = int(part.strip())
+            if num < 1 or num > max_num:
+                raise ValueError(f"Number {num} is out of range (1-{max_num})")
+            numbers.append(num)
+        except ValueError as e:
+            if "invalid literal" in str(e):
+                raise ValueError(f"'{part.strip()}' is not a valid number")
+            else:
+                raise
+
+    # Check for duplicates
+    if len(numbers) != len(set(numbers)):
+        raise ValueError("Duplicate numbers detected")
+
+    # Check max limit
+    if len(numbers) > MAX_METRICS:
+        raise ValueError(f"Too many metrics selected (max {MAX_METRICS})")
+
+    return numbers
+
+
 def load_config():
     """
     Load configuration from file
@@ -457,9 +576,14 @@ def check_autostart_status():
         return False
 
 
+# ============================================================================
+# GUI Configuration Mode (requires tkinter)
+# ============================================================================
+
 class MetricSelectorGUI:
     """
     Tkinter GUI for selecting metrics and configuring settings - Linux version
+    Note: tkinter is imported when this class is instantiated (see main())
     """
     def __init__(self, root, existing_config=None):
         self.root = root
@@ -912,6 +1036,308 @@ class MetricSelectorGUI:
             messagebox.showerror("Error", "Failed to save configuration!")
 
 
+# ============================================================================
+# CLI Configuration Mode
+# ============================================================================
+
+def display_all_sensors_cli():
+    """
+    Display all available sensors with sequential numbering for CLI selection
+    Returns a mapping of numbers to sensor objects
+    """
+    print("\n" + "=" * 70)
+    print("  AVAILABLE METRICS")
+    print("=" * 70)
+
+    sensor_map = {}
+    counter = 1
+
+    categories = [
+        ("SYSTEM METRICS", "system"),
+        ("TEMPERATURES", "temperature"),
+        ("FANS & COOLING", "fan"),
+        ("NETWORK DATA", "data"),
+        ("NETWORK THROUGHPUT", "throughput")
+    ]
+
+    for cat_title, cat_key in categories:
+        sensors = sensor_database.get(cat_key, [])
+        if not sensors:
+            continue
+
+        print(f"\n{cat_title}:")
+        print("-" * 70)
+
+        for sensor in sensors:
+            # Format: [#] Display Name (short_name) - CurrentValue Unit
+            value_str = f" - {sensor['current_value']}{sensor['unit']}" if sensor.get('current_value') is not None else ""
+            print(f"  [{counter:2d}] {sensor['display_name']} ({sensor['name']}){value_str}")
+
+            sensor_map[counter] = sensor
+            counter += 1
+
+    print("\n" + "=" * 70)
+    print(f"Total available metrics: {len(sensor_map)}")
+    print("=" * 70 + "\n")
+
+    return sensor_map
+
+
+def configure_cli_mode(existing_config=None):
+    """
+    CLI configuration mode for selecting metrics and settings
+    Returns configuration dictionary or None if cancelled
+    """
+    print("\n" + "=" * 70)
+    print("  CLI CONFIGURATION MODE")
+    print("=" * 70)
+
+    # Determine defaults from existing config or DEFAULT_CONFIG
+    if existing_config:
+        default_ip = existing_config.get("esp32_ip", DEFAULT_CONFIG["esp32_ip"])
+        default_port = str(existing_config.get("udp_port", DEFAULT_CONFIG["udp_port"]))
+        default_interval = str(existing_config.get("update_interval", DEFAULT_CONFIG["update_interval"]))
+    else:
+        default_ip = DEFAULT_CONFIG["esp32_ip"]
+        default_port = str(DEFAULT_CONFIG["udp_port"])
+        default_interval = str(DEFAULT_CONFIG["update_interval"])
+
+    # Step 1: Configure ESP32 connection settings
+    print("\nStep 1: ESP32 Connection Settings")
+    print("-" * 70)
+
+    esp_ip = prompt_with_default("ESP32 IP address", default_ip, validate_ip)
+    if esp_ip is None:  # Cancelled
+        return None
+
+    port = prompt_with_default("UDP Port", default_port, validate_port)
+    if port is None:  # Cancelled
+        return None
+
+    interval = prompt_with_default("Update Interval (seconds)", default_interval, validate_interval)
+    if interval is None:  # Cancelled
+        return None
+
+    # Step 2: Metrics selection (check if editing existing config)
+    print("\n" + "=" * 70)
+    print("Step 2: Select Metrics to Monitor")
+    print("=" * 70)
+
+    selected_sensors = []
+    keep_metrics = None  # Track if user wants to keep existing metrics
+
+    # If editing existing config with metrics, show current selection
+    if existing_config and existing_config.get("metrics"):
+        print("\nCurrent metric selection:")
+        print("-" * 70)
+        for i, metric in enumerate(existing_config["metrics"]):
+            label_info = f" - Label: \"{metric['custom_label']}\"" if metric.get('custom_label') else ""
+            print(f"  {i+1}. {metric['display_name']} ({metric['name']}){label_info}")
+        print("-" * 70)
+
+        keep_metrics = input("\nKeep current metrics? (y/n) [y]: ").strip().lower()
+
+        if keep_metrics in ['', 'y', 'yes']:
+            # Keep existing metrics
+            selected_sensors = existing_config["metrics"]
+            print(f"\n✓ Keeping {len(selected_sensors)} existing metric(s)")
+        else:
+            # Re-select metrics
+            print("\nRe-selecting metrics...")
+
+    # If no existing metrics or user wants to re-select
+    if not selected_sensors:
+        sensor_map = display_all_sensors_cli()
+
+        if not sensor_map:
+            print("\n✗ No sensors found! Cannot continue.")
+            return None
+
+        # Step 3: Get metric selection
+        print(f"Select up to {MAX_METRICS} metrics by entering their numbers separated by commas.")
+        print(f"Example: 1,2,5,8")
+
+        while True:
+            try:
+                selection = input(f"\nEnter metric numbers (comma-separated) [max {MAX_METRICS}]: ").strip()
+                if not selection:
+                    print("  ✗ Error: Please enter at least one metric number")
+                    continue
+
+                # Parse and validate
+                numbers = parse_number_list(selection, len(sensor_map))
+
+                # Get selected sensors
+                selected_sensors = [sensor_map[num] for num in numbers]
+
+                print(f"\n✓ Selected {len(selected_sensors)} metric(s)")
+                break
+
+            except ValueError as e:
+                print(f"  ✗ Error: {e}")
+                continue
+            except KeyboardInterrupt:
+                print("\n\nConfiguration cancelled.")
+                return None
+
+    # Step 3: Custom labels (only if newly selected metrics or user chose to re-select)
+    custom_labels = {}
+    kept_existing_metrics = existing_config and existing_config.get("metrics") and keep_metrics in ['', 'y', 'yes']
+
+    if not kept_existing_metrics:
+        print("\n" + "=" * 70)
+        print("Step 3: Custom Labels (Optional)")
+        print("=" * 70)
+        print("You can assign custom labels (max 10 characters) to each metric.")
+        print("Custom labels will be displayed on the ESP32 OLED.")
+
+        configure_labels = input("\nConfigure custom labels? (y/n) [n]: ").strip().lower()
+
+        if configure_labels in ['y', 'yes']:
+            print("\nEnter custom label for each metric (press Enter to use default):\n")
+
+            for i, sensor in enumerate(selected_sensors):
+                default_name = sensor['name']
+                label = input(f"  [{i+1}] {sensor['display_name']} (default: {default_name}): ").strip()
+
+                if label:
+                    # Truncate to 10 chars
+                    label = label[:10]
+                    sensor_key = f"{sensor['source']}_{sensor['name']}"
+                    custom_labels[sensor_key] = label
+                    print(f"      → Will use: '{label}'")
+                else:
+                    print(f"      → Will use default: '{default_name}'")
+
+    # Step 4: Build configuration
+    config = {
+        "version": "2.0-linux",
+        "esp32_ip": esp_ip,
+        "udp_port": int(port),
+        "update_interval": float(interval),
+        "metrics": []
+    }
+
+    # Add metrics
+    if kept_existing_metrics:
+        # Keep existing metrics with their IDs and custom labels
+        config["metrics"] = selected_sensors
+    else:
+        # Build new metrics with custom labels
+        for i, sensor in enumerate(selected_sensors):
+            metric_config = sensor.copy()
+            metric_config["id"] = i + 1
+
+            # Apply custom label if set
+            sensor_key = f"{sensor['source']}_{sensor['name']}"
+            if sensor_key in custom_labels:
+                metric_config["custom_label"] = custom_labels[sensor_key]
+
+            config["metrics"].append(metric_config)
+
+    # Step 6: Show summary and confirm
+    print("\n" + "=" * 70)
+    print("  CONFIGURATION SUMMARY")
+    print("=" * 70)
+    print(f"\nESP32 IP:        {config['esp32_ip']}")
+    print(f"UDP Port:        {config['udp_port']}")
+    print(f"Update Interval: {config['update_interval']}s")
+    print(f"\nSelected Metrics ({len(config['metrics'])}):")
+    print("-" * 70)
+
+    for metric in config["metrics"]:
+        label_info = f" - Label: \"{metric['custom_label']}\"" if metric.get('custom_label') else ""
+        print(f"  {metric['id']}. {metric['display_name']} ({metric['name']}){label_info}")
+
+    print("=" * 70)
+
+    confirm = input("\nSave and start monitoring? (y/n) [y]: ").strip().lower()
+    if confirm in ['', 'y', 'yes']:
+        if save_config(config):
+            print("\n✓ Configuration saved successfully!")
+
+            # Ask about autostart (systemd service)
+            print("\n" + "=" * 70)
+            print("  SYSTEMD AUTOSTART (OPTIONAL)")
+            print("=" * 70)
+            print("You can enable automatic monitoring on system boot using systemd.")
+            print("This will create a user service that starts automatically.")
+
+            # Check current autostart status
+            if check_autostart_status():
+                print("\nℹ  Autostart is currently: ENABLED")
+                autostart_choice = input("Keep autostart enabled? (y/n) [y]: ").strip().lower()
+                if autostart_choice not in ['', 'y', 'yes']:
+                    # Disable autostart - then run script normally
+                    print("\nDisabling autostart...")
+                    if setup_autostart_systemd(False):
+                        print("✓ Autostart disabled")
+                    else:
+                        print("✗ Failed to disable autostart")
+                    print("\nStarting monitoring in foreground mode...")
+                    return config  # Run monitoring normally
+                else:
+                    # Keep autostart enabled - start service and exit
+                    print("\n✓ Autostart remains enabled")
+                    print("\nStarting monitoring service...")
+                    import subprocess
+                    try:
+                        subprocess.run(["systemctl", "--user", "start", "pc-monitor"], check=True)
+                        print("✓ Monitoring service started successfully!")
+                        print("\nThe service is now running in the background.")
+                        print("\nUseful commands:")
+                        print("  • Check status: systemctl --user status pc-monitor")
+                        print("  • View logs:    journalctl --user -u pc-monitor -f")
+                        print("  • Stop service: systemctl --user stop pc-monitor")
+                        print("  • Restart:      systemctl --user restart pc-monitor")
+                        print("\nExiting configuration...")
+                        sys.exit(0)  # Exit cleanly
+                    except subprocess.CalledProcessError:
+                        print("✗ Failed to start service")
+                        print("  Starting monitoring in foreground mode instead...")
+                        return config  # Fallback to normal execution
+            else:
+                print("\nℹ  Autostart is currently: DISABLED")
+                autostart_choice = input("Enable autostart? (y/n) [n]: ").strip().lower()
+                if autostart_choice in ['y', 'yes']:
+                    # Enable autostart - start service and exit
+                    print("\nEnabling autostart...")
+                    if setup_autostart_systemd(True):
+                        print("✓ Autostart enabled successfully!")
+                        print("\nStarting monitoring service...")
+                        import subprocess
+                        try:
+                            subprocess.run(["systemctl", "--user", "start", "pc-monitor"], check=True)
+                            print("✓ Monitoring service started successfully!")
+                            print("\nThe service is now running in the background and will")
+                            print("start automatically on system boot.")
+                            print("\nUseful commands:")
+                            print("  • Check status: systemctl --user status pc-monitor")
+                            print("  • View logs:    journalctl --user -u pc-monitor -f")
+                            print("  • Stop service: systemctl --user stop pc-monitor")
+                            print("  • Restart:      systemctl --user restart pc-monitor")
+                            print("\nExiting configuration...")
+                            sys.exit(0)  # Exit cleanly
+                        except subprocess.CalledProcessError:
+                            print("✗ Failed to start service")
+                            print("  Starting monitoring in foreground mode instead...")
+                            return config  # Fallback to normal execution
+                    else:
+                        print("✗ Failed to enable autostart")
+                        print("\nStarting monitoring in foreground mode...")
+                        return config  # Run monitoring normally
+                else:
+                    # No autostart - run script normally
+                    print("\nStarting monitoring in foreground mode...")
+                    return config  # Run monitoring normally
+        else:
+            print("\n✗ Failed to save configuration!")
+            return None
+    else:
+        print("\nConfiguration discarded.")
+        return None
+
+
 def get_metric_value(metric_config):
     """
     Get current value for a configured metric - Linux version
@@ -1088,6 +1514,8 @@ def main():
     parser = argparse.ArgumentParser(description='PC Stats Monitor v2.0 - Linux Edition')
     parser.add_argument('--configure', action='store_true', help='Force configuration GUI')
     parser.add_argument('--edit', action='store_true', help='Edit existing configuration')
+    parser.add_argument('--cli', '--nogui', action='store_true', dest='cli_mode',
+                       help='Configure and run in CLI mode (no GUI required)')
     parser.add_argument('--autostart', choices=['enable', 'disable'], help='Enable/disable systemd autostart')
     args = parser.parse_args()
 
@@ -1111,27 +1539,72 @@ def main():
     # Check for config file
     config = load_config()
 
-    # Force configuration or edit mode
-    if args.configure or args.edit or config is None:
-        if config is None:
-            print("\nNo configuration found. Starting GUI...")
+    # Determine if configuration is needed
+    needs_config = args.configure or args.edit or config is None
+
+    # Auto-detect headless environment (optional)
+    if needs_config and not args.cli_mode:
+        try:
+            if not os.environ.get('DISPLAY'):
+                print("\n⚠  No DISPLAY environment variable detected (headless system).")
+                print("   Switching to CLI mode automatically.")
+                print("   Use --configure to force GUI mode on systems with display.\n")
+                args.cli_mode = True
+        except:
+            pass
+
+    # Configuration mode
+    if needs_config:
+        if args.cli_mode:
+            # CLI configuration mode
+            if config is None:
+                print("\nNo configuration found. Starting CLI configuration...")
+            else:
+                print("\nOpening CLI configuration editor...")
+
+            # Discover sensors
+            discover_sensors()
+
+            # Run CLI configuration
+            config = configure_cli_mode(config if args.edit else None)
+
+            if config is None:
+                print("\nConfiguration cancelled. Exiting.")
+                return
+
         else:
-            print("\nOpening configuration editor...")
+            # GUI configuration mode
+            if config is None:
+                print("\nNo configuration found. Starting GUI...")
+            else:
+                print("\nOpening configuration editor...")
 
-        # Discover sensors
-        discover_sensors()
+            # Import tkinter only when GUI mode is needed
+            try:
+                import tkinter as tk
+                from tkinter import ttk, messagebox
+            except ImportError:
+                print("\n✗ Error: tkinter is not installed!")
+                print("  On headless systems, use CLI mode instead:")
+                print("  python3 pc_stats_monitor_v2_linux.py --cli")
+                print("\n  To install tkinter:")
+                print("  apt install python3-tk")
+                return
 
-        # Show GUI
-        root = tk.Tk()
-        app = MetricSelectorGUI(root, config if args.edit else None)
-        root.mainloop()
-        root.destroy()
+            # Discover sensors
+            discover_sensors()
 
-        # Reload config after GUI
-        config = load_config()
-        if config is None:
-            print("\nNo configuration saved. Exiting.")
-            return
+            # Show GUI
+            root = tk.Tk()
+            app = MetricSelectorGUI(root, config if args.edit else None)
+            root.mainloop()
+            root.destroy()
+
+            # Reload config after GUI
+            config = load_config()
+            if config is None:
+                print("\nNo configuration saved. Exiting.")
+                return
 
     # Validate config
     if not config.get("metrics"):
