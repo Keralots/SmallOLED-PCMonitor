@@ -176,6 +176,15 @@ struct Settings {
   uint8_t spaceLaserSpeed;     // Laser extend speed in tenths (e.g., 40 = 4.0, range: 20-80)
   uint8_t spaceExplosionGravity; // Fragment gravity in tenths (e.g., 5 = 0.5, range: 3-10)
 
+  // Pac-Man clock settings
+  uint8_t pacmanSpeed;              // Movement speed (5-20, default 10 = 1.0 px/frame)
+  uint8_t pacmanMouthSpeed;         // Mouth animation speed (5-20, default 10)
+  uint8_t pacmanPelletCount;        // Number of pellets (0-20, default 8)
+  bool pacmanPelletRandomSpacing;   // Random vs even spacing (default true)
+  uint8_t pacmanEatingSpeed;        // Path following speed (5-20, default 10)
+  uint8_t pacmanPatrolBounds;       // Patrol left/right bounds (5-50, default 10)
+  bool pacmanBounceEnabled;         // Enable bounce animation for new digits (default true)
+
   // Network configuration
   bool useStaticIP;      // true = Static IP, false = DHCP (default)
   char staticIP[16];     // Static IP address (e.g., "192.168.1.100")
@@ -411,6 +420,60 @@ const int DIGIT_HIT_DELAY = 150;            // ms between hits on breaking digit
 // Progressive fragmentation: spawn 25%, then 50%, then 25%
 const float FRAGMENT_SPAWN_PERCENT[3] = {0.25, 0.50, 0.25};
 
+// ========== Pac-Man Animation Variables ==========
+
+// Pac-Man state machine
+enum PacmanState {
+  PACMAN_PATROL,        // Moving at bottom eating pellets
+  PACMAN_TARGETING,     // Moving to next digit to eat
+  PACMAN_EATING,        // Following digit outline path
+  PACMAN_RETURNING      // Returning to patrol after all digits eaten
+};
+PacmanState pacman_state = PACMAN_PATROL;
+
+// Position & movement
+float pacman_x = 30.0;
+float pacman_y = 56.0;  // Bottom patrol line (same as Space)
+int8_t pacman_direction = 1;  // 1 = right, -1 = left, 2 = up, -2 = down
+uint8_t pacman_mouth_frame = 0;  // 0-3 for waka-waka animation
+unsigned long last_pacman_update = 0;
+unsigned long last_pacman_mouth_toggle = 0;
+
+// Vertical eating state (2-pass system)
+uint8_t current_eating_digit_index = 0;  // 0-4 (which position being eaten)
+uint8_t current_eating_digit_value = 0;  // 0-9 (actual digit being eaten)
+uint8_t current_eating_pass = 1;         // 1 or 2 (left half or right half)
+float eating_y_position = 0.0;           // Current Y position (starts at bottom = TIME_Y + 21)
+
+// Digit targeting (which digits changed)
+int8_t target_digit_queue[4];            // Queue of digit indices to eat (left to right order)
+uint8_t target_digit_new_values[4];      // New values for each digit (parallel to queue)
+uint8_t target_queue_length = 0;
+uint8_t target_queue_index = 0;
+
+// Masking eaten rows (vertical eating from bottom to top, left then right half)
+bool digit_being_eaten[5] = {false, false, false, false, false};
+int8_t digit_eaten_rows_left[5] = {0, 0, 0, 0, 0};   // Rows eaten on left half (0-21)
+int8_t digit_eaten_rows_right[5] = {0, 0, 0, 0, 0};  // Rows eaten on right half (0-21)
+
+// Pellet system
+#define MAX_PELLETS 20
+struct Pellet {
+  int8_t x;
+  bool active;
+};
+Pellet patrol_pellets[MAX_PELLETS];
+uint8_t num_pellets = 8;  // Default, overridden by settings
+
+// Animation timing
+const int PACMAN_ANIM_SPEED = 40;        // 40ms = 25 FPS
+const int PACMAN_MOUTH_SPEED = 120;      // 120ms per mouth frame
+const int PACMAN_PATROL_Y = 56;          // Bottom of screen
+
+// Trigger tracking
+bool pacman_animation_triggered = false;
+int last_minute_pacman = -1;
+
 // ========== WiFiManager ==========
 WiFiManager wifiManager;
 
@@ -490,6 +553,17 @@ void drawPongFragments();
 void drawPongDigits();
 SpaceFragment* findFreePongFragment();
 bool allPongFragmentsInactive();
+void displayClockWithPacman();
+void updatePacmanAnimation(struct tm* timeinfo);
+void drawPacman(int x, int y, int direction, int mouthFrame);
+void updatePacmanPatrol();
+void updatePacmanEating();
+void generatePellets();
+void updatePellets();
+void drawPellets();
+void startEatingDigit(uint8_t digit_index, uint8_t digit_value);
+void finishEatingDigit();
+int8_t getPacmanDirection(float dx, float dy);
 
 void setup() {
   Serial.begin(115200);
@@ -877,6 +951,13 @@ void loadSettings() {
   settings.pongBounceStrength = preferences.getUChar("pongBncStr", 3);  // Default: 0.3
   settings.pongBounceDamping = preferences.getUChar("pongBncDmp", 85);  // Default: 0.85
   settings.pongPaddleWidth = preferences.getUChar("pongPadWid", 20);    // Default: 20
+  settings.pacmanSpeed = preferences.getUChar("pacmanSpeed", 10);       // Default: 1.0
+  settings.pacmanMouthSpeed = preferences.getUChar("pacmanMouthSpeed", 10); // Default: 1.0 Hz
+  settings.pacmanPelletCount = preferences.getUChar("pacmanPelletCount", 8); // Default: 8
+  settings.pacmanPelletRandomSpacing = preferences.getBool("pacmanPelletRand", true); // Default: true
+  settings.pacmanEatingSpeed = preferences.getUChar("pacmanEatSpeed", 10); // Default: 1.0
+  settings.pacmanPatrolBounds = preferences.getUChar("pacmanPatrolBnd", 10); // Default: 10
+  settings.pacmanBounceEnabled = preferences.getBool("pacmanBounce", true); // Default: true
   settings.spaceCharacterType = preferences.getUChar("spaceChar", 1);   // Default: Ship
   settings.spacePatrolSpeed = preferences.getUChar("spacePatrol", 5);   // Default: 0.5
   settings.spaceAttackSpeed = preferences.getUChar("spaceAttack", 25);  // Default: 2.5
@@ -1019,6 +1100,13 @@ void saveSettings() {
   preferences.putUChar("pongBncStr", settings.pongBounceStrength);
   preferences.putUChar("pongBncDmp", settings.pongBounceDamping);
   preferences.putUChar("pongPadWid", settings.pongPaddleWidth);
+  preferences.putUChar("pacmanSpeed", settings.pacmanSpeed);
+  preferences.putUChar("pacmanMouthSpeed", settings.pacmanMouthSpeed);
+  preferences.putUChar("pacmanPelletCount", settings.pacmanPelletCount);
+  preferences.putBool("pacmanPelletRand", settings.pacmanPelletRandomSpacing);
+  preferences.putUChar("pacmanEatSpeed", settings.pacmanEatingSpeed);
+  preferences.putUChar("pacmanPatrolBnd", settings.pacmanPatrolBounds);
+  preferences.putBool("pacmanBounce", settings.pacmanBounceEnabled);
   preferences.putUChar("spaceChar", settings.spaceCharacterType);
   preferences.putUChar("spacePatrol", settings.spacePatrolSpeed);
   preferences.putUChar("spaceAttack", settings.spaceAttackSpeed);
@@ -1439,6 +1527,7 @@ void handleRoot() {
           <option value="2" )rawliteral" + String(settings.clockStyle == 2 ? "selected" : "") + R"rawliteral(>Large Clock</option>
           <option value="3" )rawliteral" + String(settings.clockStyle == 3 ? "selected" : "") + R"rawliteral(>Space Invaders</option>
           <option value="5" )rawliteral" + String(settings.clockStyle == 5 ? "selected" : "") + R"rawliteral(>Pong Clock</option>
+          <option value="6" )rawliteral" + String(settings.clockStyle == 6 ? "selected" : "") + R"rawliteral(>Pac-Man Clock</option>
         </select>
 
         <!-- Mario Clock Settings (only visible when Mario is selected) -->
@@ -1520,6 +1609,89 @@ void handleRoot() {
           </span>
           <p style="color: #888; font-size: 12px; margin-top: 5px;">
             Size of the paddle. Narrower = harder, Wider = easier. Default: 20px
+          </p>
+        </div>
+
+        <!-- Pac-Man Clock Settings (only visible when Pac-Man is selected) -->
+        <div id="pacmanSettings" style="display: )rawliteral" + String(settings.clockStyle == 6 ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #f1c40f;">
+          <h4 style="color: #f1c40f; margin-top: 0; font-size: 14px;">👾 Pac-Man Clock Settings</h4>
+
+          <label for="pacmanSpeed">Movement Speed</label>
+          <input type="range" name="pacmanSpeed" id="pacmanSpeed"
+                 min="5" max="20" step="1"
+                 value=")rawliteral" + String(settings.pacmanSpeed) + R"rawliteral("
+                 oninput="document.getElementById('pacmanSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #f1c40f; font-size: 14px; margin-left: 10px;">
+            <span id="pacmanSpeedValue">)rawliteral" + String(settings.pacmanSpeed / 10.0, 1) + R"rawliteral(</span> px/frame
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast Pac-Man moves during patrol. Lower = slower patrol, Higher = zippier movement. Default: 1.0
+          </p>
+
+          <label for="pacmanMouthSpeed" style="margin-top: 15px;">Mouth Animation Speed</label>
+          <input type="range" name="pacmanMouthSpeed" id="pacmanMouthSpeed"
+                 min="5" max="20" step="1"
+                 value=")rawliteral" + String(settings.pacmanMouthSpeed) + R"rawliteral("
+                 oninput="document.getElementById('pacmanMouthSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #f1c40f; font-size: 14px; margin-left: 10px;">
+            <span id="pacmanMouthSpeedValue">)rawliteral" + String(settings.pacmanMouthSpeed / 10.0, 1) + R"rawliteral(</span> Hz
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast Pac-Man's mouth opens and closes (waka-waka). Default: 1.0 Hz
+          </p>
+
+          <label for="pacmanEatingSpeed" style="margin-top: 15px;">Eating Speed</label>
+          <input type="range" name="pacmanEatingSpeed" id="pacmanEatingSpeed"
+                 min="5" max="20" step="1"
+                 value=")rawliteral" + String(settings.pacmanEatingSpeed) + R"rawliteral("
+                 oninput="document.getElementById('pacmanEatingSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #f1c40f; font-size: 14px; margin-left: 10px;">
+            <span id="pacmanEatingSpeedValue">)rawliteral" + String(settings.pacmanEatingSpeed / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast Pac-Man follows the digit paths when eating. Lower = dramatic, Higher = quick chomping. Default: 1.0
+          </p>
+
+          <label for="pacmanPelletCount" style="margin-top: 15px;">Number of Pellets</label>
+          <input type="range" name="pacmanPelletCount" id="pacmanPelletCount"
+                 min="0" max="20" step="1"
+                 value=")rawliteral" + String(settings.pacmanPelletCount) + R"rawliteral("
+                 oninput="document.getElementById('pacmanPelletCountValue').textContent = this.value">
+          <span style="color: #f1c40f; font-size: 14px; margin-left: 10px;">
+            <span id="pacmanPelletCountValue">)rawliteral" + String(settings.pacmanPelletCount) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How many pellets appear during patrol mode. 0 = no pellets, 20 = maximum. Default: 8
+          </p>
+
+          <label style="margin-top: 15px;">
+            <input type="checkbox" name="pacmanPelletRandomSpacing"
+                   )rawliteral" + String(settings.pacmanPelletRandomSpacing ? "checked" : "") + R"rawliteral(>
+            Randomize Pellet Spacing
+          </label>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            When enabled, pellets appear at random positions. When disabled, pellets are evenly spaced. Default: Enabled
+          </p>
+
+          <label for="pacmanPatrolBounds" style="margin-top: 15px;">Patrol Boundaries</label>
+          <input type="range" name="pacmanPatrolBounds" id="pacmanPatrolBounds"
+                 min="5" max="50" step="5"
+                 value=")rawliteral" + String(settings.pacmanPatrolBounds) + R"rawliteral("
+                 oninput="document.getElementById('pacmanPatrolBoundsValue').textContent = this.value">
+          <span style="color: #f1c40f; font-size: 14px; margin-left: 10px;">
+            <span id="pacmanPatrolBoundsValue">)rawliteral" + String(settings.pacmanPatrolBounds) + R"rawliteral(</span> pixels
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            Edge padding for patrol area. Lower = uses full screen width, Higher = narrower patrol zone. Default: 10 pixels
+          </p>
+
+          <label style="margin-top: 15px;">
+            <input type="checkbox" name="pacmanBounceEnabled"
+                   )rawliteral" + String(settings.pacmanBounceEnabled ? "checked" : "") + R"rawliteral(>
+            Bounce Animation for New Digits
+          </label>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            When enabled, new digits bounce into place after being eaten. Disable for instant digit change. Default: Enabled
           </p>
         </div>
 
@@ -2238,9 +2410,11 @@ void handleRoot() {
       const clockStyle = document.getElementById('clockStyle').value;
       const marioSettings = document.getElementById('marioSettings');
       const pongSettings = document.getElementById('pongSettings');
+      const pacmanSettings = document.getElementById('pacmanSettings');
       const spaceSettings = document.getElementById('spaceSettings');
       marioSettings.style.display = (clockStyle === '0') ? 'block' : 'none';
       pongSettings.style.display = (clockStyle === '5') ? 'block' : 'none';
+      pacmanSettings.style.display = (clockStyle === '6') ? 'block' : 'none';
       spaceSettings.style.display = (clockStyle === '3' || clockStyle === '4') ? 'block' : 'none';
     }
 
@@ -2532,6 +2706,25 @@ void handleSave() {
     settings.pongPaddleWidth = server.arg("pongPaddleWidth").toInt();
   }
 
+  // Save Pac-Man settings
+  if (server.hasArg("pacmanSpeed")) {
+    settings.pacmanSpeed = server.arg("pacmanSpeed").toInt();
+  }
+  if (server.hasArg("pacmanMouthSpeed")) {
+    settings.pacmanMouthSpeed = server.arg("pacmanMouthSpeed").toInt();
+  }
+  if (server.hasArg("pacmanEatingSpeed")) {
+    settings.pacmanEatingSpeed = server.arg("pacmanEatingSpeed").toInt();
+  }
+  if (server.hasArg("pacmanPelletCount")) {
+    settings.pacmanPelletCount = server.arg("pacmanPelletCount").toInt();
+  }
+  settings.pacmanPelletRandomSpacing = server.hasArg("pacmanPelletRandomSpacing");
+  if (server.hasArg("pacmanPatrolBounds")) {
+    settings.pacmanPatrolBounds = server.arg("pacmanPatrolBounds").toInt();
+  }
+  settings.pacmanBounceEnabled = server.hasArg("pacmanBounceEnabled");
+
   // Save Space Clock settings
   if (server.hasArg("spaceCharacterType")) {
     settings.spaceCharacterType = server.arg("spaceCharacterType").toInt();
@@ -2713,6 +2906,20 @@ void handleSave() {
 
   // Reset Pong animation state when switching modes
   resetPongAnimation();
+
+  // Reset Pac-Man animation state when switching modes
+  pacman_state = PACMAN_PATROL;
+  pacman_x = 30.0;
+  pacman_y = PACMAN_PATROL_Y;
+  pacman_direction = 1;
+  pacman_animation_triggered = false;
+  last_minute_pacman = -1;
+  for (int i = 0; i < 5; i++) {
+    digit_being_eaten[i] = false;
+    digit_eaten_rows_left[i] = 0;
+    digit_eaten_rows_right[i] = 0;
+  }
+  generatePellets();
 
   // Check if network settings changed - if so, restart is required
   bool networkChanged = (previousStaticIPSetting != settings.useStaticIP);
@@ -3137,6 +3344,8 @@ void loop() {
           displayClockWithSpace();
         } else if (settings.clockStyle == 5) {
           displayClockWithPong();
+        } else if (settings.clockStyle == 6) {
+          displayClockWithPacman();
         }
       }
 
@@ -3231,6 +3440,12 @@ bool isAnimationActive() {
   // Check Pong clock animations (clockStyle == 5)
   if (settings.clockStyle == 5) {
     // Pong is always active (ball moving, paddles tracking)
+    return true;
+  }
+
+  // Check Pac-Man clock animations (clockStyle == 6)
+  if (settings.clockStyle == 6) {
+    // Always active - Pac-Man is constantly moving and eating pellets
     return true;
   }
 
@@ -5509,4 +5724,465 @@ void displayClockWithPong() {
 
   // 5. Ball(s) (on top)
   drawPongBall();
+}
+
+// ========== Pac-Man Clock Implementation ==========
+
+void displayClockWithPacman() {
+  struct tm timeinfo;
+  if (!getTimeWithTimeout(&timeinfo)) {
+    display.setTextSize(1);
+    display.setCursor(20, 28);
+    if (!ntpSynced) {
+      display.print("Syncing time...");
+    } else {
+      display.print("Time Error");
+    }
+    return;
+  }
+
+  // Update animation first
+  updatePacmanAnimation(&timeinfo);
+
+  // Time management
+  if (!time_overridden) {
+    displayed_hour = timeinfo.tm_hour;
+    displayed_min = timeinfo.tm_min;
+  }
+
+  if (time_overridden && timeinfo.tm_hour == displayed_hour &&
+      timeinfo.tm_min == displayed_min && pacman_state == PACMAN_PATROL) {
+    time_overridden = false;
+  }
+
+  // Date at top
+  display.setTextSize(1);
+  char dateStr[12];
+  switch (settings.dateFormat) {
+    case 0: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mday,
+                    timeinfo.tm_mon + 1, timeinfo.tm_year + 1900); break;
+    case 1: sprintf(dateStr, "%02d/%02d/%04d", timeinfo.tm_mon + 1,
+                    timeinfo.tm_mday, timeinfo.tm_year + 1900); break;
+    case 2: sprintf(dateStr, "%04d-%02d-%02d", timeinfo.tm_year + 1900,
+                    timeinfo.tm_mon + 1, timeinfo.tm_mday); break;
+  }
+  display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
+  display.print(dateStr);
+
+  // Time digits with masking for eaten portions
+  display.setTextSize(3);
+  char digits[5];
+  digits[0] = '0' + (displayed_hour / 10);
+  digits[1] = '0' + (displayed_hour % 10);
+  digits[2] = shouldShowColon() ? ':' : ' ';
+  digits[3] = '0' + (displayed_min / 10);
+  digits[4] = '0' + (displayed_min % 10);
+
+  for (int i = 0; i < 5; i++) {
+    // Apply bounce offset for animated digits
+    int y = TIME_Y + (int)digit_offset_y[i];
+
+    if (!digit_being_eaten[i]) {
+      // Normal rendering with bounce animation
+      display.setCursor(DIGIT_X[i], y);
+      display.print(digits[i]);
+    } else {
+      // Draw digit at normal position (being eaten)
+      display.setCursor(DIGIT_X[i], TIME_Y);
+      display.print(digits[i]);
+
+      // Mask eaten portions (two separate rectangles for left and right halves)
+      // LEFT half mask (pixels 0-8, width 9) - masks from BOTTOM up
+      int left_rows = digit_eaten_rows_left[i];
+      if (left_rows > 0) {
+        int mask_y = TIME_Y + 21 - left_rows;
+        display.fillRect(DIGIT_X[i], mask_y, 9, left_rows, DISPLAY_BLACK);
+      }
+
+      // RIGHT half mask (pixels 9-17, width 9) - masks from TOP down
+      int right_rows = digit_eaten_rows_right[i];
+      if (right_rows > 0) {
+        // Start from top (TIME_Y), height = right_rows
+        display.fillRect(DIGIT_X[i] + 9, TIME_Y, 9, right_rows, DISPLAY_BLACK);
+      }
+    }
+  }
+
+  // Draw pellets (always visible)
+  drawPellets();
+
+  // Draw Pac-Man
+  drawPacman((int)pacman_x, (int)pacman_y, pacman_direction, pacman_mouth_frame);
+}
+
+void updatePacmanAnimation(struct tm* timeinfo) {
+  unsigned long currentMillis = millis();
+
+  // Update bounce animation (runs every frame for smooth physics)
+  updateDigitBounce();
+
+  // Throttle updates
+  if (currentMillis - last_pacman_update < PACMAN_ANIM_SPEED) {
+    return;
+  }
+  last_pacman_update = currentMillis;
+
+  // Mouth animation (waka-waka)
+  if (currentMillis - last_pacman_mouth_toggle >= settings.pacmanMouthSpeed * 10) {
+    pacman_mouth_frame = (pacman_mouth_frame + 1) % 4;  // 0-3 frames
+    last_pacman_mouth_toggle = currentMillis;
+  }
+
+  int seconds = timeinfo->tm_sec;
+  int current_minute = timeinfo->tm_min;
+
+  // Reset trigger when minute changes
+  if (current_minute != last_minute_pacman) {
+    last_minute_pacman = current_minute;
+    pacman_animation_triggered = false;
+  }
+
+  // Trigger animation at 55 seconds
+  if (seconds >= 55 && !pacman_animation_triggered && pacman_state == PACMAN_PATROL) {
+    pacman_animation_triggered = true;
+    time_overridden = true;
+
+    // Calculate which digits will change
+    calculateTargetDigits(displayed_hour, displayed_min);
+
+    if (num_targets > 0) {
+      // Build queue in left-to-right order, SKIPPING the colon (position 2)
+      target_queue_length = 0;
+      for (int i = 0; i < num_targets; i++) {  // Left to right order
+        // Skip colon position - Pac-Man only eats digits, not colons!
+        if (target_digit_index[i] != 2) {
+          target_digit_queue[target_queue_length] = target_digit_index[i];
+          target_digit_new_values[target_queue_length] = target_digit_values[i];
+          target_queue_length++;
+        }
+      }
+      target_queue_index = 0;
+
+      // Only start animation if we have actual digits to eat
+      if (target_queue_length > 0) {
+        // Move to TARGETING state - Pac-Man will rush to the first digit
+        pacman_state = PACMAN_TARGETING;
+        // Set direction toward first digit
+        uint8_t first_idx = target_digit_queue[0];
+        float first_x = DIGIT_X[first_idx] + 9;
+        pacman_direction = (first_x > pacman_x) ? 1 : -1;
+      } else {
+        // No digits to eat (only colon changed), cancel animation
+        pacman_animation_triggered = false;
+        time_overridden = false;
+      }
+    }
+  }
+
+  // State machine
+  switch (pacman_state) {
+    case PACMAN_PATROL:
+      updatePacmanPatrol();
+      break;
+
+    case PACMAN_TARGETING:
+      // 2-phase L-shaped movement: horizontal first (along patrol), then vertical up
+      {
+        uint8_t target_idx = target_digit_queue[target_queue_index];
+        // Target the eating start position: bottom of left half (where inverted U begins)
+        float target_x = DIGIT_X[target_idx] + 4;  // Center of left half
+        float target_y = TIME_Y + 21;              // Bottom of digit
+        float speed = settings.pacmanSpeed / 10.0;
+
+        float dx = target_x - pacman_x;
+        float dy = target_y - pacman_y;
+
+        // Phase 1: Move horizontally along patrol line first
+        if (abs(dx) > speed) {
+          // Still need to move horizontally
+          pacman_x += (dx > 0) ? speed : -speed;
+          pacman_direction = (dx > 0) ? 1 : -1;  // Face left or right
+        }
+        // Phase 2: Move vertically up to digit (only when X is aligned)
+        else if (abs(dy) > speed) {
+          // Snap X to exact position, then move vertically
+          pacman_x = target_x;
+          pacman_y += (dy > 0) ? speed : -speed;
+          pacman_direction = (dy > 0) ? 2 : -2;  // Face down or up
+        }
+        // Reached target - start eating
+        else {
+          pacman_x = target_x;
+          pacman_y = target_y;
+
+          // Get the CURRENT digit value (the one being displayed now)
+          uint8_t current_digit_value = 0;
+          if (target_idx == 0) current_digit_value = displayed_hour / 10;
+          else if (target_idx == 1) current_digit_value = displayed_hour % 10;
+          else if (target_idx == 3) current_digit_value = displayed_min / 10;
+          else if (target_idx == 4) current_digit_value = displayed_min % 10;
+
+          startEatingDigit(target_idx, current_digit_value);
+        }
+      }
+      break;
+
+    case PACMAN_EATING:
+      updatePacmanEating();
+      break;
+
+    case PACMAN_RETURNING:
+      // Move back to patrol Y
+      pacman_direction = 2;  // Face down while returning
+      if (abs(pacman_y - PACMAN_PATROL_Y) < 1.0) {
+        pacman_y = PACMAN_PATROL_Y;
+
+        // Check if there are more digits to eat
+        if (target_queue_index < target_queue_length) {
+          // More digits to eat - move to next digit
+          pacman_state = PACMAN_TARGETING;
+          // Set direction toward next digit
+          uint8_t next_idx = target_digit_queue[target_queue_index];
+          float next_x = DIGIT_X[next_idx] + 9;
+          pacman_direction = (next_x > pacman_x) ? 1 : -1;
+        } else {
+          // All done, stay in patrol
+          pacman_state = PACMAN_PATROL;
+          // Randomly pick left or right direction for patrolling
+          pacman_direction = (random(2) == 0) ? 1 : -1;
+        }
+      } else {
+        float dy = PACMAN_PATROL_Y - pacman_y;
+        float speed = settings.pacmanSpeed / 10.0;
+        pacman_y += (dy > 0 ? speed : -speed);
+      }
+      break;
+  }
+}
+
+void updatePacmanPatrol() {
+  float speed = settings.pacmanSpeed / 10.0;
+
+  // Move left/right within bounds
+  pacman_x += speed * pacman_direction;
+
+  // Bounce at edges
+  int left_bound = settings.pacmanPatrolBounds;
+  int right_bound = SCREEN_WIDTH - settings.pacmanPatrolBounds;
+
+  if (pacman_x <= left_bound) {
+    pacman_x = left_bound;
+    pacman_direction = 1;  // Turn right
+  } else if (pacman_x >= right_bound) {
+    pacman_x = right_bound;
+    pacman_direction = -1;  // Turn left
+  }
+
+  // Update pellets
+  updatePellets();
+}
+
+void updatePacmanEating() {
+  // Inverted U path: UP left side, RIGHT at top, DOWN right side
+  int digit_base_x = DIGIT_X[current_eating_digit_index];
+  int digit_base_y = TIME_Y;
+  float speed = settings.pacmanEatingSpeed / 10.0;
+
+  if (current_eating_pass == 1) {
+    // Pass 1: Moving UP on left side (bottom to top)
+    pacman_x = digit_base_x + 4;  // Center of left half
+    pacman_direction = -2;  // Up
+    eating_y_position -= speed;
+    pacman_y = eating_y_position;
+
+    // Mask left half from bottom up
+    int rows_eaten = (int)((digit_base_y + 21) - eating_y_position);
+    rows_eaten = max(0, min(21, rows_eaten));
+    digit_eaten_rows_left[current_eating_digit_index] = rows_eaten;
+
+    // Check if reached top
+    if (eating_y_position <= digit_base_y) {
+      digit_eaten_rows_left[current_eating_digit_index] = 21;
+      current_eating_pass = 2;  // Start horizontal transition
+      pacman_y = digit_base_y;
+    }
+  } else if (current_eating_pass == 2) {
+    // Pass 2: Moving RIGHT at top (transition from left to right)
+    pacman_y = digit_base_y;  // Stay at top
+    pacman_direction = 1;  // Right
+    pacman_x += speed;
+
+    // Check if reached right side
+    if (pacman_x >= digit_base_x + 13) {
+      pacman_x = digit_base_x + 13;
+      current_eating_pass = 3;  // Start going down
+      eating_y_position = digit_base_y;  // Start at top
+    }
+  } else {
+    // Pass 3: Moving DOWN on right side (top to bottom)
+    pacman_x = digit_base_x + 13;  // Center of right half
+    pacman_direction = 2;  // Down
+    eating_y_position += speed;
+    pacman_y = eating_y_position;
+
+    // Mask right half from TOP down (since we're going down)
+    int rows_eaten = (int)(eating_y_position - digit_base_y);
+    rows_eaten = max(0, min(21, rows_eaten));
+    digit_eaten_rows_right[current_eating_digit_index] = rows_eaten;
+
+    // Check if reached bottom
+    if (eating_y_position >= digit_base_y + 21) {
+      digit_eaten_rows_right[current_eating_digit_index] = 21;
+      finishEatingDigit();
+    }
+  }
+}
+
+void startEatingDigit(uint8_t digit_index, uint8_t digit_value) {
+  pacman_state = PACMAN_EATING;
+  current_eating_digit_index = digit_index;
+  current_eating_digit_value = digit_value;
+  current_eating_pass = 1;  // Start with pass 1 (left half)
+  eating_y_position = TIME_Y + 21;  // Start at bottom of digit
+
+  // Explicitly set Pac-Man position to eating start (bottom-left of digit)
+  pacman_x = DIGIT_X[digit_index] + 4;  // Center of left half
+  pacman_y = TIME_Y + 21;               // Bottom of digit
+  pacman_direction = -2;                // Facing up (ready to eat upward)
+
+  digit_being_eaten[digit_index] = true;
+  digit_eaten_rows_left[digit_index] = 0;
+  digit_eaten_rows_right[digit_index] = 0;
+}
+
+void finishEatingDigit() {
+  // Mark digit as fully eaten
+  digit_being_eaten[current_eating_digit_index] = false;
+  digit_eaten_rows_left[current_eating_digit_index] = 0;
+  digit_eaten_rows_right[current_eating_digit_index] = 0;
+
+  // Update the digit to new value (use parallel queue array)
+  updateSpecificDigit(current_eating_digit_index,
+                     target_digit_new_values[target_queue_index]);
+
+  // Trigger bounce animation if enabled
+  if (settings.pacmanBounceEnabled) {
+    triggerDigitBounce(current_eating_digit_index);
+  }
+
+  // Move to next digit in queue
+  target_queue_index++;
+
+  // Always return to patrol first, then check for more digits when we get there
+  pacman_state = PACMAN_RETURNING;
+}
+
+int8_t getPacmanDirection(float dx, float dy) {
+  // Determine primary direction based on larger component
+  if (abs(dx) > abs(dy)) {
+    return (dx > 0) ? 1 : -1;  // Right or left
+  } else {
+    return (dy > 0) ? 2 : -2;  // Down or up
+  }
+}
+
+void generatePellets() {
+  num_pellets = settings.pacmanPelletCount;
+
+  if (num_pellets == 0) {
+    return;
+  }
+
+  if (settings.pacmanPelletRandomSpacing) {
+    // Random positions with minimum spacing
+    for (int i = 0; i < num_pellets; i++) {
+      int attempts = 0;
+      do {
+        patrol_pellets[i].x = random(15, SCREEN_WIDTH - 15);
+
+        // Check minimum spacing from other pellets
+        bool too_close = false;
+        for (int j = 0; j < i; j++) {
+          if (abs(patrol_pellets[i].x - patrol_pellets[j].x) < 8) {
+            too_close = true;
+            break;
+          }
+        }
+
+        if (!too_close) break;
+        attempts++;
+      } while (attempts < 10);
+
+      patrol_pellets[i].active = true;
+    }
+  } else {
+    // Even spacing
+    int spacing = (SCREEN_WIDTH - 30) / (num_pellets + 1);
+    for (int i = 0; i < num_pellets; i++) {
+      patrol_pellets[i].x = 15 + spacing * (i + 1);
+      patrol_pellets[i].active = true;
+    }
+  }
+}
+
+void updatePellets() {
+  for (int i = 0; i < num_pellets; i++) {
+    if (patrol_pellets[i].active) {
+      // Check if Pac-Man ate this pellet
+      if (abs((int)pacman_x - patrol_pellets[i].x) < 5) {
+        patrol_pellets[i].active = false;
+      }
+    }
+  }
+
+  // Check if all eaten
+  bool all_eaten = true;
+  for (int i = 0; i < num_pellets; i++) {
+    if (patrol_pellets[i].active) {
+      all_eaten = false;
+      break;
+    }
+  }
+
+  if (all_eaten && num_pellets > 0) {
+    generatePellets();
+  }
+}
+
+void drawPellets() {
+  for (int i = 0; i < num_pellets; i++) {
+    if (patrol_pellets[i].active) {
+      display.fillCircle(patrol_pellets[i].x, PACMAN_PATROL_Y, 1, DISPLAY_WHITE);
+    }
+  }
+}
+
+void drawPacman(int x, int y, int direction, int mouthFrame) {
+  if (x < -10 || x > SCREEN_WIDTH + 10) return;
+  if (y < -10 || y > SCREEN_HEIGHT + 10) return;
+
+  // Draw Pac-Man as 8x8 circle with mouth cutout
+  display.fillCircle(x, y, 4, DISPLAY_WHITE);
+
+  if (mouthFrame > 0) {
+    // Draw mouth (wedge cutout)
+    int mouth_size = mouthFrame + 2;  // 2-5 pixels for better visibility
+
+    if (direction == 1) {
+      // Facing right - mouth opens to the right
+      display.fillTriangle(x + 1, y, x + 5, y - mouth_size, x + 5, y + mouth_size, DISPLAY_BLACK);
+    } else if (direction == -1) {
+      // Facing left - mouth opens to the left
+      display.fillTriangle(x - 1, y, x - 5, y - mouth_size, x - 5, y + mouth_size, DISPLAY_BLACK);
+    } else if (direction == 2) {
+      // Facing down - mouth opens downward
+      display.fillTriangle(x, y + 1, x - mouth_size, y + 5, x + mouth_size, y + 5, DISPLAY_BLACK);
+    } else {
+      // Facing up - mouth opens upward
+      display.fillTriangle(x, y - 1, x - mouth_size, y - 5, x + mouth_size, y - 5, DISPLAY_BLACK);
+    }
+  }
+
+  // Eye (always on top-center, Pac-Man style)
+  display.drawPixel(x, y - 2, DISPLAY_BLACK);
 }

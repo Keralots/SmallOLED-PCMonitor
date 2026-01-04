@@ -9,3 +9,5 @@ esp32-configurator/
 
 # PC Stats Monitor Script - excluded from repository
 pc_stats_monitor_hwinfo-script/
+
+__pycache__/
