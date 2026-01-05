@@ -181,8 +181,6 @@ struct Settings {
   uint8_t pacmanMouthSpeed;         // Mouth animation speed (5-20, default 10)
   uint8_t pacmanPelletCount;        // Number of pellets (0-20, default 8)
   bool pacmanPelletRandomSpacing;   // Random vs even spacing (default true)
-  uint8_t pacmanEatingSpeed;        // Path following speed (5-20, default 10)
-  uint8_t pacmanPatrolBounds;       // Patrol left/right bounds (5-50, default 10)
   bool pacmanBounceEnabled;         // Enable bounce animation for new digits (default true)
 
   // Network configuration
@@ -251,8 +249,22 @@ float digit_velocity[5] = {0, 0, 0, 0, 0};
 const float DIGIT_BOUNCE_POWER = -3.5;
 const float DIGIT_GRAVITY = 0.6;
 
-const int DIGIT_X[5] = {19, 37, 55, 73, 91};
-const int TIME_Y = 26;  // Mario and standard clocks use this position
+// Time display constants
+constexpr int TIME_START_X = 19;        // Starting X position for first digit
+constexpr int DIGIT_SPACING = 18;       // Spacing between digits (6px * 3 for "HH:MM")
+constexpr int TIME_Y = 26;              // Y position for time display
+const int DIGIT_X[5] = {
+  TIME_START_X + 0 * DIGIT_SPACING,     // 19 - H1
+  TIME_START_X + 1 * DIGIT_SPACING,     // 37 - H2
+  TIME_START_X + 2 * DIGIT_SPACING,     // 55 - Colon position
+  TIME_START_X + 3 * DIGIT_SPACING,     // 73 - M1
+  TIME_START_X + 4 * DIGIT_SPACING      // 91 - M2
+};
+
+// Display layout constants
+constexpr int OLED_SCREEN_WIDTH = 128;
+constexpr int OLED_SCREEN_HEIGHT = 64;
+constexpr int OLED_SCREEN_CENTER_X = 64;
 
 // ========== Space Clock Animation Variables (Clock Style 3 & 4 merged) ==========
 // This animation works for both Invader (character type 0) and Ship (character type 1)
@@ -498,6 +510,11 @@ void displayConnected();
 void displayClockWithMario();
 void displayStandardClock();
 void displayLargeClock();
+
+// Security & validation helper functions
+bool validateIP(const char* ip);
+bool safeCopyString(char* dest, const char* src, size_t maxLen);
+void assertBounds(int value, int minVal, int maxVal, const char* name);
 void updateMarioAnimation(struct tm* timeinfo);
 void drawMario(int x, int y, bool facingRight, int frame, bool jumping);
 void calculateTargetDigits(int hour, int min);
@@ -955,8 +972,6 @@ void loadSettings() {
   settings.pacmanMouthSpeed = preferences.getUChar("pacmanMouthSpeed", 10); // Default: 1.0 Hz
   settings.pacmanPelletCount = preferences.getUChar("pacmanPelletCount", 8); // Default: 8
   settings.pacmanPelletRandomSpacing = preferences.getBool("pacmanPelletRand", true); // Default: true
-  settings.pacmanEatingSpeed = preferences.getUChar("pacmanEatSpeed", 10); // Default: 1.0
-  settings.pacmanPatrolBounds = preferences.getUChar("pacmanPatrolBnd", 10); // Default: 10
   settings.pacmanBounceEnabled = preferences.getBool("pacmanBounce", true); // Default: true
   settings.spaceCharacterType = preferences.getUChar("spaceChar", 1);   // Default: Ship
   settings.spacePatrolSpeed = preferences.getUChar("spacePatrol", 5);   // Default: 0.5
@@ -1104,8 +1119,6 @@ void saveSettings() {
   preferences.putUChar("pacmanMouthSpeed", settings.pacmanMouthSpeed);
   preferences.putUChar("pacmanPelletCount", settings.pacmanPelletCount);
   preferences.putBool("pacmanPelletRand", settings.pacmanPelletRandomSpacing);
-  preferences.putUChar("pacmanEatSpeed", settings.pacmanEatingSpeed);
-  preferences.putUChar("pacmanPatrolBnd", settings.pacmanPatrolBounds);
   preferences.putBool("pacmanBounce", settings.pacmanBounceEnabled);
   preferences.putUChar("spaceChar", settings.spaceCharacterType);
   preferences.putUChar("spacePatrol", settings.spacePatrolSpeed);
@@ -1640,18 +1653,6 @@ void handleRoot() {
             How fast Pac-Man's mouth opens and closes (waka-waka). Default: 1.0 Hz
           </p>
 
-          <label for="pacmanEatingSpeed" style="margin-top: 15px;">Eating Speed</label>
-          <input type="range" name="pacmanEatingSpeed" id="pacmanEatingSpeed"
-                 min="5" max="20" step="1"
-                 value=")rawliteral" + String(settings.pacmanEatingSpeed) + R"rawliteral("
-                 oninput="document.getElementById('pacmanEatingSpeedValue').textContent = (this.value / 10).toFixed(1)">
-          <span style="color: #f1c40f; font-size: 14px; margin-left: 10px;">
-            <span id="pacmanEatingSpeedValue">)rawliteral" + String(settings.pacmanEatingSpeed / 10.0, 1) + R"rawliteral(</span>
-          </span>
-          <p style="color: #888; font-size: 12px; margin-top: 5px;">
-            How fast Pac-Man follows the digit paths when eating. Lower = dramatic, Higher = quick chomping. Default: 1.0
-          </p>
-
           <label for="pacmanPelletCount" style="margin-top: 15px;">Number of Pellets</label>
           <input type="range" name="pacmanPelletCount" id="pacmanPelletCount"
                  min="0" max="20" step="1"
@@ -1671,18 +1672,6 @@ void handleRoot() {
           </label>
           <p style="color: #888; font-size: 12px; margin-top: 5px;">
             When enabled, pellets appear at random positions. When disabled, pellets are evenly spaced. Default: Enabled
-          </p>
-
-          <label for="pacmanPatrolBounds" style="margin-top: 15px;">Patrol Boundaries</label>
-          <input type="range" name="pacmanPatrolBounds" id="pacmanPatrolBounds"
-                 min="5" max="50" step="5"
-                 value=")rawliteral" + String(settings.pacmanPatrolBounds) + R"rawliteral("
-                 oninput="document.getElementById('pacmanPatrolBoundsValue').textContent = this.value">
-          <span style="color: #f1c40f; font-size: 14px; margin-left: 10px;">
-            <span id="pacmanPatrolBoundsValue">)rawliteral" + String(settings.pacmanPatrolBounds) + R"rawliteral(</span> pixels
-          </span>
-          <p style="color: #888; font-size: 12px; margin-top: 5px;">
-            Edge padding for patrol area. Lower = uses full screen width, Higher = narrower patrol zone. Default: 10 pixels
           </p>
 
           <label style="margin-top: 15px;">
@@ -2713,16 +2702,10 @@ void handleSave() {
   if (server.hasArg("pacmanMouthSpeed")) {
     settings.pacmanMouthSpeed = server.arg("pacmanMouthSpeed").toInt();
   }
-  if (server.hasArg("pacmanEatingSpeed")) {
-    settings.pacmanEatingSpeed = server.arg("pacmanEatingSpeed").toInt();
-  }
   if (server.hasArg("pacmanPelletCount")) {
     settings.pacmanPelletCount = server.arg("pacmanPelletCount").toInt();
   }
   settings.pacmanPelletRandomSpacing = server.hasArg("pacmanPelletRandomSpacing");
-  if (server.hasArg("pacmanPatrolBounds")) {
-    settings.pacmanPatrolBounds = server.arg("pacmanPatrolBounds").toInt();
-  }
   settings.pacmanBounceEnabled = server.hasArg("pacmanBounceEnabled");
 
   // Save Space Clock settings
@@ -2748,24 +2731,44 @@ void handleSave() {
     settings.useStaticIP = server.arg("useStaticIP").toInt() == 1;
   }
   if (server.hasArg("staticIP")) {
-    strncpy(settings.staticIP, server.arg("staticIP").c_str(), 15);
-    settings.staticIP[15] = '\0';
+    String ipStr = server.arg("staticIP");
+    if (ipStr.length() > 0 && validateIP(ipStr.c_str())) {
+      safeCopyString(settings.staticIP, ipStr.c_str(), sizeof(settings.staticIP));
+    } else if (ipStr.length() > 0) {
+      Serial.println("WARNING: Invalid static IP format, ignoring");
+    }
   }
   if (server.hasArg("gateway")) {
-    strncpy(settings.gateway, server.arg("gateway").c_str(), 15);
-    settings.gateway[15] = '\0';
+    String ipStr = server.arg("gateway");
+    if (ipStr.length() > 0 && validateIP(ipStr.c_str())) {
+      safeCopyString(settings.gateway, ipStr.c_str(), sizeof(settings.gateway));
+    } else if (ipStr.length() > 0) {
+      Serial.println("WARNING: Invalid gateway format, ignoring");
+    }
   }
   if (server.hasArg("subnet")) {
-    strncpy(settings.subnet, server.arg("subnet").c_str(), 15);
-    settings.subnet[15] = '\0';
+    String ipStr = server.arg("subnet");
+    if (ipStr.length() > 0 && validateIP(ipStr.c_str())) {
+      safeCopyString(settings.subnet, ipStr.c_str(), sizeof(settings.subnet));
+    } else if (ipStr.length() > 0) {
+      Serial.println("WARNING: Invalid subnet format, ignoring");
+    }
   }
   if (server.hasArg("dns1")) {
-    strncpy(settings.dns1, server.arg("dns1").c_str(), 15);
-    settings.dns1[15] = '\0';
+    String ipStr = server.arg("dns1");
+    if (ipStr.length() > 0 && validateIP(ipStr.c_str())) {
+      safeCopyString(settings.dns1, ipStr.c_str(), sizeof(settings.dns1));
+    } else if (ipStr.length() > 0) {
+      Serial.println("WARNING: Invalid DNS1 format, ignoring");
+    }
   }
   if (server.hasArg("dns2")) {
-    strncpy(settings.dns2, server.arg("dns2").c_str(), 15);
-    settings.dns2[15] = '\0';
+    String ipStr = server.arg("dns2");
+    if (ipStr.length() > 0 && validateIP(ipStr.c_str())) {
+      safeCopyString(settings.dns2, ipStr.c_str(), sizeof(settings.dns2));
+    } else if (ipStr.length() > 0) {
+      Serial.println("WARNING: Invalid DNS2 format, ignoring");
+    }
   }
 
   // Save custom labels
@@ -2889,6 +2892,30 @@ void handleSave() {
       settings.metricNames[m.id - 1][METRIC_NAME_LEN - 1] = '\0';
     }
   }
+
+  // Validate settings bounds before saving
+  assertBounds(settings.clockStyle, 0, 6, "clockStyle");
+  assertBounds(settings.gmtOffset, -12, 14, "gmtOffset");
+  assertBounds(settings.clockPosition, 0, 2, "clockPosition");
+  assertBounds(settings.displayRowMode, 0, 1, "displayRowMode");
+  assertBounds(settings.colonBlinkMode, 0, 2, "colonBlinkMode");
+  assertBounds(settings.colonBlinkRate, 5, 50, "colonBlinkRate");
+  assertBounds(settings.refreshRateMode, 0, 1, "refreshRateMode");
+  assertBounds(settings.refreshRateHz, 1, 60, "refreshRateHz");
+  assertBounds(settings.marioBounceHeight, 10, 80, "marioBounceHeight");
+  assertBounds(settings.marioBounceSpeed, 2, 15, "marioBounceSpeed");
+  assertBounds(settings.pongBallSpeed, 16, 30, "pongBallSpeed");
+  assertBounds(settings.pongBounceStrength, 1, 8, "pongBounceStrength");
+  assertBounds(settings.pongBounceDamping, 50, 95, "pongBounceDamping");
+  assertBounds(settings.pongPaddleWidth, 10, 40, "pongPaddleWidth");
+  assertBounds(settings.pacmanSpeed, 5, 20, "pacmanSpeed");
+  assertBounds(settings.pacmanMouthSpeed, 5, 20, "pacmanMouthSpeed");
+  assertBounds(settings.pacmanPelletCount, 0, 20, "pacmanPelletCount");
+  assertBounds(settings.spaceCharacterType, 0, 1, "spaceCharacterType");
+  assertBounds(settings.spacePatrolSpeed, 2, 15, "spacePatrolSpeed");
+  assertBounds(settings.spaceAttackSpeed, 10, 40, "spaceAttackSpeed");
+  assertBounds(settings.spaceLaserSpeed, 20, 80, "spaceLaserSpeed");
+  assertBounds(settings.spaceExplosionGravity, 3, 10, "spaceExplosionGravity");
 
   saveSettings();
   applyTimezone();
@@ -3297,7 +3324,8 @@ void loop() {
 
   int packetSize = udp.parsePacket();
   if (packetSize) {
-    char buffer[1024];  // Increased buffer for up to 12 metrics
+    // Static buffer to avoid stack overflow (ESP32-C3 has limited stack)
+    static char buffer[2048];  // Increased for MAX_METRICS=20 edge case
     int len = udp.read(buffer, sizeof(buffer) - 1);
     if (len > 0) {
       buffer[len] = '\0';
@@ -3310,7 +3338,11 @@ void loop() {
       Serial.println(" bytes");
 
       if (packetSize > sizeof(buffer) - 1) {
-        Serial.println("WARNING: Packet truncated! Increase buffer size.");
+        Serial.printf("ERROR: Packet %d bytes exceeds buffer %d bytes! Data truncated.\n",
+                      packetSize, (int)sizeof(buffer));
+        udp.flush();  // Clear remaining data to prevent buffer corruption
+        lastReceived = millis();  // Still update timestamp to prevent timeout
+        return;  // Skip processing this packet
       }
 
       parseStats(buffer);
@@ -3356,6 +3388,21 @@ void loop() {
       int refreshHz = getOptimalRefreshRate();
       unsigned long refreshInterval = 1000 / refreshHz;
       nextDisplayUpdate = now + refreshInterval;
+    } else {
+      // Display not available - attempt to reinitialize
+      static unsigned long lastRetry = 0;
+      if (now - lastRetry > 5000) {  // Retry every 5 seconds
+        lastRetry = now;
+        Serial.println("Attempting display reinitialization...");
+        displayAvailable = display.begin(0x3C, false);
+        if (displayAvailable) {
+          Serial.println("Display reinitialized successfully!");
+          display.clearDisplay();
+          display.display();
+        } else {
+          Serial.println("Display reinitialization failed, will retry...");
+        }
+      }
     }
   }
 
@@ -3380,6 +3427,57 @@ void convertCaretToSpaces(char* str) {
     if (str[i] == '^') {
       str[i] = ' ';
     }
+  }
+}
+
+// ========== Security & Validation Helpers ==========
+
+// Validate IP address format (prevents invalid IPs from crashing the device)
+bool validateIP(const char* ip) {
+  if (!ip || strlen(ip) == 0 || strlen(ip) > 15) {
+    return false;
+  }
+
+  int octets[4];
+  int result = sscanf(ip, "%d.%d.%d.%d", &octets[0], &octets[1], &octets[2], &octets[3]);
+
+  if (result != 4) {
+    return false;
+  }
+
+  // Validate each octet is in range 0-255
+  for (int i = 0; i < 4; i++) {
+    if (octets[i] < 0 || octets[i] > 255) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Safe string copy with null terminator (prevents buffer overflows)
+bool safeCopyString(char* dest, const char* src, size_t maxLen) {
+  if (!dest || !src || maxLen == 0) {
+    return false;
+  }
+
+  size_t srcLen = strlen(src);
+  if (srcLen >= maxLen) {
+    // Source is too long, truncate
+    strncpy(dest, src, maxLen - 1);
+    dest[maxLen - 1] = '\0';
+    return false;  // Indicate truncation occurred
+  }
+
+  strcpy(dest, src);
+  return true;  // Success, no truncation
+}
+
+// Bounds checking for settings (logs errors if out of range)
+void assertBounds(int value, int minVal, int maxVal, const char* name) {
+  if (value < minVal || value > maxVal) {
+    Serial.printf("ERROR: %s out of bounds: %d not in [%d,%d]\n",
+                  name ? name : "value", value, minVal, maxVal);
   }
 }
 
@@ -5934,27 +6032,32 @@ void updatePacmanAnimation(struct tm* timeinfo) {
     case PACMAN_RETURNING:
       // Move back to patrol Y
       pacman_direction = 2;  // Face down while returning
-      if (abs(pacman_y - PACMAN_PATROL_Y) < 1.0) {
-        pacman_y = PACMAN_PATROL_Y;
-
-        // Check if there are more digits to eat
-        if (target_queue_index < target_queue_length) {
-          // More digits to eat - move to next digit
-          pacman_state = PACMAN_TARGETING;
-          // Set direction toward next digit
-          uint8_t next_idx = target_digit_queue[target_queue_index];
-          float next_x = DIGIT_X[next_idx] + 9;
-          pacman_direction = (next_x > pacman_x) ? 1 : -1;
-        } else {
-          // All done, stay in patrol
-          pacman_state = PACMAN_PATROL;
-          // Randomly pick left or right direction for patrolling
-          pacman_direction = (random(2) == 0) ? 1 : -1;
-        }
-      } else {
-        float dy = PACMAN_PATROL_Y - pacman_y;
+      {
         float speed = settings.pacmanSpeed / 10.0;
-        pacman_y += (dy > 0 ? speed : -speed);
+        float dy = PACMAN_PATROL_Y - pacman_y;
+
+        // Snap to patrol line when within one speed step (more robust at high speeds)
+        if (abs(dy) <= speed * 1.5) {
+          pacman_y = PACMAN_PATROL_Y;
+
+          // Check if there are more digits to eat
+          if (target_queue_index < target_queue_length) {
+            // More digits to eat - move to next digit
+            pacman_state = PACMAN_TARGETING;
+            // Set direction toward next digit
+            uint8_t next_idx = target_digit_queue[target_queue_index];
+            float next_x = DIGIT_X[next_idx] + 9;
+            pacman_direction = (next_x > pacman_x) ? 1 : -1;
+          } else {
+            // All done, stay in patrol
+            pacman_state = PACMAN_PATROL;
+            // Randomly pick left or right direction for patrolling
+            pacman_direction = (random(2) == 0) ? 1 : -1;
+          }
+        } else {
+          // Still moving down
+          pacman_y += (dy > 0 ? speed : -speed);
+        }
       }
       break;
   }
@@ -5966,9 +6069,10 @@ void updatePacmanPatrol() {
   // Move left/right within bounds
   pacman_x += speed * pacman_direction;
 
-  // Bounce at edges
-  int left_bound = settings.pacmanPatrolBounds;
-  int right_bound = SCREEN_WIDTH - settings.pacmanPatrolBounds;
+  // Fixed patrol bounds (10 pixels from edges)
+  constexpr int PACMAN_PATROL_BOUNDS = 10;
+  int left_bound = PACMAN_PATROL_BOUNDS;
+  int right_bound = SCREEN_WIDTH - PACMAN_PATROL_BOUNDS;
 
   if (pacman_x <= left_bound) {
     pacman_x = left_bound;
@@ -5986,7 +6090,8 @@ void updatePacmanEating() {
   // Inverted U path: UP left side, RIGHT at top, DOWN right side
   int digit_base_x = DIGIT_X[current_eating_digit_index];
   int digit_base_y = TIME_Y;
-  float speed = settings.pacmanEatingSpeed / 10.0;
+  // Use same speed as patrol for consistent movement
+  float speed = settings.pacmanSpeed / 10.0;
 
   if (current_eating_pass == 1) {
     // Pass 1: Moving UP on left side (bottom to top)
