@@ -109,7 +109,7 @@ MetricData metricData;
 // ========== Settings (loaded from flash) ==========
 struct Settings {
   int clockStyle;        // 0 = Mario, 1 = Standard, 2 = Large, 3 = Space Invaders (Jumping), 4 = Space Invaders (Sliding)
-  int gmtOffset;         // GMT offset in hours (-12 to +14)
+  int gmtOffset;         // GMT offset in minutes (-720 to +840, supports half-hour zones like +5:30 = 330)
   bool daylightSaving;   // Daylight saving time
   bool use24Hour;        // 24-hour format
   int dateFormat;        // 0 = DD/MM/YYYY, 1 = MM/DD/YYYY, 2 = YYYY-MM-DD
@@ -570,11 +570,10 @@ const PathStep eatingPaths[10][MAX_PATH_STEPS] = {
   // Pattern: {0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110}
   // Pellets at: row0(0,1,2,3,4), row1(0), row2(0,1,2,3), row3(4), row4(4), row5(0,4), row6(1,2,3)
   {{4,0}, {3,0}, {2,0}, {1,0}, {0,0},   // Top bar (right to left for entry)
-   {0,1},                               // Left side down
-   {0,2}, {1,2}, {2,2}, {3,2},          // Middle bar
-   {4,3}, {4,4},                        // Right side down
-   {4,5}, {0,5},                        // Lower corners
-   {3,6}, {2,6}, {1,6},                 // Bottom arc
+   {0,1}, {0,2}, {0,3},                 // Left side down
+   {1,2}, {2,2}, {3,2},                 // Middle bar
+   {4,3}, {4,4}, {4,5},                 // Right side down
+   {3,6}, {2,6}, {1,6},                 // Bottom arc (smooth from {4,5})
    {255,255}},
   // Digit 6: Bottom arc, up left, across middle, tail
   // Pattern: {0b00110, 0b01000, 0b10000, 0b10110, 0b10001, 0b10001, 0b01110}
@@ -1117,7 +1116,17 @@ void loadSettings() {
   }
 
   settings.clockStyle = preferences.getInt("clockStyle", 0);  // Default: Mario
-  settings.gmtOffset = preferences.getInt("gmtOffset", 1);    // Default: GMT+1
+
+  // gmtOffset migration: convert old hours to new minutes format
+  int loadedOffset = preferences.getInt("gmtOffset", 60);
+  if (loadedOffset >= -12 && loadedOffset <= 14 && loadedOffset != 0) {
+    // Old format (hours): convert to minutes
+    settings.gmtOffset = loadedOffset * 60;
+    preferences.putInt("gmtOffset", settings.gmtOffset);  // Save new format
+  } else {
+    settings.gmtOffset = loadedOffset;  // Already in minutes
+  }
+
   settings.daylightSaving = preferences.getBool("dst", true); // Default: true
   settings.use24Hour = preferences.getBool("use24Hour", true); // Default: 24h
   settings.dateFormat = preferences.getInt("dateFormat", 0);  // Default: DD/MM/YYYY
@@ -1348,7 +1357,7 @@ void saveSettings() {
 }
 
 void applyTimezone() {
-  long gmtOffset_sec = settings.gmtOffset * 3600;
+  long gmtOffset_sec = settings.gmtOffset * 60;  // gmtOffset is now in minutes
   int dstOffset_sec = settings.daylightSaving ? 3600 : 0;
   configTime(gmtOffset_sec, dstOffset_sec, ntpServer);
 }
@@ -2030,16 +2039,27 @@ void handleRoot() {
       </div>
       <div id="timezoneSection" class="section-content collapsed">
         <div class="card">
-        
-        <label for="gmtOffset">GMT Offset (hours)</label>
+
+        <label for="gmtOffset">GMT Offset</label>
         <select name="gmtOffset" id="gmtOffset">
 )rawliteral";
 
-  // Generate timezone options
-  for (int i = -12; i <= 14; i++) {
-    String selected = (settings.gmtOffset == i) ? "selected" : "";
-    String label = "GMT" + String(i >= 0 ? "+" : "") + String(i);
-    html += "<option value=\"" + String(i) + "\" " + selected + ">" + label + "</option>\n";
+  // Generate timezone options (30-minute increments)
+  for (int minutes = -720; minutes <= 840; minutes += 30) {
+    String selected = (settings.gmtOffset == minutes) ? "selected" : "";
+
+    // Format: GMT+5:30, GMT-5:00, etc.
+    int hours = minutes / 60;
+    int mins = abs(minutes % 60);
+    String label = "GMT" + String(hours >= 0 ? "+" : "") + String(hours);
+    if (mins > 0) {
+      String minStr = (mins < 10) ? "0" + String(mins) : String(mins);
+      label += ":" + minStr;
+    } else {
+      label += ":00";
+    }
+
+    html += "<option value=\"" + String(minutes) + "\" " + selected + ">" + label + "</option>\n";
   }
 
   html += R"rawliteral(
@@ -3082,7 +3102,7 @@ void handleSave() {
 
   // Validate settings bounds before saving
   assertBounds(settings.clockStyle, 0, 6, "clockStyle");
-  assertBounds(settings.gmtOffset, -12, 14, "gmtOffset");
+  assertBounds(settings.gmtOffset, -720, 840, "gmtOffset");  // -12h to +14h in minutes
   assertBounds(settings.clockPosition, 0, 2, "clockPosition");
   assertBounds(settings.displayRowMode, 0, 1, "displayRowMode");
   assertBounds(settings.colonBlinkMode, 0, 2, "colonBlinkMode");
