@@ -75,22 +75,25 @@ For detailed instructions, keep reading below.
   - VCC → 3.3V
   - GND → GND
 
+![Wiring](img/wiring.JPG)
+
 ## Software Setup
 
 ### 1. ESP32 Firmware
 
 #### Option A: Pre-built Binary (Easy - No Compilation Needed)
 
-**Download the latest release**: [v1.3.2](release/v1.3.2/)
+**Download the latest release**: [v1.3.3](release/v1.3.3/)
 
 **Easiest Method - Web Flasher (No Installation Required!):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
 2. Connect your ESP32-C3 via USB. If it constantly connects/disconnects, hold the **BOOT** button, connect to USB while still holding it, then release after connecting. Alternatively, hold **BOOT**, press **RESET** while holding **BOOT**, then release both buttons.
 3. Click **"Connect"** and select your port
 4. Click **"Choose File"** and select `firmware-vx.x.x.bin`
-5. Set **Flash Address** to `0x0`
-6. Click **"Program"** and wait ~30 seconds
-7. Done! 🎉
+5. Make sure you pick firmware for correct OLED size version! It may initially work but you will get black screen after you reconnect device.
+6. Set **Flash Address** to `0x0`
+7. Click **"Program"** and wait ~30 seconds
+8. Done! 🎉
 
 **Alternative Methods:**
 - **Windows**: Run `flash.bat` and follow prompts
