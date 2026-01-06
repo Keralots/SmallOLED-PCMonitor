@@ -252,13 +252,13 @@ const float DIGIT_GRAVITY = 0.6;
 
 // Time display constants
 constexpr int TIME_Y = 16;              // Y position for time display (moved up for patrol clearance)
-// Explicit digit positions for better spacing (spread outer digits, tighten inner around colon)
+// Explicit digit positions for better spacing (symmetrical 29px gaps between digit pairs)
 const int DIGIT_X[5] = {
-  9,    // H1 - near left edge (+5px to tighten)
-  30,   // H2 - 21px gap from H1
+  1,    // H1 - 29px gap to H2
+  30,   // H2 - 26px gap to colon
   56,   // Colon position - centered
   74,   // M1 - 18px gap from colon
-  103   // M2 - 29px gap from M1 (-5px to tighten)
+  103   // M2 - 29px gap from M1
 };
 
 // Display layout constants
