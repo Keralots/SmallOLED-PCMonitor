@@ -318,8 +318,8 @@ You can switch between modes in the ESP32 web interface under "Display Layout Se
 #### Legacy Script (Older Versions)
 
 If you're using firmware versions below 1.3.0, use the legacy scripts:
-- [pc_stats_monitor.py](pc_stats_monitor.py) for Windows
-- [pc_stats_monitor_linux.py](pc_stats_monitor_linux.py) for Linux
+- [pc_stats_monitor.py](old/pc_stats_monitor.py) for Windows
+- [pc_stats_monitor_linux.py](old/pc_stats_monitor_linux.py) for Linux
 
 These require manual configuration by editing the ESP32_IP in the script file.
 
