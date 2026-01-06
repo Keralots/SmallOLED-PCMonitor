@@ -251,15 +251,14 @@ const float DIGIT_BOUNCE_POWER = -3.5;
 const float DIGIT_GRAVITY = 0.6;
 
 // Time display constants
-constexpr int TIME_Y = 16;              // Y position for time display (moved up for patrol clearance)
-// Explicit digit positions for better spacing (symmetrical 29px gaps between digit pairs)
-const int DIGIT_X[5] = {
-  1,    // H1 - 29px gap to H2
-  30,   // H2 - 26px gap to colon
-  56,   // Colon position - centered
-  74,   // M1 - 18px gap from colon
-  103   // M2 - 29px gap from M1
-};
+constexpr int TIME_Y = 26;  // Standard Y position for time display (Mario, Standard, Large, Space, Pong)
+
+constexpr int TIME_Y_PACMAN = 16;  // Y position for Pac-Man clock (moved up for patrol clearance)
+// Standard digit positions for Mario, Standard, Large, Space, Pong clocks (evenly spaced 18px)
+const int DIGIT_X[5] = {19, 37, 55, 73, 91};
+
+// Pac-Man clock uses different spacing (wider gaps for pellet layout)
+const int DIGIT_X_PACMAN[5] = {1, 30, 56, 74, 103};
 
 // Display layout constants
 constexpr int OLED_SCREEN_WIDTH = 128;
@@ -6088,19 +6087,19 @@ void displayClockWithPacman() {
       // Draw colon as two pellets (top and bottom)
       // Center colon between hour digits and minute digits
       if (shouldShowColon()) {
-        // H2 ends at: DIGIT_X[1] + 4 * PELLET_SPACING
-        // M1 starts at: DIGIT_X[3]
+        // H2 ends at: DIGIT_X_PACMAN[1] + 4 * PELLET_SPACING
+        // M1 starts at: DIGIT_X_PACMAN[3]
         // Center the colon in the gap between them
-        int colon_x = (DIGIT_X[1] + 4 * PELLET_SPACING + DIGIT_X[3]) / 2;
-        display.fillCircle(colon_x, TIME_Y + 8, PELLET_SIZE, DISPLAY_WHITE);   // Top dot (lowered)
-        display.fillCircle(colon_x, TIME_Y + 18, PELLET_SIZE, DISPLAY_WHITE);  // Bottom dot (lowered)
+        int colon_x = (DIGIT_X_PACMAN[1] + 4 * PELLET_SPACING + DIGIT_X_PACMAN[3]) / 2;
+        display.fillCircle(colon_x, TIME_Y_PACMAN + 8, PELLET_SIZE, DISPLAY_WHITE);   // Top dot (lowered)
+        display.fillCircle(colon_x, TIME_Y_PACMAN + 18, PELLET_SIZE, DISPLAY_WHITE);  // Bottom dot (lowered)
       }
       continue;
     }
 
     // Apply bounce offset
-    int base_y = TIME_Y + (int)digit_offset_y[i];
-    int base_x = DIGIT_X[i];
+    int base_y = TIME_Y_PACMAN + (int)digit_offset_y[i];
+    int base_x = DIGIT_X_PACMAN[i];
 
     // Draw digit pellets
     uint8_t digit = digitValues[i];
@@ -6197,7 +6196,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
         else if (first_idx == 4) first_digit_val = displayed_min % 10;
 
         const PathStep first_step = eatingPaths[first_digit_val][0];
-        float first_x = DIGIT_X[first_idx] + first_step.col * PELLET_SPACING;
+        float first_x = DIGIT_X_PACMAN[first_idx] + first_step.col * PELLET_SPACING;
         pacman_direction = (first_x > pacman_x) ? 1 : -1;
       } else {
         // No digits to eat (only colon changed), cancel animation
@@ -6227,8 +6226,8 @@ void updatePacmanAnimation(struct tm* timeinfo) {
 
         // Target the first pellet position in the eating path
         const PathStep first_step = eatingPaths[current_digit_value][0];
-        float target_x = DIGIT_X[target_idx] + first_step.col * PELLET_SPACING;
-        float target_y = TIME_Y + first_step.row * PELLET_SPACING;
+        float target_x = DIGIT_X_PACMAN[target_idx] + first_step.col * PELLET_SPACING;
+        float target_y = TIME_Y_PACMAN + first_step.row * PELLET_SPACING;
         float speed = settings.pacmanEatingSpeed / 10.0;  // Use eating speed for targeting
 
         float dx = target_x - pacman_x;
@@ -6302,7 +6301,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
             else if (next_idx == 4) next_digit_val = displayed_min % 10;
 
             const PathStep next_step = eatingPaths[next_digit_val][0];
-            float next_x = DIGIT_X[next_idx] + next_step.col * PELLET_SPACING;
+            float next_x = DIGIT_X_PACMAN[next_idx] + next_step.col * PELLET_SPACING;
             pacman_direction = (next_x > pacman_x) ? 1 : -1;
           } else {
             // All done, stay in patrol
@@ -6350,8 +6349,8 @@ void updatePacmanEating() {
   uint8_t digit_idx = current_eating_digit_index;
   uint8_t digit_val = current_eating_digit_value;
 
-  int digit_base_x = DIGIT_X[digit_idx];
-  int digit_base_y = TIME_Y;
+  int digit_base_x = DIGIT_X_PACMAN[digit_idx];
+  int digit_base_y = TIME_Y_PACMAN;
   float speed = settings.pacmanEatingSpeed / 10.0;  // Use eating speed for digit eating
 
   // Get current path step
@@ -6466,8 +6465,8 @@ void startEatingDigit(uint8_t digit_index, uint8_t digit_value) {
   pellet_eat_distance = 0.0;
 
   // Position Pac-Man at first path point
-  int digit_base_x = DIGIT_X[digit_index];
-  int digit_base_y = TIME_Y;
+  int digit_base_x = DIGIT_X_PACMAN[digit_index];
+  int digit_base_y = TIME_Y_PACMAN;
 
   const PathStep* path = eatingPaths[digit_value];
   const PathStep first_step = path[0];
