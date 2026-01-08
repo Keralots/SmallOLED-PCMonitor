@@ -565,14 +565,15 @@ const PathStep eatingPaths[10][MAX_PATH_STEPS] = {
    {1,4}, {2,4},                        // Bar continues (3,4 already eaten)
    {4,4},                               // Bar right end
    {255,255}},
-  // Digit 5: Top bar, down left, middle, curve down
+  // Digit 5: Starting from bottom-left, going up
   // Pattern: {0b11111, 0b10000, 0b11110, 0b00001, 0b00001, 0b10001, 0b01110}
   // Pellets at: row0(0,1,2,3,4), row1(0), row2(0,1,2,3), row3(4), row4(4), row5(0,4), row6(1,2,3)
-  {{4,0}, {3,0}, {2,0}, {1,0}, {0,0},   // Top bar (right to left for entry)
-   {0,1}, {0,2}, {0,3},                 // Left side down
-   {1,2}, {2,2}, {3,2},                 // Middle bar
-   {4,3}, {4,4}, {4,5},                 // Right side down
-   {3,6}, {2,6}, {1,6},                 // Bottom arc (smooth from {4,5})
+  {{0,5},                               // Start at left bottom corner
+   {1,6}, {2,6}, {3,6},                 // Bottom arc
+   {4,5}, {4,4}, {4,3},                 // Right side up
+   {3,2}, {2,2}, {1,2}, {0,2},          // Middle bar (right to left)
+   {0,1}, {0,0},                        // Left side up
+   {1,0}, {2,0}, {3,0}, {4,0},          // Top bar
    {255,255}},
   // Digit 6: Bottom arc, up left, across middle, tail
   // Pattern: {0b00110, 0b01000, 0b10000, 0b10110, 0b10001, 0b10001, 0b01110}
