@@ -12,7 +12,10 @@ import sys
 import argparse
 from datetime import datetime
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox
+from urllib import request as urllib_request
+from urllib import error as urllib_error
+import re
 
 # Try to import pystray for system tray support
 try:
@@ -49,6 +52,602 @@ sensor_database = {
     "throughput": [], # Network throughput (upload/download speed KB/s, MB/s)
     "other": []
 }
+
+# Global variable for discovered WMI namespace (can be auto-detected)
+discovered_wmi_namespace = "root\\LibreHardwareMonitor"  # Default
+
+# Global variables for REST API (alternative to WMI for LHM 0.9.5+)
+rest_api_host = "localhost"
+rest_api_port = 8085
+use_rest_api = False  # Auto-detected; True when WMI fails but REST API works
+
+
+def discover_wmi_namespaces():
+    """
+    Quick check for WMI namespace (simplified for 0.9.5+ compatibility)
+    Returns: (list_of_namespaces, working_namespace)
+    """
+    print("\nChecking WMI namespace...")
+
+    namespace = "root\\LibreHardwareMonitor"
+    try:
+        import wmi
+        w = wmi.WMI(namespace=namespace)
+        sensors = list(w.Sensor())
+
+        if len(sensors) > 0:
+            print(f"  ✓ WMI working with {len(sensors)} sensors")
+            return [namespace], namespace
+        else:
+            print(f"  ⚠ WMI accessible but 0 sensors (LibreHardwareMonitor 0.9.5+ issue)")
+            print(f"  → Will use REST API fallback")
+            return [], None
+    except Exception as e:
+        print(f"  ✗ WMI not accessible: {str(e)[:60]}")
+        print(f"  → Will use REST API fallback")
+        return [], None
+
+
+def get_librehardwaremonitor_version():
+    """
+    Try to detect LibreHardwareMonitor version
+    Returns: version string or None
+    """
+    version = None
+
+    # Method 1: Check executable version
+    try:
+        import win32api
+        import win32con
+        import os
+
+        # Common installation paths
+        possible_paths = [
+            r"C:\Program Files\LibreHardwareMonitor\LibreHardwareMonitor.exe",
+            r"C:\Program Files (x86)\LibreHardwareMonitor\LibreHardwareMonitor.exe",
+            r"C:\Users\Public\Desktop\LibreHardwareMonitor.exe",
+        ]
+
+        # Also check PATH
+        try:
+            import shutil
+            exe_path = shutil.which("LibreHardwareMonitor.exe")
+            if exe_path:
+                possible_paths.insert(0, exe_path)
+        except:
+            pass
+
+        for path in possible_paths:
+            if os.path.exists(path):
+                try:
+                    info = win32api.GetFileVersionInfo(path, "\\")
+                    ms = info['FileVersionMS']
+                    ls = info['FileVersionLS']
+                    version = f"{win32api.HIWORD(ms)}.{win32api.LOWORD(ms)}.{win32api.HIWORD(ls)}.{win32api.LOWORD(ls)}"
+                    return version
+                except:
+                    pass
+    except:
+        pass
+
+    # Method 2: Try to get version from WMI
+    try:
+        import wmi
+        w = wmi.WMI()
+        # Try to find LibreHardwareMonitor process and get its version
+        import psutil
+        for proc in psutil.process_iter(['name', 'exe']):
+            try:
+                if 'librehardwaremonitor' in proc.info['name'].lower():
+                    exe_path = proc.info['exe']
+                    if exe_path and os.path.exists(exe_path):
+                        import win32api
+                        info = win32api.GetFileVersionInfo(exe_path, "\\")
+                        ms = info['FileVersionMS']
+                        ls = info['FileVersionLS']
+                        version = f"{win32api.HIWORD(ms)}.{win32api.LOWORD(ms)}.{win32api.HIWORD(ls)}.{win32api.LOWORD(ls)}"
+                        return version
+            except:
+                pass
+    except:
+        pass
+
+    return None
+
+
+def extract_sensors_from_tree(node, sensor_list=None):
+    """
+    Recursively extract all sensors from LibreHardwareMonitor REST API tree structure.
+    The API returns a hierarchical tree where actual sensors have a 'SensorId' field.
+    """
+    if sensor_list is None:
+        sensor_list = []
+
+    # If this node has a SensorId, it's an actual sensor
+    if "SensorId" in node:
+        sensor_list.append(node)
+
+    # Recursively process children
+    if "Children" in node and isinstance(node["Children"], list):
+        for child in node["Children"]:
+            extract_sensors_from_tree(child, sensor_list)
+
+    return sensor_list
+
+
+def check_rest_api_connectivity(host, port):
+    """
+    Check if LibreHardwareMonitor REST API is accessible
+    Returns: (success, sensor_count, error_message)
+    """
+    url = f"http://{host}:{port}/data.json"
+
+    try:
+        req = urllib_request.Request(url, method='GET')
+        req.add_header('User-Agent', 'PC-Stats-Monitor/2.0')
+
+        with urllib_request.urlopen(req, timeout=3) as response:
+            if response.status == 200:
+                data = response.read().decode('utf-8')
+                root = json.loads(data)
+
+                # Extract sensors from tree structure
+                sensors = extract_sensors_from_tree(root)
+
+                if len(sensors) > 0:
+                    return True, len(sensors), None
+                else:
+                    return False, 0, "REST API returned no sensors"
+            else:
+                return False, 0, f"HTTP {response.status}"
+
+    except urllib_error.HTTPError as e:
+        return False, 0, f"HTTP error {e.code}"
+    except urllib_error.URLError as e:
+        return False, 0, f"Connection failed: {e.reason}"
+    except json.JSONDecodeError as e:
+        return False, 0, f"Invalid JSON response: {e}"
+    except Exception as e:
+        return False, 0, f"Unexpected error: {e}"
+
+
+def discover_sensors_via_http(host, port):
+    """
+    Discover sensors via LibreHardwareMonitor REST API
+    This is used when WMI fails (LHM 0.9.5+)
+    """
+    global sensor_database
+
+    url = f"http://{host}:{port}/data.json"
+
+    try:
+        req = urllib_request.Request(url, method='GET')
+        req.add_header('User-Agent', 'PC-Stats-Monitor/2.0')
+
+        with urllib_request.urlopen(req, timeout=5) as response:
+            if response.status != 200:
+                print(f"  ✗ HTTP error {response.status}")
+                return False
+
+            data = response.read().decode('utf-8')
+            root = json.loads(data)
+
+            # Extract sensors from tree structure
+            sensors = extract_sensors_from_tree(root)
+
+            sensor_count = 0
+            for sensor in sensors:
+                # Map REST API fields to our sensor_database format
+                sensor_id = sensor.get("SensorId", "")
+                sensor_name = sensor.get("Text", "Unknown")
+                sensor_type = sensor.get("Type", "").lower()
+                sensor_value = sensor.get("Value", "0")
+
+                # Skip if missing critical fields
+                if not sensor_id or not sensor_name:
+                    continue
+
+                # Parse value from string (e.g., "45.0 °C" -> 45.0)
+                try:
+                    # Extract numeric value from string like "45.0 °C" or "12.1 %"
+                    value_match = re.search(r'[-+]?\d*\.?\d+', str(sensor_value))
+                    if value_match:
+                        sensor_value = float(value_match.group())
+                    else:
+                        sensor_value = 0
+                except:
+                    sensor_value = 0
+
+                # Determine unit based on type
+                unit_map = {
+                    "temperature": "°C",
+                    "fan": "RPM",
+                    "load": "%",
+                    "clock": "MHz",
+                    "power": "W",
+                    "voltage": "V",
+                    "data": "GB",
+                    "smalldata": "MB",
+                    "control": "%",
+                    "level": "%",
+                }
+                sensor_unit = unit_map.get(sensor_type, "")
+
+                # Generate short name from sensor_id (same format as WMI)
+                short_name = generate_short_name_from_id(sensor_id, sensor_type)
+
+                # Build display name with device context
+                identifier_parts = sensor_id.split('/')
+                if len(identifier_parts) > 1:
+                    device_info = identifier_parts[1]
+                    if device_info.lower() not in sensor_name.lower():
+                        display_name = f"{sensor_name} [{device_info}]"
+                    else:
+                        display_name = sensor_name
+                else:
+                    display_name = sensor_name
+
+                sensor_info = {
+                    "name": short_name,
+                    "display_name": display_name,
+                    "source": "wmi",  # Keep as "wmi" for compatibility
+                    "type": sensor_type,
+                    "unit": sensor_unit,
+                    "wmi_identifier": sensor_id,
+                    "wmi_sensor_name": sensor_name,
+                    "custom_label": "",
+                    "current_value": int(sensor_value)
+                }
+
+                # Categorize sensor
+                if sensor_type == "temperature":
+                    sensor_database["temperature"].append(sensor_info)
+                elif sensor_type == "fan":
+                    sensor_database["fan"].append(sensor_info)
+                elif sensor_type == "load":
+                    sensor_database["load"].append(sensor_info)
+                elif sensor_type == "clock":
+                    sensor_database["clock"].append(sensor_info)
+                elif sensor_type == "power":
+                    sensor_database["power"].append(sensor_info)
+                elif sensor_type in ("data", "smalldata"):
+                    sensor_database["data"].append(sensor_info)
+                elif sensor_type == "throughput":
+                    sensor_database["throughput"].append(sensor_info)
+                else:
+                    sensor_database["other"].append(sensor_info)
+
+                sensor_count += 1
+
+            if sensor_count > 0:
+                print(f"  ✓ Found {sensor_count} hardware sensors via REST API:")
+                print(f"    - Temperatures: {len(sensor_database['temperature'])}")
+                print(f"    - Fans: {len(sensor_database['fan'])}")
+                print(f"    - Loads: {len(sensor_database['load'])}")
+                print(f"    - Clocks: {len(sensor_database['clock'])}")
+                print(f"    - Power: {len(sensor_database['power'])}")
+                print(f"    - Data: {len(sensor_database['data'])}")
+                print(f"    - Throughput: {len(sensor_database['throughput'])}")
+                if len(sensor_database['other']) > 0:
+                    print(f"    - Other: {len(sensor_database['other'])}")
+                return True
+            else:
+                print("  ⚠ REST API returned 0 sensors")
+                return False
+
+    except urllib_error.HTTPError as e:
+        print(f"  ✗ HTTP error {e.code}")
+        return False
+    except urllib_error.URLError as e:
+        print(f"  ✗ Connection failed: {e.reason}")
+        return False
+    except Exception as e:
+        print(f"  ✗ Error: {e}")
+        return False
+
+
+def get_metric_value_via_http(metric_config, host, port):
+    """
+    Get sensor value via LibreHardwareMonitor REST API
+    Used when use_rest_api = True
+    """
+    sensor_id = metric_config.get("wmi_identifier", "")
+    if not sensor_id:
+        return 0
+
+    url = f"http://{host}:{port}/data.json"
+
+    try:
+        req = urllib_request.Request(url, method='GET')
+        req.add_header('User-Agent', 'PC-Stats-Monitor/2.0')
+
+        with urllib_request.urlopen(req, timeout=2) as response:
+            if response.status != 200:
+                return 0
+
+            data = response.read().decode('utf-8')
+            root = json.loads(data)
+
+            # Extract sensors from tree structure
+            sensors = extract_sensors_from_tree(root)
+
+            # Find matching sensor by SensorId
+            for sensor in sensors:
+                if sensor.get("SensorId", "") == sensor_id:
+                    value = sensor.get("Value", "0")
+                    # Parse value from string (e.g., "45.0 °C" -> 45.0)
+                    try:
+                        value_match = re.search(r'[-+]?\d*\.?\d+', str(value))
+                        if value_match:
+                            return int(float(value_match.group()))
+                    except:
+                        pass
+                    return 0
+
+            return 0
+
+    except Exception:
+        return 0
+
+
+def generate_short_name_from_id(sensor_id, sensor_type):
+    """
+    Generate short name from sensor_id (REST API format)
+    Compatible with generate_short_name() for WMI
+    """
+    # Extract context from sensor_id (e.g., /lpc/it8689e/0/fan/0 -> LPC_FAN)
+    parts = sensor_id.split('/')
+    if len(parts) >= 4:
+        device = parts[1]  # e.g., "intelcpu", "gpu-nvidia", "lpc", "nic"
+        sensor_idx = parts[3]  # e.g., "0", "1"
+
+        # CPU
+        if "cpu" in device.lower():
+            if sensor_type == "load":
+                return "CPU" if sensor_idx == "0" else f"CPU{sensor_idx}"
+            elif sensor_type == "temperature":
+                return f"CPUT" if sensor_idx == "0" else f"CPU{sensor_idx}T"
+            elif sensor_type == "power":
+                return f"CPUW" if sensor_idx == "0" else f"CPU{sensor_idx}W"
+            elif sensor_type == "clock":
+                return f"CPUCLK" if sensor_idx == "0" else f"CPU{sensor_idx}CLK"
+        # GPU
+        elif "gpu" in device.lower() or "nvidia" in device.lower() or "amd" in device.lower():
+            if sensor_type == "load":
+                return "GPU^^"
+            elif sensor_type == "temperature":
+                return "GPUT"
+            elif sensor_type == "power":
+                return "GPUW"
+            elif sensor_type == "clock":
+                return "GPUCLK"
+            elif sensor_type == "fan":
+                return "GPUFAN"
+        # Fan
+        elif sensor_type == "fan":
+            return f"FAN" if sensor_idx == "0" else f"FAN{sensor_idx}"
+        # Memory/RAM
+        elif "memory" in device.lower() or "ram" in device.lower():
+            if sensor_type == "data":
+                return "RAMUSED"
+            elif sensor_type == "load":
+                return "RAM^^"
+        # Network
+        elif "nic" in device.lower() or "network" in device.lower():
+            if sensor_type == "throughput":
+                # Check if index indicates upload or download
+                if len(parts) >= 5:
+                    throughput_idx = parts[4]
+                    if throughput_idx == "0":
+                        return "NET_U"
+                    elif throughput_idx == "1":
+                        return "NET_D"
+            elif sensor_type == "data":
+                if len(parts) >= 5:
+                    data_idx = parts[4]
+                    if data_idx == "0":
+                        return "NET_D"
+                    elif data_idx == "1":
+                        return "NET_U"
+        # HDD/SSD
+        elif "hdd" in device.lower() or "ssd" in device.lower() or "nvme" in device.lower():
+            if sensor_type == "temperature":
+                return "HDDT" if "hdd" in device.lower() else "SSDT"
+
+    # Fallback: generate from sensor_id
+    # Remove special chars and truncate
+    name = sensor_id.replace("/", "_").replace("-", "")[:10].upper()
+    return name if name else "SENSOR"
+
+
+def check_wmi_connectivity():
+    """
+    Diagnostics: Check if LibreHardwareMonitor WMI namespace is accessible
+    Returns: (success, error_message, suggestion)
+    """
+    print("\n" + "-" * 60)
+    print("DIAGNOSTICS: Checking LibreHardwareMonitor connectivity...")
+    print("-" * 60)
+
+    # Check 1: Verify required modules are installed
+    print("\n[Check 1/4] Verifying required Python modules...")
+    try:
+        import wmi
+        print("  ✓ pywin32 and wmi modules are installed")
+    except ImportError as e:
+        missing = str(e).split("'")[1] if "'" in str(e) else "pywin32/wmi"
+        return False, f"Missing required module: {missing}", (
+            "FIX: Install required modules:\n"
+            "   pip install pywin32 wmi\n\n"
+            "   Or run: python -m pip install pywin32 wmi"
+        )
+
+    # Check 2: Verify LibreHardwareMonitor process is running
+    print("\n[Check 2/4] Checking if LibreHardwareMonitor is running...")
+    try:
+        import psutil
+        found_lhm = False
+        lhm_names = ["librehardwaremonitor", "libre hardware monitor",
+                     "hwmonitor", "hardware monitor"]
+        for proc in psutil.process_iter(['name']):
+            try:
+                proc_name = proc.info['name'].lower()
+                if any(name in proc_name for name in lhm_names):
+                    found_lhm = True
+                    print(f"  ✓ Found LibreHardwareMonitor process: {proc.info['name']}")
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+
+        # Try to detect version if process is running
+        if found_lhm:
+            version = get_librehardwaremonitor_version()
+            if version:
+                print(f"  → Detected LibreHardwareMonitor version: {version}")
+                # Check for known problematic versions
+                version_parts = version.split('.')
+                if len(version_parts) >= 2:
+                    major = int(version_parts[0])
+                    minor = int(version_parts[1])
+                    # Version 0.9.5+ has known WMI issues
+                    if major == 0 and minor >= 9 and len(version_parts) >= 3:
+                        patch = int(version_parts[2])
+                        if patch >= 5:
+                            print("\n  ⚠⚠⚠ WARNING: LibreHardwareMonitor 0.9.5+ has BROKEN WMI support! ⚠⚠⚠")
+                            print("  → Version 0.9.5 introduced a bug that breaks WMI sensor reporting")
+                            print("  → See: https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/issues/2088")
+                            print("  → RECOMMENDED: Downgrade to 0.9.4 from GitHub Releases page")
+            else:
+                print(f"  → Could not detect version (please report this)")
+
+        if not found_lhm:
+            return False, "LibreHardwareMonitor is not running", (
+                "FIX: Start LibreHardwareMonitor first\n\n"
+                "   1. Launch LibreHardwareMonitor\n"
+                "   2. IMPORTANT: Right-click and select 'Run as Administrator'\n"
+                "   3. Keep it running while using this script"
+            )
+    except Exception as e:
+        print(f"  ⚠ Could not check processes: {e}")
+
+    # Check 3: Auto-discover WMI namespace
+    print("\n[Check 3/4] Auto-discovering WMI namespace...")
+    global discovered_wmi_namespace
+
+    # Run auto-discovery
+    _found_namespaces, working_namespace = discover_wmi_namespaces()
+
+    if working_namespace:
+        # Update global namespace with the one that works
+        discovered_wmi_namespace = working_namespace
+        print(f"\n  → Using namespace: {working_namespace}")
+    else:
+        # Auto-discovery failed - likely LibreHardwareMonitor 0.9.5+ with broken WMI
+        # Try REST API fallback before giving up (LHM 0.9.5+ workaround)
+        print(f"\n  ⚠ No working WMI namespace found (LHM 0.9.5+ issue)")
+        print(f"  → Trying REST API fallback...")
+        print(f"  → Checking http://{rest_api_host}:{rest_api_port}/data.json")
+
+        global use_rest_api
+        rest_success, rest_count, rest_error = check_rest_api_connectivity(rest_api_host, rest_api_port)
+
+        # Debug: print REST API check result
+        if rest_error:
+            print(f"  ✗ REST API failed: {rest_error}")
+
+        if rest_success and rest_count > 0:
+            # REST API works! Use it instead of WMI
+            use_rest_api = True
+            print(f"\n  ✓✓✓ REST API WORKS! Using REST API instead of WMI ✓✓✓")
+            print(f"  → Found {rest_count} sensors via REST API")
+            print(f"  → This bypasses the WMI bug in LibreHardwareMonitor 0.9.5+")
+            print(f"  → Make sure 'Remote Web Server' is enabled in LibreHardwareMonitor")
+            print(f"     (Options → Remote Web Server → Run)")
+            # Skip remaining checks - REST API is working
+            return True, None, None
+
+        # REST API also failed - provide simplified troubleshooting
+        return False, "No working WMI namespace found", (
+            "FIX: LibreHardwareMonitor 0.9.5+ has broken WMI support.\n\n"
+            "SOLUTION (3 steps):\n\n"
+            "1. Enable REST API in LibreHardwareMonitor:\n"
+            "   Options → Remote Web Server → Run (port 8085)\n\n"
+            "2. If that doesn't work, downgrade to 0.9.4:\n"
+            "   https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases\n\n"
+            "3. If still failing, add Windows Defender exclusion:\n"
+            "   Add exclusion for LibreHardwareMonitor folder in Windows Security"
+        )
+
+    # Check 4: Verify we can actually read sensor data
+    print("\n[Check 4/4] Testing sensor data access...")
+    try:
+        import wmi
+        w = wmi.WMI(namespace=discovered_wmi_namespace)
+        sensors = list(w.Sensor())
+
+        if len(sensors) == 0:
+            # CRITICAL: Namespace exists but no sensors found
+            # Try REST API fallback before giving up (LHM 0.9.5+ workaround)
+            print(f"  ⚠ WMI returned 0 sensors - trying REST API fallback...")
+            print(f"  → Checking http://{rest_api_host}:{rest_api_port}/data.json")
+
+            rest_success, rest_count, rest_error = check_rest_api_connectivity(rest_api_host, rest_api_port)
+
+            if rest_success and rest_count > 0:
+                # REST API works! Use it instead of WMI
+                use_rest_api = True
+                print(f"\n  ✓✓✓ REST API WORKS! Using REST API instead of WMI ✓✓✓")
+                print(f"  → Found {rest_count} sensors via REST API")
+                print(f"  → This bypasses the WMI bug in LibreHardwareMonitor 0.9.5+")
+                print(f"  → Make sure 'Remote Web Server' is enabled in LibreHardwareMonitor")
+                print(f"     (Options → Remote Web Server → Run)")
+                return True, None, None
+
+            # REST API also failed - show comprehensive error with all options
+            error_msg = "WMI namespace accessible but contains 0 sensors!"
+            if rest_error:
+                error_msg += f"\nREST API also failed: {rest_error}"
+
+            return False, error_msg, (
+                "FIX: LibreHardwareMonitor driver is not providing sensor data.\n\n"
+                "SOLUTION (3 steps):\n\n"
+                "1. Enable REST API in LibreHardwareMonitor:\n"
+                "   Options → Remote Web Server → Run (port 8085)\n\n"
+                "2. If that doesn't work, downgrade to 0.9.4:\n"
+                "   https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases\n\n"
+                "3. If still failing, check for conflicts:\n"
+                "   Close HWiNFO64, HWMonitor, AIDA64, or add Windows Defender exclusion"
+            )
+
+        print(f"  ✓ Sensor data is readable ({len(sensors)} sensors found)")
+    except Exception as e:
+        return False, f"Cannot read sensor data: {e}", (
+            "FIX: Sensor access error\n\n"
+            "   This may be a permission issue.\n"
+            "   Try running both LibreHardwareMonitor and this script as Administrator."
+        )
+
+    print("\n" + "-" * 60)
+    print("✓ All diagnostics passed!")
+    print("-" * 60)
+    return True, None, None
+
+
+def print_troubleshooting_header(error_title):
+    """Print a formatted troubleshooting header"""
+    print("\n" + "!" * 60)
+    print(f"ERROR: {error_title}")
+    print("!" * 60)
+    print("\nTROUBLESHOOTING STEPS:")
+    print("-" * 60)
+
+
+def print_troubleshooting_footer():
+    """Print a formatted troubleshooting footer"""
+    print("-" * 60)
+    print("\nIf the problem persists, please share a screenshot of this")
+    print("entire error message when reporting the issue.")
+    print("\n" + "!" * 60 + "\n")
 
 
 def discover_sensors():
@@ -112,9 +711,34 @@ def discover_sensors():
 
     # Discover LibreHardwareMonitor sensors
     print("\n[2/2] Discovering hardware sensors (LibreHardwareMonitor)...")
+
+    # Run diagnostics first to provide helpful error messages
+    success, error_msg, suggestion = check_wmi_connectivity()
+
+    if not success:
+        print_troubleshooting_header(error_msg)
+        print(suggestion)
+        print_troubleshooting_footer()
+        print("\n⚠ WARNING: Hardware sensors will NOT be available.")
+        print("  Only system metrics (CPU, RAM, Disk) can be monitored.")
+        print("\n  Press Enter to continue with system metrics only...")
+        input()
+        return
+
+    # Check if we should use REST API instead of WMI (LHM 0.9.5+ workaround)
+    if use_rest_api:
+        print("\n→ Using REST API for sensor discovery (LibreHardwareMonitor 0.9.5+ mode)")
+        if not discover_sensors_via_http(rest_api_host, rest_api_port):
+            print("\n⚠ REST API discovery failed. No hardware sensors available.")
+            print("  Only system metrics (CPU, RAM, Disk) can be monitored.")
+        print("\n" + "=" * 60)
+        return
+
+    # If diagnostics passed and not using REST API, proceed with WMI sensor discovery
     try:
         import wmi
-        w = wmi.WMI(namespace="root\\LibreHardwareMonitor")
+        # Use the auto-discovered namespace
+        w = wmi.WMI(namespace=discovered_wmi_namespace)
         sensors = w.Sensor()
 
         sensor_count = 0
@@ -227,8 +851,17 @@ def discover_sensors():
         print("  WARNING: pywin32/wmi not installed. Hardware sensors unavailable.")
         print("  Install with: pip install pywin32 wmi")
     except Exception as e:
-        print(f"  WARNING: Could not access LibreHardwareMonitor: {e}")
-        print("  Make sure LibreHardwareMonitor is running!")
+        # Fallback error handling (should rarely trigger since diagnostics run first)
+        print_troubleshooting_header(f"Unexpected error during sensor discovery: {e}")
+        print("This error occurred after initial diagnostics passed.")
+        print("\nPossible causes:")
+        print("  - LibreHardwareMonitor was closed after diagnostics")
+        print("  - WMI connection was lost during sensor enumeration")
+        print("  - System resource limitation")
+        print("\nPlease try again:")
+        print("  1. Make sure LibreHardwareMonitor is running as Administrator")
+        print("  2. Restart this script")
+        print_troubleshooting_footer()
 
     print("\n" + "=" * 60)
     print("\nℹ NOTE: Sensor values in GUI are static (captured at launch time)")
@@ -374,7 +1007,9 @@ def get_unit_from_type(sensor_type):
     return unit_map.get(sensor_type, "")
 
 
-class AutoConfigurator:
+# AutoConfigurator class removed - will be revisited later
+
+class AutoConfigurator_REMOVED:
     """
     Intelligent metric selection based on available sensors
     Similar to esp32-configurator/core/auto_configurator.py
@@ -592,7 +1227,9 @@ class AutoConfigurator:
         return configured_count
 
 
-class ESP32ConfigExporter:
+# ESP32ConfigExporter class removed - will be revisited later
+
+class ESP32ConfigExporter_REMOVED:
     """
     Export configuration to ESP32 format (array-based)
     Based on esp32-configurator/core/config_manager.py
@@ -666,7 +1303,7 @@ class ESP32ConfigExporter:
     def save_esp32_config(file_path, metrics, settings):
         """Save ESP32 config to JSON file"""
         try:
-            esp32_config = ESP32ConfigExporter.export_to_esp32_format(metrics, settings)
+            esp32_config = ESP32ConfigExporter_REMOVED.export_to_esp32_format(metrics, settings)
             with open(file_path, 'w') as f:
                 json.dump(esp32_config, f, indent=2)
             return True, f"ESP32 config saved to {file_path}"
@@ -674,7 +1311,9 @@ class ESP32ConfigExporter:
             return False, f"Failed to save ESP32 config: {str(e)}"
 
 
-class ESP32Uploader:
+# ESP32Uploader class removed - will be revisited later
+
+class ESP32Uploader_REMOVED:
     """
     Upload configuration to ESP32 via HTTP POST
     Based on esp32-configurator/core/esp32_uploader.py
@@ -836,262 +1475,7 @@ def setup_autostart(enable=True):
             return False
 
 
-class AutoConfigPreviewDialog:
-    """
-    Preview dialog for auto-configuration
-    Shows layout preview and user preferences before applying
-    """
-
-    def __init__(self, parent, available_sensors):
-        self.parent = parent
-        self.available_sensors = available_sensors
-        self.result = None  # Will store user's choice
-
-        # User preferences
-        self.row_mode = 1  # Default: 6-row
-        self.clock_position = 1  # Default: Right
-        self.show_clock = True
-
-        # Create dialog
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title("Auto-Configure Preview")
-        self.dialog.geometry("900x750")
-        self.dialog.resizable(False, False)
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-
-        self._create_widgets()
-        self._update_preview()
-
-    def _create_widgets(self):
-        # Title
-        title_frame = tk.Frame(self.dialog, bg="#1e1e1e", height=50)
-        title_frame.pack(fill=tk.X)
-        title_frame.pack_propagate(False)
-
-        title_label = tk.Label(
-            title_frame,
-            text="Auto-Configuration Preview",
-            font=("Arial", 16, "bold"),
-            bg="#1e1e1e",
-            fg="#00d4ff"
-        )
-        title_label.pack(pady=12)
-
-        # Preferences section
-        pref_frame = tk.LabelFrame(
-            self.dialog,
-            text="Layout Preferences",
-            bg="#2d2d2d",
-            fg="#ffffff",
-            font=("Arial", 11, "bold"),
-            padx=20,
-            pady=15
-        )
-        pref_frame.pack(fill=tk.X, padx=20, pady=10)
-
-        # Row mode
-        row_frame = tk.Frame(pref_frame, bg="#2d2d2d")
-        row_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(
-            row_frame,
-            text="Display Mode:",
-            bg="#2d2d2d",
-            fg="#ffffff",
-            font=("Arial", 10)
-        ).pack(side=tk.LEFT, padx=(0, 10))
-
-        self.row_mode_var = tk.IntVar(value=1)
-        tk.Radiobutton(
-            row_frame,
-            text="5-row (13px spacing, more readable)",
-            variable=self.row_mode_var,
-            value=0,
-            bg="#2d2d2d",
-            fg="#ffffff",
-            selectcolor="#444444",
-            command=self._update_preview
-        ).pack(side=tk.LEFT, padx=10)
-
-        tk.Radiobutton(
-            row_frame,
-            text="6-row (10px spacing, more metrics)",
-            variable=self.row_mode_var,
-            value=1,
-            bg="#2d2d2d",
-            fg="#ffffff",
-            selectcolor="#444444",
-            command=self._update_preview
-        ).pack(side=tk.LEFT, padx=10)
-
-        # Clock position
-        clock_frame = tk.Frame(pref_frame, bg="#2d2d2d")
-        clock_frame.pack(fill=tk.X, pady=5)
-
-        tk.Label(
-            clock_frame,
-            text="Clock Position:",
-            bg="#2d2d2d",
-            fg="#ffffff",
-            font=("Arial", 10)
-        ).pack(side=tk.LEFT, padx=(0, 10))
-
-        self.clock_position_var = tk.IntVar(value=2)
-
-        for pos_val, pos_name in [(0, "Center"), (1, "Left"), (2, "Right"), (3, "None")]:
-            tk.Radiobutton(
-                clock_frame,
-                text=pos_name,
-                variable=self.clock_position_var,
-                value=pos_val,
-                bg="#2d2d2d",
-                fg="#ffffff",
-                selectcolor="#444444",
-                command=self._update_preview
-            ).pack(side=tk.LEFT, padx=5)
-
-        # Preview section
-        preview_frame = tk.LabelFrame(
-            self.dialog,
-            text="Configuration Preview",
-            bg="#2d2d2d",
-            fg="#ffffff",
-            font=("Arial", 11, "bold"),
-            padx=15,
-            pady=10
-        )
-        preview_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
-
-        # Scrollable preview text
-        self.preview_text = scrolledtext.ScrolledText(
-            preview_frame,
-            width=100,
-            height=15,
-            font=("Courier", 9),
-            bg="#1e1e1e",
-            fg="#00ff00",
-            wrap=tk.WORD
-        )
-        self.preview_text.pack(fill=tk.BOTH, expand=True)
-
-        # Instructions section
-        info_frame = tk.LabelFrame(
-            self.dialog,
-            text="ESP32 Configuration Instructions",
-            bg="#2d2d2d",
-            fg="#ffaa00",
-            font=("Arial", 10, "bold"),
-            padx=15,
-            pady=10
-        )
-        info_frame.pack(fill=tk.X, padx=20, pady=5)
-
-        instructions = (
-            "This tool will automatically:\n"
-            "  1. Save configuration to monitor_config.json (for this PC monitor)\n"
-            "  2. Save configuration to pc-monitor-configv2.json (for ESP32)\n"
-            "  3. Attempt to upload to ESP32 via HTTP\n\n"
-            "If upload fails, you can manually:\n"
-            "  • Open ESP32 web interface (http://your-esp32-ip)\n"
-            "  • Go to 'Import/Export' section\n"
-            "  • Upload pc-monitor-configv2.json file"
-        )
-
-        tk.Label(
-            info_frame,
-            text=instructions,
-            bg="#2d2d2d",
-            fg="#cccccc",
-            font=("Arial", 9),
-            justify=tk.LEFT
-        ).pack()
-
-        # Buttons
-        button_frame = tk.Frame(self.dialog, bg="#1e1e1e", height=60)
-        button_frame.pack(fill=tk.X)
-        button_frame.pack_propagate(False)
-
-        tk.Button(
-            button_frame,
-            text="Cancel",
-            command=self._on_cancel,
-            bg="#666666",
-            fg="#ffffff",
-            font=("Arial", 11),
-            relief=tk.FLAT,
-            padx=20,
-            pady=5
-        ).pack(side=tk.LEFT, padx=20, pady=10)
-
-        tk.Button(
-            button_frame,
-            text="Apply Configuration",
-            command=self._on_apply,
-            bg="#00d4ff",
-            fg="#000000",
-            font=("Arial", 11, "bold"),
-            relief=tk.FLAT,
-            padx=20,
-            pady=5
-        ).pack(side=tk.RIGHT, padx=20, pady=10)
-
-    def _update_preview(self):
-        """Update preview based on current preferences"""
-        row_mode = self.row_mode_var.get()
-        clock_position = self.clock_position_var.get()
-
-        # Generate auto-config
-        configurator = AutoConfigurator()
-        metrics, description = configurator.create_auto_config(
-            self.available_sensors,
-            row_mode=row_mode,
-            clock_position=clock_position
-        )
-
-        # Store for later
-        self.metrics = metrics
-        self.description = description
-
-        # Build preview text
-        preview = f"{description}\n\n"
-        preview += "=" * 70 + "\n"
-        preview += "METRICS CONFIGURATION:\n"
-        preview += "=" * 70 + "\n\n"
-
-        for i, metric in enumerate(metrics):
-            preview += f"{i+1}. {metric['custom_label']:10s} ({metric['name']})\n"
-            preview += f"   Source: {metric['source']:10s} | Type: {metric['type']}\n"
-            preview += f"   Position: {metric['position']:3d}"
-            if metric['bar_position'] != 255:
-                preview += f" | Bar: position {metric['bar_position']}"
-            if metric['companion_id'] > 0:
-                preview += f" | Companion: metric #{metric['companion_id']}"
-            preview += "\n\n"
-
-        # Update text widget
-        self.preview_text.delete(1.0, tk.END)
-        self.preview_text.insert(1.0, preview)
-
-    def _on_cancel(self):
-        """User cancelled"""
-        self.result = None
-        self.dialog.destroy()
-
-    def _on_apply(self):
-        """User applied configuration"""
-        self.result = {
-            "metrics": self.metrics,
-            "row_mode": self.row_mode_var.get(),
-            "clock_position": self.clock_position_var.get(),
-            "show_clock": self.clock_position_var.get() != 3
-        }
-        self.dialog.destroy()
-
-    def show(self):
-        """Show dialog and return result"""
-        self.dialog.wait_window()
-        return self.result
+# AutoConfigPreviewDialog class removed - will be revisited later
 
 
 class MetricSelectorGUI:
@@ -1101,7 +1485,7 @@ class MetricSelectorGUI:
     def __init__(self, root, existing_config=None):
         self.root = root
         self.root.title("PC Monitor v2.0 - Configuration")
-        self.root.geometry("1200x850")
+        self.root.geometry("1200x800")
         self.root.resizable(False, False)
 
         self.selected_metrics = []
@@ -1122,7 +1506,7 @@ class MetricSelectorGUI:
 
     def create_widgets(self):
         # Title
-        title_frame = tk.Frame(self.root, bg="#1e1e1e", height=60)
+        title_frame = tk.Frame(self.root, bg="#1e1e1e", height=45)
         title_frame.pack(fill=tk.X)
         title_frame.pack_propagate(False)
 
@@ -1133,32 +1517,32 @@ class MetricSelectorGUI:
             bg="#1e1e1e",
             fg="#00d4ff"
         )
-        title_label.pack(pady=15)
+        title_label.pack(pady=8)
 
         # Settings frame (ESP IP, Port, Interval)
         settings_frame = tk.Frame(self.root, bg="#2d2d2d")
         settings_frame.pack(fill=tk.X, padx=10, pady=5)
 
         # ESP IP
-        tk.Label(settings_frame, text="ESP32 IP:", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=0, column=0, padx=10, pady=5, sticky="e")
+        tk.Label(settings_frame, text="ESP32 IP:", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=0, column=0, padx=10, pady=3, sticky="e")
         self.ip_var = tk.StringVar(value=self.config.get("esp32_ip", "192.168.0.163"))
-        tk.Entry(settings_frame, textvariable=self.ip_var, width=20).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+        tk.Entry(settings_frame, textvariable=self.ip_var, width=20).grid(row=0, column=1, padx=5, pady=3, sticky="w")
 
         # UDP Port
-        tk.Label(settings_frame, text="UDP Port:", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=0, column=2, padx=10, pady=5, sticky="e")
+        tk.Label(settings_frame, text="UDP Port:", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=0, column=2, padx=10, pady=3, sticky="e")
         self.port_var = tk.StringVar(value=str(self.config.get("udp_port", 4210)))
-        tk.Entry(settings_frame, textvariable=self.port_var, width=10).grid(row=0, column=3, padx=5, pady=5, sticky="w")
+        tk.Entry(settings_frame, textvariable=self.port_var, width=10).grid(row=0, column=3, padx=5, pady=3, sticky="w")
 
         # Update Interval
-        tk.Label(settings_frame, text="Update Interval (seconds):", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=0, column=4, padx=10, pady=5, sticky="e")
+        tk.Label(settings_frame, text="Update Interval (seconds):", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=0, column=4, padx=10, pady=3, sticky="e")
         self.interval_var = tk.StringVar(value=str(self.config.get("update_interval", 3)))
-        tk.Entry(settings_frame, textvariable=self.interval_var, width=10).grid(row=0, column=5, padx=5, pady=5, sticky="w")
+        tk.Entry(settings_frame, textvariable=self.interval_var, width=10).grid(row=0, column=5, padx=5, pady=3, sticky="w")
 
         # Autostart section (second row)
-        tk.Label(settings_frame, text="Windows Autostart:", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        tk.Label(settings_frame, text="Windows Autostart:", bg="#2d2d2d", fg="#ffffff", font=("Arial", 10)).grid(row=1, column=0, padx=10, pady=3, sticky="e")
 
         autostart_frame = tk.Frame(settings_frame, bg="#2d2d2d")
-        autostart_frame.grid(row=1, column=1, columnspan=2, padx=5, pady=5, sticky="w")
+        autostart_frame.grid(row=1, column=1, columnspan=2, padx=5, pady=3, sticky="w")
 
         self.autostart_status = tk.Label(
             autostart_frame,
@@ -1240,19 +1624,6 @@ class MetricSelectorGUI:
         )
         clear_btn.pack(side=tk.RIGHT, padx=20)
 
-        # Auto Configure button
-        auto_btn = tk.Button(
-            counter_frame,
-            text="⚡ Auto Configure",
-            command=self.auto_configure,
-            bg="#00ff88",
-            fg="#000000",
-            font=("Arial", 10, "bold"),
-            relief=tk.FLAT,
-            padx=15
-        )
-        auto_btn.pack(side=tk.RIGHT, padx=10)
-
         # Main scrollable frame
         main_frame = tk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
@@ -1332,9 +1703,13 @@ class MetricSelectorGUI:
                 label_entry = tk.Entry(label_frame, width=15, font=("Arial", 8))
                 label_entry.pack(side=tk.LEFT, padx=5)
 
-                # Store reference to label entry
-                sensor_key = f"{sensor['source']}_{sensor['name']}"
-                self.label_entries[sensor_key] = label_entry
+                # Store reference to label entry and label frame
+                # Use display_name to ensure uniqueness (multiple sensors can have same 'name')
+                sensor_key = f"{sensor['source']}_{sensor['display_name']}"
+                self.label_entries[sensor_key] = {
+                    'entry': label_entry,
+                    'frame': label_frame
+                }
 
                 self.checkboxes.append((cb, sensor, var, sensor_frame))
 
@@ -1344,7 +1719,7 @@ class MetricSelectorGUI:
                 row += 1
 
         # Preview frame
-        preview_frame = tk.Frame(self.root, bg="#2d2d2d", height=80)
+        preview_frame = tk.Frame(self.root, bg="#2d2d2d", height=40)
         preview_frame.pack(fill=tk.X)
         preview_frame.pack_propagate(False)
 
@@ -1355,7 +1730,7 @@ class MetricSelectorGUI:
             bg="#2d2d2d",
             fg="#888888"
         )
-        preview_label.pack(anchor="w", padx=10, pady=(10, 0))
+        preview_label.pack(anchor="w", padx=10, pady=(5, 0))
 
         self.preview_text = tk.Label(
             preview_frame,
@@ -1366,10 +1741,10 @@ class MetricSelectorGUI:
             anchor="w",
             justify=tk.LEFT
         )
-        self.preview_text.pack(fill=tk.X, padx=10, pady=(0, 10))
+        self.preview_text.pack(fill=tk.X, padx=10, pady=(0, 5))
 
         # Bottom buttons
-        button_frame = tk.Frame(self.root, bg="#1e1e1e", height=60)
+        button_frame = tk.Frame(self.root, bg="#1e1e1e", height=50)
         button_frame.pack(fill=tk.X)
         button_frame.pack_propagate(False)
 
@@ -1384,7 +1759,7 @@ class MetricSelectorGUI:
             padx=20,
             pady=5
         )
-        cancel_btn.pack(side=tk.LEFT, padx=20, pady=10)
+        cancel_btn.pack(side=tk.LEFT, padx=20, pady=8)
 
         save_btn = tk.Button(
             button_frame,
@@ -1397,7 +1772,7 @@ class MetricSelectorGUI:
             padx=20,
             pady=5
         )
-        save_btn.pack(side=tk.RIGHT, padx=20, pady=10)
+        save_btn.pack(side=tk.RIGHT, padx=20, pady=8)
 
         # Update counter
         self.update_counter()
@@ -1407,19 +1782,24 @@ class MetricSelectorGUI:
         for metric in metrics:
             # Find matching sensor and check it
             for cb, sensor, var, frame in self.checkboxes:
-                sensor_key = f"{sensor['source']}_{sensor['name']}"
-                metric_key = f"{metric['source']}_{metric['name']}"
+                sensor_key = f"{sensor['source']}_{sensor['display_name']}"
+                metric_key = f"{metric['source']}_{metric['display_name']}"
 
                 if sensor_key == metric_key:
+                    # Explicitly add to selected_metrics (duplicate check in on_checkbox_toggle prevents double-adds)
+                    if sensor not in self.selected_metrics:
+                        self.selected_metrics.append(sensor)
+
+                    # Set checkbox (this will trigger on_checkbox_toggle which handles showing label entry)
                     var.set(True)
-                    self.selected_metrics.append(sensor)
 
                     # Set custom label if exists
                     if metric.get('custom_label') and sensor_key in self.label_entries:
-                        self.label_entries[sensor_key].insert(0, metric['custom_label'])
+                        self.label_entries[sensor_key]['entry'].insert(0, metric['custom_label'])
                     break
 
-        self.update_counter()
+        # Force update after all metrics loaded to ensure preview refreshes
+        self.root.after(100, self.update_counter)
 
     def on_checkbox_toggle(self, sensor, var):
         if var.get():
@@ -1430,7 +1810,9 @@ class MetricSelectorGUI:
                 )
                 var.set(False)
                 return
-            self.selected_metrics.append(sensor)
+            # Check for duplicates before appending
+            if sensor not in self.selected_metrics:
+                self.selected_metrics.append(sensor)
         else:
             if sensor in self.selected_metrics:
                 self.selected_metrics.remove(sensor)
@@ -1520,137 +1902,6 @@ class MetricSelectorGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to disable autostart:\n{str(e)}")
 
-    def auto_configure(self):
-        """
-        Show auto-configuration preview dialog
-        """
-        # Flatten sensor database
-        all_sensors = []
-        for category in sensor_database.values():
-            all_sensors.extend(category)
-
-        if len(all_sensors) == 0:
-            messagebox.showwarning(
-                "No Sensors",
-                "No sensors available for auto-configuration!\n\n"
-                "Make sure LibreHardwareMonitor is running."
-            )
-            return
-
-        # Show preview dialog
-        preview_dialog = AutoConfigPreviewDialog(self.root, all_sensors)
-        result = preview_dialog.show()
-
-        if result is None:
-            # User cancelled
-            return
-
-        # Apply configuration
-        metrics = result["metrics"]
-        row_mode = result["row_mode"]
-        clock_position = result["clock_position"]
-        show_clock = result["show_clock"]
-
-        # Clear existing selections
-        self.clear_all()
-
-        # Apply metrics to GUI (check corresponding checkboxes)
-        for metric in metrics:
-            # Find matching checkbox
-            for cb, sensor, var, frame in self.checkboxes:
-                sensor_key = f"{sensor['source']}_{sensor['name']}"
-                metric_key = f"{metric['source']}_{metric['name']}"
-
-                if sensor_key == metric_key:
-                    var.set(True)
-                    self.selected_metrics.append(sensor)
-
-                    # Set custom label
-                    if metric.get('custom_label') and sensor_key in self.label_entries:
-                        self.label_entries[sensor_key].delete(0, tk.END)
-                        self.label_entries[sensor_key].insert(0, metric['custom_label'])
-                    break
-
-        self.update_counter()
-
-        # Save and upload
-        self._save_auto_config(metrics, row_mode, clock_position, show_clock)
-
-    def _save_auto_config(self, metrics, row_mode, clock_position, show_clock):
-        """
-        Save auto-configured settings and upload to ESP32
-        """
-        # Get ESP32 IP from GUI
-        esp32_ip = self.ip_var.get().strip()
-        udp_port = int(self.port_var.get())
-        update_interval = float(self.interval_var.get())
-
-        # Build local config (monitor_config.json)
-        local_config = {
-            "version": "2.0",
-            "esp32_ip": esp32_ip,
-            "udp_port": udp_port,
-            "update_interval": update_interval,
-            "metrics": metrics
-        }
-
-        # Save local config
-        if not save_config(local_config):
-            messagebox.showerror("Error", "Failed to save local configuration!")
-            return
-
-        # Build ESP32 config
-        # Add 20px offset when clock is on right to align with progress bars
-        clock_offset = 20 if clock_position == 2 else 0
-
-        settings = {
-            "row_mode": row_mode,
-            "clock_position": clock_position,
-            "show_clock": show_clock,
-            "clock_offset": clock_offset
-        }
-
-        esp32_config = ESP32ConfigExporter.export_to_esp32_format(metrics, settings)
-
-        # Save ESP32 config to file
-        esp32_config_path = "pc-monitor-configv2.json"
-        success, msg = ESP32ConfigExporter.save_esp32_config(
-            esp32_config_path,
-            metrics,
-            settings
-        )
-
-        if not success:
-            messagebox.showerror("Error", f"Failed to save ESP32 config:\n{msg}")
-            return
-
-        # Try to upload to ESP32
-        print(f"\nAttempting to upload configuration to ESP32 at {esp32_ip}...")
-        success, msg = ESP32Uploader.upload_config(esp32_ip, esp32_config)
-
-        if success:
-            messagebox.showinfo(
-                "Success!",
-                f"Auto-configuration complete!\n\n"
-                f"✓ Local config saved to {CONFIG_FILE}\n"
-                f"✓ ESP32 config saved to {esp32_config_path}\n"
-                f"✓ Configuration uploaded to ESP32\n\n"
-                f"{len(metrics)} metrics configured."
-            )
-        else:
-            # Upload failed - show manual instructions
-            messagebox.showwarning(
-                "Upload Failed",
-                f"Configuration saved locally, but ESP32 upload failed:\n\n{msg}\n\n"
-                f"✓ Local config: {CONFIG_FILE}\n"
-                f"✓ ESP32 config: {esp32_config_path}\n\n"
-                f"MANUAL UPLOAD REQUIRED:\n"
-                f"1. Open http://{esp32_ip} in browser\n"
-                f"2. Go to Import/Export section\n"
-                f"3. Upload {esp32_config_path}\n"
-                f"4. Save settings on ESP32"
-            )
-
     def save_and_start(self):
         if len(self.selected_metrics) == 0:
             messagebox.showwarning("No Selection", "Please select at least one metric!")
@@ -1687,9 +1938,9 @@ class MetricSelectorGUI:
             metric_config["id"] = i + 1
 
             # Get custom label if set
-            sensor_key = f"{sensor['source']}_{sensor['name']}"
+            sensor_key = f"{sensor['source']}_{sensor['display_name']}"
             if sensor_key in self.label_entries:
-                custom_label = self.label_entries[sensor_key].get().strip()
+                custom_label = self.label_entries[sensor_key]['entry'].get().strip()
                 if custom_label:
                     metric_config["custom_label"] = custom_label[:10]  # Max 10 chars
 
@@ -1721,6 +1972,11 @@ def get_metric_value(metric_config):
             return int(psutil.disk_usage('C:\\').percent)
 
     elif source == "wmi":
+        # Check if we should use REST API instead (LHM 0.9.5+ workaround)
+        if use_rest_api:
+            return get_metric_value_via_http(metric_config, rest_api_host, rest_api_port)
+
+        # Use WMI for older LibreHardwareMonitor versions
         try:
             import wmi
             w = wmi.WMI(namespace="root\\LibreHardwareMonitor")
@@ -1921,7 +2177,12 @@ def main():
         root = tk.Tk()
         app = MetricSelectorGUI(root, config if args.edit else None)
         root.mainloop()
-        root.destroy()
+        # Only destroy if window still exists (user might have closed it via X button)
+        try:
+            if root.winfo_exists():
+                root.destroy()
+        except tk.TclError:
+            pass  # Window already destroyed
 
         # Reload config after GUI
         config = load_config()
