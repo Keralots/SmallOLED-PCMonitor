@@ -131,11 +131,9 @@ Once connected to WiFi, access the full configuration page:
 ![ESP32 Web Portal - Clock Settings](img/ESP-WEBPortal1.png)
 
 2. **Clock Settings:**
-   - Idle clock style (Mario animation, Space Invaders, Standard, or Large)
+   - Idle clock style (Mario animation, Space Invaders, Pong, Pacman Standard, or Large)
    - Time format (12/24 hour)
    - Date format (DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD)
-
-![ESP32 Web Portal - Display Settings](img/ESP-WEBPortal2.png)
 
 3. **Display Layout:**
    - Choose between 5-row (spacious, 13px) or 6-row (compact, 10px) modes
@@ -159,7 +157,7 @@ Once connected to WiFi, access the full configuration page:
 #### Prerequisites
 - **Python 3.7+**
 - **LibreHardwareMonitor** (for hardware sensor monitoring)
-- **WARNING** New version of libre hardware monitor 0.9.5 has broken WMI support. Use previous version from link [0.9.4](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net472.zip)
+- **WARNING** New version of libre hardware monitor 0.9.5 has broken WMI support. Use previous version from link [0.9.4](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net472.zip) Or in new version enable: "Options > Remote Web Server > Run" and restart program.
 
 #### Installing Python:
 For windows download [e.g. this version](https://www.python.org/ftp/python/3.14.2/python-3.14.2-amd64.exe)
@@ -170,12 +168,14 @@ Check both checkboxes on installation screen (to use admin rights and add python
 At the end of installation, if asked to remove characters limit for path, agree on it.
 
 #### Installing LibreHardwareMonitor
-1. Download from [LibreHardwareMonitor0.9.4](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net472.zip) DO NOT USE 0.9.5. WMI is broken in this release
+1. Download from [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases)
 2. Extract and run `LibreHardwareMonitor.exe` as Administrator
 3. Windows defender may block if from running. This is false/positive, just add it to exception.
 4. Check following options. Fisr 4 from the top:
 <img width="442" height="627" alt="Screenshot 2025-12-07 132802" src="https://github.com/user-attachments/assets/983e41c4-9854-4d59-8ccc-4779315444d0" />
 
+For version 0.9.5 and above check Web server option:
+![lhw-webserver](img/LHW-WEBSERVER.png)
 
 
 #### Python Script Setup (v2.0 - New GUI Version!)
