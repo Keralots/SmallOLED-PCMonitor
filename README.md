@@ -159,6 +159,7 @@ Once connected to WiFi, access the full configuration page:
 #### Prerequisites
 - **Python 3.7+**
 - **LibreHardwareMonitor** (for hardware sensor monitoring)
+- **WARNING** New version of libre hardware monitor 0.9.5 has broken WMI support. Use previous version from link [0.9.4](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net472.zip)
 
 #### Installing Python:
 For windows download [e.g. this version](https://www.python.org/ftp/python/3.14.2/python-3.14.2-amd64.exe)
@@ -169,7 +170,7 @@ Check both checkboxes on installation screen (to use admin rights and add python
 At the end of installation, if asked to remove characters limit for path, agree on it.
 
 #### Installing LibreHardwareMonitor
-1. Download from [LibreHardwareMonitor Releases](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases)
+1. Download from [LibreHardwareMonitor0.9.4](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases/download/v0.9.4/LibreHardwareMonitor-net472.zip) DO NOT USE 0.9.5. WMI is broken in this release
 2. Extract and run `LibreHardwareMonitor.exe` as Administrator
 3. Windows defender may block if from running. This is false/positive, just add it to exception.
 4. Check following options. Fisr 4 from the top:
