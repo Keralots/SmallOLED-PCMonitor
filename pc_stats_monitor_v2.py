@@ -30,7 +30,7 @@ CONFIG_FILE = "monitor_config.json"
 
 # Default configuration
 DEFAULT_CONFIG = {
-    "version": "2.0",
+    "version": "2.1",
     "esp32_ip": "192.168.0.163",
     "udp_port": 4210,
     "update_interval": 3,
@@ -155,22 +155,35 @@ def get_librehardwaremonitor_version():
     return None
 
 
-def extract_sensors_from_tree(node, sensor_list=None):
+def extract_sensors_from_tree(node, sensor_list=None, parent_hardware=None):
     """
     Recursively extract all sensors from LibreHardwareMonitor REST API tree structure.
     The API returns a hierarchical tree where actual sensors have a 'SensorId' field.
+    Tracks parent hardware name to provide better context for sensors.
     """
     if sensor_list is None:
         sensor_list = []
 
+    # Check if this node is a hardware device (has children but no SensorId)
+    # Hardware nodes have Text like "Intel Ethernet I219-V" or "NVIDIA GeForce RTX 3080"
+    current_hardware = parent_hardware
+    if "Children" in node and "SensorId" not in node:
+        # This might be a hardware node - use its name as parent for children
+        if node.get("Text") and node.get("Text") != "Sensor":
+            current_hardware = node.get("Text")
+
     # If this node has a SensorId, it's an actual sensor
     if "SensorId" in node:
-        sensor_list.append(node)
+        # Add parent hardware name to sensor for better identification
+        sensor_copy = node.copy()
+        if current_hardware:
+            sensor_copy["_parent_hardware"] = current_hardware
+        sensor_list.append(sensor_copy)
 
     # Recursively process children
     if "Children" in node and isinstance(node["Children"], list):
         for child in node["Children"]:
-            extract_sensors_from_tree(child, sensor_list)
+            extract_sensors_from_tree(child, sensor_list, current_hardware)
 
     return sensor_list
 
@@ -235,6 +248,9 @@ def discover_sensors_via_http(host, port):
             # Extract sensors from tree structure
             sensors = extract_sensors_from_tree(root)
 
+            # Reset name tracker to ensure fresh unique names
+            reset_generated_names()
+
             sensor_count = 0
             for sensor in sensors:
                 # Map REST API fields to our sensor_database format
@@ -248,19 +264,29 @@ def discover_sensors_via_http(host, port):
                     continue
 
                 # Parse value from string (e.g., "45.0 °C" -> 45.0)
+                # For throughput, also detect if value is in MB/s or KB/s
+                original_value_str = str(sensor_value)
+                throughput_in_mb = False
                 try:
                     # Extract numeric value from string like "45.0 °C" or "12.1 %"
-                    value_match = re.search(r'[-+]?\d*\.?\d+', str(sensor_value))
+                    value_match = re.search(r'[-+]?\d*\.?\d+', original_value_str)
                     if value_match:
                         sensor_value = float(value_match.group())
                     else:
                         sensor_value = 0
+
+                    # Check if throughput is in MB/s (need to convert to KB/s for ESP32)
+                    if sensor_type == "throughput":
+                        if "MB/s" in original_value_str or "mb/s" in original_value_str.lower():
+                            throughput_in_mb = True
+                            # Convert MB/s to KB/s for consistency
+                            sensor_value = sensor_value * 1024
                 except:
                     sensor_value = 0
 
                 # Determine unit based on type
                 unit_map = {
-                    "temperature": "°C",
+                    "temperature": "C",  # No degree symbol - OLED can't display it
                     "fan": "RPM",
                     "load": "%",
                     "clock": "MHz",
@@ -270,15 +296,22 @@ def discover_sensors_via_http(host, port):
                     "smalldata": "MB",
                     "control": "%",
                     "level": "%",
+                    "throughput": "KB/s",
                 }
                 sensor_unit = unit_map.get(sensor_type, "")
 
-                # Generate short name from sensor_id (same format as WMI)
-                short_name = generate_short_name_from_id(sensor_id, sensor_type)
+                # Generate short name from sensor_id and sensor_name for uniqueness
+                short_name = generate_short_name_from_id(sensor_id, sensor_type, sensor_name)
 
                 # Build display name with device context
                 identifier_parts = sensor_id.split('/')
-                if len(identifier_parts) > 1:
+                parent_hardware = sensor.get("_parent_hardware", "")
+
+                # For network sensors, use parent hardware name (actual NIC name)
+                if "nic" in sensor_id.lower() and parent_hardware:
+                    # Use friendly NIC name instead of GUID
+                    display_name = f"{sensor_name} [{parent_hardware}]"
+                elif len(identifier_parts) > 1:
                     device_info = identifier_parts[1]
                     if device_info.lower() not in sensor_name.lower():
                         display_name = f"{sensor_name} [{device_info}]"
@@ -286,6 +319,25 @@ def discover_sensors_via_http(host, port):
                         display_name = sensor_name
                 else:
                     display_name = sensor_name
+
+                # Check if this is an active network interface (has traffic)
+                is_active_nic = False
+                if "nic" in sensor_id.lower() and sensor_type == "throughput":
+                    if sensor_value > 0:
+                        is_active_nic = True
+
+                # Reclassify ambiguous types based on device context
+                # Memory metrics are tagged as "data" but should be in "system"
+                device_id_lower = sensor_id.lower()
+                sensor_name_lower = sensor_name.lower()
+
+                if sensor_type in ("data", "smalldata"):
+                    # Check if this is memory-related (not network data)
+                    if ("memory" in device_id_lower or "ram" in device_id_lower or
+                        "vram" in device_id_lower or
+                        ("gpu" in device_id_lower and ("memory" in sensor_name_lower or "vram" in sensor_name_lower))):
+                        # Reclassify memory as system metric
+                        sensor_type = "memory"
 
                 sensor_info = {
                     "name": short_name,
@@ -296,7 +348,9 @@ def discover_sensors_via_http(host, port):
                     "wmi_identifier": sensor_id,
                     "wmi_sensor_name": sensor_name,
                     "custom_label": "",
-                    "current_value": int(sensor_value)
+                    "current_value": int(sensor_value),
+                    "is_active_nic": is_active_nic,  # True if network interface has traffic
+                    "parent_hardware": parent_hardware  # Hardware name (useful for NICs)
                 }
 
                 # Categorize sensor
@@ -310,7 +364,9 @@ def discover_sensors_via_http(host, port):
                     sensor_database["clock"].append(sensor_info)
                 elif sensor_type == "power":
                     sensor_database["power"].append(sensor_info)
-                elif sensor_type in ("data", "smalldata"):
+                elif sensor_type == "memory":  # Reclassified memory metrics
+                    sensor_database["system"].append(sensor_info)
+                elif sensor_type in ("data", "smalldata"):  # Now only actual network data
                     sensor_database["data"].append(sensor_info)
                 elif sensor_type == "throughput":
                     sensor_database["throughput"].append(sensor_info)
@@ -390,74 +446,290 @@ def get_metric_value_via_http(metric_config, host, port):
         return 0
 
 
-def generate_short_name_from_id(sensor_id, sensor_type):
+# Global tracker for generated names to ensure uniqueness
+_generated_names = set()
+
+
+def reset_generated_names():
+    """Reset the name tracker - call before sensor discovery"""
+    global _generated_names
+    _generated_names = set()
+
+
+def _make_unique_name(base_name):
+    """Ensure name is unique by adding suffix if needed"""
+    global _generated_names
+
+    # Truncate base to max 10 chars
+    base_name = base_name[:10]
+
+    if base_name not in _generated_names:
+        _generated_names.add(base_name)
+        return base_name
+
+    # Add numeric suffix to make unique
+    for i in range(1, 100):
+        candidate = f"{base_name[:8]}{i}" if len(base_name) > 8 else f"{base_name}{i}"
+        candidate = candidate[:10]
+        if candidate not in _generated_names:
+            _generated_names.add(candidate)
+            return candidate
+
+    return base_name  # Fallback
+
+
+def _extract_context_suffix(sensor_name):
+    """Extract context suffix from sensor name"""
+    name_lower = sensor_name.lower()
+
+    # Memory/data context
+    if "used" in name_lower:
+        return "_U"
+    elif "available" in name_lower or "avail" in name_lower:
+        return "_A"
+    elif "capacity" in name_lower:
+        return "_CAP"
+    elif "total" in name_lower:
+        return "_TOT"
+    elif "free" in name_lower:
+        return "_F"
+
+    # Temperature context
+    elif "core max" in name_lower:
+        return "_MAX"
+    elif "core avg" in name_lower or "average" in name_lower:
+        return "_AVG"
+    elif "hotspot" in name_lower:
+        return "_HOT"
+    elif "junction" in name_lower:
+        return "_JNC"
+
+    return ""
+
+
+def generate_short_name_from_id(sensor_id, sensor_type, sensor_name=""):
     """
-    Generate short name from sensor_id (REST API format)
-    Compatible with generate_short_name() for WMI
+    Generate unique short name from sensor_id and sensor_name (REST API format)
+    Uses sensor_name context to differentiate similar sensors
     """
-    # Extract context from sensor_id (e.g., /lpc/it8689e/0/fan/0 -> LPC_FAN)
     parts = sensor_id.split('/')
+    name_lower = sensor_name.lower()
+
+    # Get context suffix from sensor name
+    context = _extract_context_suffix(sensor_name)
+
     if len(parts) >= 4:
         device = parts[1]  # e.g., "intelcpu", "gpu-nvidia", "lpc", "nic"
-        sensor_idx = parts[3]  # e.g., "0", "1"
+        device_lower = device.lower()
+        device_idx = parts[2] if len(parts) > 2 else "0"
+        sensor_idx = parts[-1]  # Last part is usually the sensor index
 
-        # CPU
-        if "cpu" in device.lower():
+        # CPU sensors
+        if "cpu" in device_lower:
             if sensor_type == "load":
-                return "CPU" if sensor_idx == "0" else f"CPU{sensor_idx}"
+                if "total" in name_lower or sensor_idx == "0":
+                    base = "CPU"
+                else:
+                    base = f"CPU_C{sensor_idx}"
             elif sensor_type == "temperature":
-                return f"CPUT" if sensor_idx == "0" else f"CPU{sensor_idx}T"
+                if "core max" in name_lower:
+                    base = "CPU_MAX"
+                elif "core avg" in name_lower or "average" in name_lower:
+                    base = "CPU_AVG"
+                elif "core" in name_lower and "p-core" not in name_lower and "e-core" not in name_lower:
+                    base = f"CPUT{sensor_idx}"
+                elif "p-core" in name_lower:
+                    base = f"CPUP{sensor_idx}"
+                elif "e-core" in name_lower:
+                    base = f"CPUE{sensor_idx}"
+                elif "ccd" in name_lower:
+                    base = f"CCD{sensor_idx}T"
+                else:
+                    base = f"CPUT{sensor_idx}" if sensor_idx != "0" else "CPUT"
             elif sensor_type == "power":
-                return f"CPUW" if sensor_idx == "0" else f"CPU{sensor_idx}W"
+                if "package" in name_lower:
+                    base = "CPU_PKG"
+                elif "core" in name_lower:
+                    base = "CPU_COR"
+                else:
+                    base = f"CPUW{sensor_idx}" if sensor_idx != "0" else "CPUW"
             elif sensor_type == "clock":
-                return f"CPUCLK" if sensor_idx == "0" else f"CPU{sensor_idx}CLK"
-        # GPU
-        elif "gpu" in device.lower() or "nvidia" in device.lower() or "amd" in device.lower():
+                base = f"CPUCLK{sensor_idx}" if sensor_idx != "0" else "CPUCLK"
+            else:
+                base = f"CPU_{sensor_idx}"
+            return _make_unique_name(base)
+
+        # GPU sensors
+        elif "gpu" in device_lower or "nvidia" in device_lower or "amd" in device_lower:
+            gpu_idx = "" if device_idx == "0" else device_idx
             if sensor_type == "load":
-                return "GPU^^"
+                if "memory" in name_lower or "vram" in name_lower:
+                    base = f"VRAM{gpu_idx}"
+                elif "core" in name_lower or sensor_idx == "0":
+                    base = f"GPU{gpu_idx}"
+                else:
+                    base = f"GPU{gpu_idx}_{sensor_idx}"
             elif sensor_type == "temperature":
-                return "GPUT"
+                if "hotspot" in name_lower:
+                    base = f"GPU{gpu_idx}_HOT"
+                elif "memory" in name_lower or "vram" in name_lower:
+                    base = f"VRAM{gpu_idx}T"
+                else:
+                    base = f"GPUT{gpu_idx}"
             elif sensor_type == "power":
-                return "GPUW"
+                base = f"GPUW{gpu_idx}"
             elif sensor_type == "clock":
-                return "GPUCLK"
+                if "memory" in name_lower:
+                    base = f"VCLK{gpu_idx}"
+                else:
+                    base = f"GCLK{gpu_idx}"
             elif sensor_type == "fan":
-                return "GPUFAN"
-        # Fan
-        elif sensor_type == "fan":
-            return f"FAN" if sensor_idx == "0" else f"FAN{sensor_idx}"
-        # Memory/RAM
-        elif "memory" in device.lower() or "ram" in device.lower():
-            if sensor_type == "data":
-                return "RAMUSED"
-            elif sensor_type == "load":
-                return "RAM^^"
-        # Network
-        elif "nic" in device.lower() or "network" in device.lower():
-            if sensor_type == "throughput":
-                # Check if index indicates upload or download
-                if len(parts) >= 5:
-                    throughput_idx = parts[4]
-                    if throughput_idx == "0":
-                        return "NET_U"
-                    elif throughput_idx == "1":
-                        return "NET_D"
-            elif sensor_type == "data":
-                if len(parts) >= 5:
-                    data_idx = parts[4]
-                    if data_idx == "0":
-                        return "NET_D"
-                    elif data_idx == "1":
-                        return "NET_U"
-        # HDD/SSD
-        elif "hdd" in device.lower() or "ssd" in device.lower() or "nvme" in device.lower():
-            if sensor_type == "temperature":
-                return "HDDT" if "hdd" in device.lower() else "SSDT"
+                base = f"GPUF{gpu_idx}_{sensor_idx}" if sensor_idx != "0" else f"GPUF{gpu_idx}"
+            elif sensor_type in ("data", "smalldata"):
+                # GPU memory data
+                base = f"VRAM{gpu_idx}{context}"
+            else:
+                base = f"GPU{gpu_idx}_{sensor_idx}"
+            return _make_unique_name(base)
 
-    # Fallback: generate from sensor_id
-    # Remove special chars and truncate
-    name = sensor_id.replace("/", "_").replace("-", "")[:10].upper()
-    return name if name else "SENSOR"
+        # LPC/Motherboard sensors (VRM, PCH, System temps, etc.)
+        elif "lpc" in device_lower or "motherboard" in device_lower or "mainboard" in device_lower:
+            if sensor_type == "temperature":
+                if "vrm" in name_lower:
+                    base = "VRM_T"
+                elif "mos" in name_lower:
+                    base = "MOS_T"
+                elif "pch" in name_lower:
+                    base = "PCH_T"
+                elif "cpu" in name_lower and "socket" in name_lower:
+                    base = "CPUS_T"
+                elif "system" in name_lower:
+                    base = f"SYS{sensor_idx}T"
+                elif "pcie" in name_lower or "pci" in name_lower:
+                    base = f"PCIE{sensor_idx}T"
+                elif "m.2" in name_lower or "m2" in name_lower:
+                    base = f"M2_{sensor_idx}T"
+                elif "chipset" in name_lower:
+                    base = "CHIP_T"
+                else:
+                    # Generic LPC temperature
+                    base = f"MB{sensor_idx}T"
+            elif sensor_type == "fan":
+                if "cpu" in name_lower:
+                    base = "CPUF"
+                elif "pump" in name_lower:
+                    base = "PUMP"
+                elif "chassis" in name_lower:
+                    base = f"CHS{sensor_idx}F"
+                elif "system" in name_lower:
+                    # Extract fan number from name like "System Fan #1"
+                    fan_match = re.search(r'#(\d+)', sensor_name)
+                    if fan_match:
+                        base = f"SYS{fan_match.group(1)}F"
+                    else:
+                        base = f"SYS{sensor_idx}F"
+                elif "aux" in name_lower:
+                    base = f"AUX{sensor_idx}F"
+                else:
+                    base = f"FAN{sensor_idx}"
+            elif sensor_type == "voltage":
+                if "vcore" in name_lower or "cpu" in name_lower:
+                    base = "VCORE"
+                elif "vram" in name_lower or "memory" in name_lower:
+                    base = "VMEM"
+                elif "+12v" in name_lower or "12v" in name_lower:
+                    base = "V12"
+                elif "+5v" in name_lower or "5v" in name_lower:
+                    base = "V5"
+                elif "+3.3v" in name_lower or "3.3v" in name_lower:
+                    base = "V3_3"
+                else:
+                    base = f"V{sensor_idx}"
+            elif sensor_type == "control":
+                base = f"CTL{sensor_idx}"
+            else:
+                base = f"LPC{sensor_idx}"
+            return _make_unique_name(base)
+
+        # Memory/RAM sensors
+        elif "memory" in device_lower or "ram" in device_lower:
+            if sensor_type in ("data", "smalldata", "memory"):
+                if "vram" in name_lower:
+                    base = f"VRAM{context}"
+                elif "capacity" in name_lower:
+                    base = f"RAM_CAP"
+                elif "used" in name_lower:
+                    base = "RAM_U"
+                elif "available" in name_lower or "avail" in name_lower:
+                    base = "RAM_A"
+                else:
+                    base = f"RAM{context}" if context else f"RAM{sensor_idx}"
+            elif sensor_type == "load":
+                base = "RAM"
+            else:
+                base = f"RAM{sensor_idx}"
+            return _make_unique_name(base)
+
+        # Network sensors
+        elif "nic" in device_lower or "network" in device_lower:
+            net_idx = "" if device_idx == "0" else device_idx
+            if sensor_type == "throughput":
+                if "upload" in name_lower or "sent" in name_lower:
+                    base = f"NET{net_idx}_U"
+                elif "download" in name_lower or "received" in name_lower:
+                    base = f"NET{net_idx}_D"
+                else:
+                    # Use sensor index: 0=upload, 1=download typically
+                    if sensor_idx == "0":
+                        base = f"NET{net_idx}_U"
+                    else:
+                        base = f"NET{net_idx}_D"
+            elif sensor_type == "data":
+                if "upload" in name_lower or "sent" in name_lower:
+                    base = f"NTD{net_idx}_U"
+                elif "download" in name_lower or "received" in name_lower:
+                    base = f"NTD{net_idx}_D"
+                else:
+                    base = f"NTD{net_idx}_{sensor_idx}"
+            else:
+                base = f"NET{net_idx}_{sensor_idx}"
+            return _make_unique_name(base)
+
+        # Storage (HDD/SSD/NVMe)
+        elif "hdd" in device_lower or "ssd" in device_lower or "nvme" in device_lower:
+            drv_idx = "" if device_idx == "0" else device_idx
+            if "hdd" in device_lower:
+                prefix = f"HDD{drv_idx}"
+            elif "ssd" in device_lower:
+                prefix = f"SSD{drv_idx}"
+            else:
+                prefix = f"NVM{drv_idx}"
+
+            if sensor_type == "temperature":
+                base = f"{prefix}T"
+            elif sensor_type == "load":
+                base = f"{prefix}%"
+            elif sensor_type == "data":
+                base = f"{prefix}D"
+            else:
+                base = f"{prefix}_{sensor_idx}"
+            return _make_unique_name(base)
+
+    # Fallback: Create descriptive name from sensor_name + sensor_id
+    if sensor_name:
+        # Use first word of sensor name + type abbreviation
+        words = sensor_name.replace("-", " ").replace("_", " ").split()
+        if words:
+            base = words[0][:4].upper()
+            type_suffix = {"temperature": "T", "fan": "F", "load": "%",
+                          "power": "W", "voltage": "V", "clock": "C"}.get(sensor_type, "")
+            base = f"{base}{type_suffix}"
+            return _make_unique_name(base)
+
+    # Last resort fallback
+    if len(parts) >= 2:
+        device = parts[1].replace("-", "")[:4].upper()
+        return _make_unique_name(f"{device}{sensor_idx}")
 
 
 def check_wmi_connectivity():
@@ -742,9 +1014,12 @@ def discover_sensors():
         sensors = w.Sensor()
 
         sensor_count = 0
+        # Reset name tracker to ensure fresh unique names
+        reset_generated_names()
+
         for sensor in sensors:
-            # Generate short name for ESP32 display
-            short_name = generate_short_name(sensor.Name, sensor.SensorType, sensor.Identifier)
+            # Generate short name for ESP32 display (using same function as REST API)
+            short_name = generate_short_name_from_id(sensor.Identifier, sensor.SensorType.lower(), sensor.Name)
 
             # Enhance display name with identifier context for GUI
             display_name = sensor.Name
@@ -1007,405 +1282,9 @@ def get_unit_from_type(sensor_type):
     return unit_map.get(sensor_type, "")
 
 
-# AutoConfigurator class removed - will be revisited later
-
-class AutoConfigurator_REMOVED:
-    """
-    Intelligent metric selection based on available sensors
-    Similar to esp32-configurator/core/auto_configurator.py
-    """
-
-    def __init__(self):
-        # Template for 5-row layout - comprehensive with smart fallbacks
-        self.template_5row = [
-            # (label, search_terms, fallback_terms, position, bar_position, bar_range)
-            # Row 1: Position 0 (left) - shown when clock on right or no clock
-            ("FAN", ["fan"], ["pump", "rpm"], 0, 255, None),
-
-            # Row 2: CPU with temp companion and bar
-            ("CPU^^", ["cpu usage", "cpu load", "total cpu", "processor"], ["cpu"], 2, 3, (0, 100)),
-            ("CPUT", ["cpu temp", "cpu package", "core temperature"], ["temperature"], 2, 255, None),
-
-            # Row 3: GPU with temp companion and bar
-            ("GPU^^", ["gpu usage", "gpu load", "gpu core load", "graphics"], ["gpu"], 4, 5, (0, 100)),
-            ("GPUT", ["gpu temp", "gpu core temp"], ["gpu hot spot"], 4, 255, None),
-
-            # Row 4: RAM with bar
-            ("RAM^^", ["ram", "memory"], ["ram_gb"], 6, 7, (0, 100)),
-
-            # Row 5: CPU Power + GPU Power/Clock (with comprehensive fallbacks)
-            ("CPUW", ["cpu power", "package power"], ["power", "watt", "fan"], 8, 255, None),
-            ("GPUW", ["gpu power"], ["gpu clock", "clock", "fan #2", "disk"], 9, 255, None),
-        ]
-
-        # Template for 6-row layout - even more comprehensive
-        self.template_6row = [
-            # Row 1: Position 0 (left) - shown when clock on right or no clock
-            ("FAN", ["fan"], ["pump", "rpm"], 0, 255, None),
-
-            # Row 2: CPU with temp companion and bar
-            ("CPU^^", ["cpu usage", "cpu load", "total cpu", "processor"], ["cpu"], 2, 3, (0, 100)),
-            ("CPUT", ["cpu temp", "cpu package", "core temperature"], ["temperature"], 2, 255, None),
-
-            # Row 3: GPU with temp companion and bar
-            ("GPU^^", ["gpu usage", "gpu load", "gpu core load", "graphics"], ["gpu"], 4, 5, (0, 100)),
-            ("GPUT", ["gpu temp", "gpu core temp"], ["gpu hot spot"], 4, 255, None),
-
-            # Row 4: RAM with bar
-            ("RAM^^", ["ram", "memory"], ["ram_gb"], 6, 7, (0, 100)),
-
-            # Row 5: CPU Power + GPU Power/Clock
-            ("CPUW", ["cpu power", "package power"], ["power", "watt", "fan"], 8, 255, None),
-            ("GPUW", ["gpu power"], ["gpu clock", "clock", "fan #2"], 9, 255, None),
-
-            # Row 6: Disks or additional sensors
-            ("DSK1", ["disk"], ["ssd", "nvme", "hdd", "storage"], 10, 255, None),
-            ("DSK2", ["drive"], ["fan #3", "chassis"], 11, 255, None),
-        ]
-
-    def create_auto_config(self, available_sensors, row_mode=1, clock_position=2):
-        """
-        Create automatic configuration
-
-        Args:
-            available_sensors: Flattened list from sensor_database
-            row_mode: 0=5-row, 1=6-row
-            clock_position: 0=Center, 1=Left, 2=Right, 3=None
-
-        Returns:
-            (metrics_list, description_text)
-        """
-        template = self.template_5row if row_mode == 0 else self.template_6row
-        metrics = []
-        matched_count = 0
-        substitutions = []
-
-        for item in template:
-            if len(item) == 6:
-                label, search_terms, fallback_terms, position, bar_position, bar_range = item
-            else:
-                continue
-
-            # Adjust position if clock conflicts with metrics
-            # clock_position: 0=Center, 1=Left, 2=Right
-            if (clock_position == 1 and position == 0) or (clock_position == 2 and position == 1):
-                position = 255  # Hide metrics that conflict with clock
-
-            # Try primary search terms
-            sensor = self._find_sensor(available_sensors, search_terms)
-
-            # Try fallback if needed
-            if not sensor and fallback_terms:
-                sensor = self._find_sensor(available_sensors, fallback_terms)
-                if sensor:
-                    substitutions.append(f"{label} -> {sensor['name']}")
-
-            if sensor:
-                matched_count += 1
-
-                # Create metric config
-                metric = {
-                    "id": len(metrics) + 1,
-                    "name": sensor["name"],
-                    "display_name": sensor.get("display_name", sensor["name"]),
-                    "source": sensor["source"],
-                    "type": sensor.get("type", "other"),
-                    "unit": sensor.get("unit", ""),
-                    "custom_label": label,
-                    "current_value": sensor.get("current_value", 0),
-                    "position": position,
-                    "bar_position": bar_position,
-                    "companion_id": 0,
-                    "bar_min": bar_range[0] if bar_range else 0,
-                    "bar_max": bar_range[1] if bar_range else 100,
-                    "bar_width": 50,  # Compact bars
-                    "bar_offset": 10,  # Aligned offset
-                }
-
-                # Copy source-specific identifiers
-                if "psutil_method" in sensor:
-                    metric["psutil_method"] = sensor["psutil_method"]
-                if "wmi_identifier" in sensor:
-                    metric["wmi_identifier"] = sensor["wmi_identifier"]
-
-                metrics.append(metric)
-
-        # Set up companion metrics (CPU%+Temp, GPU%+Temp)
-        companion_count = self._setup_companions(metrics)
-
-        # Generate description
-        mode_name = "5-row" if row_mode == 0 else "6-row"
-        description = f"Auto-configured {mode_name} layout:\n"
-        description += f"✓ Matched {matched_count}/{len(template)} metrics\n"
-
-        if companion_count > 0:
-            description += f"✨ {companion_count} companion metric(s) configured\n"
-
-        if substitutions:
-            description += f"⚠ Substitutions made:\n"
-            for sub in substitutions:
-                description += f"  • {sub}\n"
-
-        return metrics, description
-
-    def _find_sensor(self, sensors, search_terms, exclude_terms=None):
-        """
-        Find sensor by partial name match (case-insensitive)
-        with exclusion logic to avoid wrong sensors
-        """
-        if not search_terms:
-            return None
-
-        # Common exclusions to avoid codec/decoder sensors
-        default_exclusions = ["codec", "decoder", "d3d", "encode", "decode", "video encoder", "video decoder"]
-        if exclude_terms:
-            exclusions = default_exclusions + exclude_terms
-        else:
-            exclusions = default_exclusions
-
-        candidates = []
-
-        for sensor in sensors:
-            name = sensor.get("name", "").lower()
-            display_name = sensor.get("display_name", "").lower()
-
-            # Skip excluded sensors
-            if any(excl in name or excl in display_name for excl in exclusions):
-                continue
-
-            # Check if any search term matches
-            for term in search_terms:
-                term_lower = term.lower()
-                if term_lower in name or term_lower in display_name:
-                    # Score the match (higher is better)
-                    score = 0
-                    if term_lower == name or term_lower == display_name:
-                        score = 100  # Exact match
-                    elif name.startswith(term_lower) or display_name.startswith(term_lower):
-                        score = 50  # Starts with term
-                    else:
-                        score = 10  # Contains term
-
-                    # Bonus for "core" or "total" in name (likely main sensor)
-                    if "core" in name or "total" in name or "core" in display_name or "total" in display_name:
-                        score += 20
-
-                    candidates.append((sensor, score))
-                    break
-
-        # Return best match
-        if candidates:
-            candidates.sort(key=lambda x: x[1], reverse=True)
-            return candidates[0][0]
-
-        return None
-
-    def _setup_companions(self, metrics):
-        """Set up companion metrics (CPU%+Temp, GPU%+Temp)"""
-        companions = {
-            "CPU^^": "CPUT",
-            "GPU^^": "GPUT",
-        }
-
-        configured_count = 0
-
-        for primary_label, companion_label in companions.items():
-            primary = None
-            companion = None
-
-            for metric in metrics:
-                if metric.get("custom_label") == primary_label:
-                    primary = metric
-                elif metric.get("custom_label") == companion_label:
-                    companion = metric
-
-            if primary and companion:
-                primary["companion_id"] = companion["id"]
-                companion["position"] = 255  # Hide companion (shown with primary)
-                configured_count += 1
-
-        return configured_count
-
-
-# ESP32ConfigExporter class removed - will be revisited later
-
-class ESP32ConfigExporter_REMOVED:
-    """
-    Export configuration to ESP32 format (array-based)
-    Based on esp32-configurator/core/config_manager.py
-    """
-
-    @staticmethod
-    def export_to_esp32_format(metrics, settings):
-        """
-        Convert metrics list to ESP32 array-based format
-
-        Args:
-            metrics: List of metric dicts
-            settings: Dict with row_mode, show_clock, clock_position, clock_offset
-
-        Returns:
-            ESP32 config dict
-        """
-        MAX_METRICS = 20
-
-        # Initialize arrays
-        metric_labels = [""] * MAX_METRICS
-        metric_names = [""] * MAX_METRICS
-        metric_order = list(range(MAX_METRICS))
-        metric_companions = [0] * MAX_METRICS
-        metric_positions = [255] * MAX_METRICS
-        metric_bar_positions = [255] * MAX_METRICS
-        metric_bar_min = [0] * MAX_METRICS
-        metric_bar_max = [100] * MAX_METRICS
-        metric_bar_widths = [60] * MAX_METRICS
-        metric_bar_offsets = [0] * MAX_METRICS
-
-        # Populate arrays from metrics
-        for i, metric in enumerate(metrics[:MAX_METRICS]):
-            metric_labels[i] = metric.get("custom_label", "")[:15]
-            metric_names[i] = metric.get("name", "")[:15]
-            metric_companions[i] = metric.get("companion_id", 0)
-            metric_positions[i] = metric.get("position", 255)
-            metric_bar_positions[i] = metric.get("bar_position", 255)
-            metric_bar_min[i] = metric.get("bar_min", 0)
-            metric_bar_max[i] = metric.get("bar_max", 100)
-            metric_bar_widths[i] = metric.get("bar_width", 60)
-            metric_bar_offsets[i] = metric.get("bar_offset", 0)
-
-        # Build ESP32 config
-        esp32_config = {
-            "clockStyle": 0,
-            "gmtOffset": 1,
-            "daylightSaving": True,
-            "use24Hour": True,
-            "dateFormat": 0,
-            "clockPosition": settings.get("clock_position", 1),
-            "clockOffset": settings.get("clock_offset", 0),
-            "showClock": settings.get("show_clock", True),
-            "displayRowMode": settings.get("row_mode", 1),
-            "useRpmKFormat": False,
-            "metricLabels": metric_labels,
-            "metricNames": metric_names,
-            "metricOrder": metric_order,
-            "metricCompanions": metric_companions,
-            "metricPositions": metric_positions,
-            "metricBarPositions": metric_bar_positions,
-            "metricBarMin": metric_bar_min,
-            "metricBarMax": metric_bar_max,
-            "metricBarWidths": metric_bar_widths,
-            "metricBarOffsets": metric_bar_offsets
-        }
-
-        return esp32_config
-
-    @staticmethod
-    def save_esp32_config(file_path, metrics, settings):
-        """Save ESP32 config to JSON file"""
-        try:
-            esp32_config = ESP32ConfigExporter_REMOVED.export_to_esp32_format(metrics, settings)
-            with open(file_path, 'w') as f:
-                json.dump(esp32_config, f, indent=2)
-            return True, f"ESP32 config saved to {file_path}"
-        except Exception as e:
-            return False, f"Failed to save ESP32 config: {str(e)}"
-
-
-# ESP32Uploader class removed - will be revisited later
-
-class ESP32Uploader_REMOVED:
-    """
-    Upload configuration to ESP32 via HTTP POST
-    Based on esp32-configurator/core/esp32_uploader.py
-    Uses urllib (no external dependencies)
-    """
-
-    @staticmethod
-    def test_connection(esp32_ip):
-        """
-        Test if ESP32 is reachable
-
-        Returns:
-            (success, message)
-        """
-        try:
-            import urllib.request
-            import urllib.error
-
-            url = f"http://{esp32_ip}/"
-            req = urllib.request.Request(url, method='GET')
-
-            with urllib.request.urlopen(req, timeout=3) as response:
-                if response.status == 200:
-                    return True, f"ESP32 is reachable at {esp32_ip}"
-                else:
-                    return False, f"Unexpected response: {response.status}"
-
-        except urllib.error.URLError as e:
-            return False, f"Cannot reach ESP32:\n{str(e.reason)}"
-        except Exception as e:
-            return False, f"Connection test failed: {str(e)}"
-
-    @staticmethod
-    def upload_config(esp32_ip, esp32_config):
-        """
-        Upload config to ESP32 /api/import endpoint
-
-        Args:
-            esp32_ip: IP address
-            esp32_config: ESP32 format dict
-
-        Returns:
-            (success, message)
-        """
-        try:
-            import urllib.request
-            import urllib.error
-
-            # Build URL
-            url = f"http://{esp32_ip}/api/import"
-
-            # Convert to JSON
-            json_data = json.dumps(esp32_config).encode('utf-8')
-
-            # Create request
-            req = urllib.request.Request(
-                url,
-                data=json_data,
-                headers={
-                    'Content-Type': 'application/json',
-                    'Content-Length': str(len(json_data))
-                },
-                method='POST'
-            )
-
-            # Send with timeout
-            with urllib.request.urlopen(req, timeout=5) as response:
-                response_data = response.read().decode('utf-8')
-
-                try:
-                    result = json.loads(response_data)
-                    if result.get("success"):
-                        return True, "Configuration uploaded to ESP32!"
-                    else:
-                        msg = result.get("message", "Unknown error")
-                        return False, f"ESP32 rejected config: {msg}"
-                except json.JSONDecodeError:
-                    return True, "Configuration uploaded (response not JSON)"
-
-        except urllib.error.HTTPError as e:
-            return False, f"HTTP error {e.code}: {e.reason}"
-
-        except urllib.error.URLError as e:
-            return False, f"Cannot reach ESP32 at {esp32_ip}:\n{str(e.reason)}\n\nCheck:\n- ESP32 powered on\n- Same network\n- Correct IP"
-
-        except Exception as e:
-            return False, f"Upload failed: {str(e)}"
-
-
 def load_config():
     """
-    Load configuration from file
+    Load configuration from file with version checking
     """
     if not os.path.exists(CONFIG_FILE):
         return None
@@ -1413,6 +1292,42 @@ def load_config():
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
+
+        # Version check - force reconfiguration for old versions
+        config_version = config.get("version", "1.0")
+        if config_version < "2.1":
+            print("\n" + "=" * 60)
+            print("  CONFIGURATION UPDATE REQUIRED")
+            print("=" * 60)
+            print(f"\n⚠ Configuration format updated (v{config_version} → v2.1)")
+            print("\nMajor bug fixes in this version:")
+            print("  ✓ Fixed duplicate metric names (HDDT, RAMUSED, etc.)")
+            print("  ✓ Fixed memory metrics appearing in wrong category")
+            print("  ✓ Removed companion markers (^^) from display")
+            print("  ✓ Custom labels now visible in preview")
+            print("  ✓ Improved GUI layout")
+            print("\n→ You will need to reconfigure your metrics in the GUI.")
+
+            # Backup old config
+            backup_path = CONFIG_FILE.replace(".json", f"_v{config_version}_backup.json")
+            try:
+                import shutil
+                shutil.copy(CONFIG_FILE, backup_path)
+                print(f"\n  Old config backed up to: {backup_path}")
+            except Exception as e:
+                print(f"\n  Warning: Could not backup config: {e}")
+
+            # Delete old config to force reconfiguration
+            try:
+                os.remove(CONFIG_FILE)
+                print(f"  Old config removed: {CONFIG_FILE}")
+            except Exception as e:
+                print(f"  Warning: Could not remove old config: {e}")
+
+            print("\n" + "=" * 60 + "\n")
+            input("Press Enter to continue to configuration GUI...")
+            return None
+
         print(f"\n✓ Loaded configuration from {CONFIG_FILE}")
         print(f"  Selected metrics: {len(config.get('metrics', []))}")
         return config
@@ -1637,16 +1552,36 @@ class MetricSelectorGUI:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
 
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        # Create window that fills canvas width
+        canvas_window = canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Make scrollable_frame fill canvas width
+        def on_canvas_configure(event):
+            canvas.itemconfig(canvas_window, width=event.width)
+        canvas.bind("<Configure>", on_canvas_configure)
+
+        # Mouse wheel scrolling
+        def on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        # Bind mousewheel to canvas and all children
+        def bind_mousewheel(widget):
+            widget.bind("<MouseWheel>", on_mousewheel)
+            for child in widget.winfo_children():
+                bind_mousewheel(child)
+
+        canvas.bind("<MouseWheel>", on_mousewheel)
+        scrollable_frame.bind("<MouseWheel>", on_mousewheel)
+
+        # Store reference to bind mousewheel to new widgets later
+        self.canvas = canvas
+        self.on_mousewheel = on_mousewheel
 
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
         # Create checkboxes by category
-        row = 0
-        col = 0
-
         categories = [
             ("SYSTEM METRICS", "system"),
             ("TEMPERATURES", "temperature"),
@@ -1658,13 +1593,27 @@ class MetricSelectorGUI:
             ("NETWORK THROUGHPUT", "throughput")
         ]
 
-        for cat_title, cat_key in categories:
-            if not sensor_database.get(cat_key):
-                continue
+        # Pre-calculate visible categories to optimize layout
+        visible_categories = [(title, key) for title, key in categories if sensor_database.get(key)]
+        num_cols = min(3, len(visible_categories))  # Use fewer columns if fewer categories
+
+        # Create column container frames
+        column_frames = []
+        for col in range(num_cols):
+            scrollable_frame.columnconfigure(col, weight=1, uniform="columns")
+            col_frame = tk.Frame(scrollable_frame, bg="#ffffff")
+            col_frame.grid(row=0, column=col, sticky="nsew", padx=0, pady=0)
+            col_frame.bind("<MouseWheel>", on_mousewheel)
+            column_frames.append(col_frame)
+
+        # Distribute categories into columns (vertical packing within each column)
+        for idx, (cat_title, cat_key) in enumerate(visible_categories):
+            col = idx % num_cols
+            parent_frame = column_frames[col]
 
             # Category header
-            cat_frame = tk.Frame(scrollable_frame, bg="#f0f0f0", relief=tk.RIDGE, borderwidth=2)
-            cat_frame.grid(row=row, column=col, sticky="nsew", padx=5, pady=5)
+            cat_frame = tk.Frame(parent_frame, bg="#f0f0f0", relief=tk.RIDGE, borderwidth=2)
+            cat_frame.pack(fill=tk.X, padx=5, pady=5, anchor="n")
 
             cat_label = tk.Label(
                 cat_frame,
@@ -1675,48 +1624,67 @@ class MetricSelectorGUI:
             )
             cat_label.pack(pady=5)
 
+            # Bind mousewheel to category frame and label
+            cat_frame.bind("<MouseWheel>", on_mousewheel)
+            cat_label.bind("<MouseWheel>", on_mousewheel)
+
             # Sensors in category
             for sensor in sensor_database[cat_key]:
                 var = tk.BooleanVar()
 
+                # Highlight active network interfaces
+                is_active = sensor.get('is_active_nic', False)
+                if is_active:
+                    frame_bg = "#d4ffd4"  # Light green background
+                    text_color = "#006600"  # Dark green text
+                    active_marker = " ★"  # Star to mark active
+                else:
+                    frame_bg = "#f0f0f0"
+                    text_color = "#000000"
+                    active_marker = ""
+
                 # Create sensor row frame
-                sensor_frame = tk.Frame(cat_frame, bg="#f0f0f0")
+                sensor_frame = tk.Frame(cat_frame, bg=frame_bg)
                 sensor_frame.pack(fill=tk.X, padx=10, pady=2)
 
                 # Checkbox with current value
                 value_text = f" - {sensor['current_value']}{sensor['unit']}" if sensor.get('current_value') is not None else ""
                 cb = tk.Checkbutton(
                     sensor_frame,
-                    text=f"{sensor['display_name']} ({sensor['name']}){value_text}",
+                    text=f"{sensor['display_name']} ({sensor['name']}){value_text}{active_marker}",
                     variable=var,
-                    bg="#f0f0f0",
+                    bg=frame_bg,
+                    fg=text_color,
+                    selectcolor="#ffffff",
                     anchor="w",
                     command=lambda s=sensor, v=var: self.on_checkbox_toggle(s, v)
                 )
                 cb.pack(side=tk.TOP, fill=tk.X)
 
                 # Custom label entry (small, below checkbox)
-                label_frame = tk.Frame(sensor_frame, bg="#f0f0f0")
+                label_frame = tk.Frame(sensor_frame, bg=frame_bg)
                 label_frame.pack(side=tk.TOP, fill=tk.X, padx=20)
 
-                tk.Label(label_frame, text="Label:", bg="#f0f0f0", fg="#666", font=("Arial", 8)).pack(side=tk.LEFT)
+                tk.Label(label_frame, text="Label:", bg=frame_bg, fg="#666", font=("Arial", 8)).pack(side=tk.LEFT)
                 label_entry = tk.Entry(label_frame, width=15, font=("Arial", 8))
                 label_entry.pack(side=tk.LEFT, padx=5)
 
+                # Update preview when label text changes
+                label_entry.bind("<KeyRelease>", lambda e: self.update_counter())
+
                 # Store reference to label entry and label frame
-                # Use display_name to ensure uniqueness (multiple sensors can have same 'name')
-                sensor_key = f"{sensor['source']}_{sensor['display_name']}"
+                # Use wmi_identifier (sensor path) as key - most reliable and unique
+                sensor_key = sensor.get('wmi_identifier') or f"{sensor['source']}_{sensor['display_name']}"
                 self.label_entries[sensor_key] = {
                     'entry': label_entry,
                     'frame': label_frame
                 }
 
-                self.checkboxes.append((cb, sensor, var, sensor_frame))
+                # Bind mousewheel to all created widgets
+                for widget in [sensor_frame, cb, label_frame, label_entry]:
+                    widget.bind("<MouseWheel>", on_mousewheel)
 
-            col += 1
-            if col >= 3:
-                col = 0
-                row += 1
+                self.checkboxes.append((cb, sensor, var, sensor_frame))
 
         # Preview frame
         preview_frame = tk.Frame(self.root, bg="#2d2d2d", height=40)
@@ -1782,10 +1750,19 @@ class MetricSelectorGUI:
         for metric in metrics:
             # Find matching sensor and check it
             for cb, sensor, var, frame in self.checkboxes:
-                sensor_key = f"{sensor['source']}_{sensor['display_name']}"
-                metric_key = f"{metric['source']}_{metric['display_name']}"
+                # Primary match: use wmi_identifier (sensor path) - most reliable
+                if sensor.get('wmi_identifier') and metric.get('wmi_identifier'):
+                    if sensor['wmi_identifier'] == metric['wmi_identifier']:
+                        match = True
+                    else:
+                        continue
+                else:
+                    # Fallback: match by source + display_name
+                    sensor_key = f"{sensor['source']}_{sensor['display_name']}"
+                    metric_key = f"{metric['source']}_{metric['display_name']}"
+                    match = (sensor_key == metric_key)
 
-                if sensor_key == metric_key:
+                if match:
                     # Explicitly add to selected_metrics (duplicate check in on_checkbox_toggle prevents double-adds)
                     if sensor not in self.selected_metrics:
                         self.selected_metrics.append(sensor)
@@ -1793,9 +1770,10 @@ class MetricSelectorGUI:
                     # Set checkbox (this will trigger on_checkbox_toggle which handles showing label entry)
                     var.set(True)
 
-                    # Set custom label if exists
-                    if metric.get('custom_label') and sensor_key in self.label_entries:
-                        self.label_entries[sensor_key]['entry'].insert(0, metric['custom_label'])
+                    # Set custom label if exists - use wmi_identifier as key
+                    label_key = sensor.get('wmi_identifier') or f"{sensor['source']}_{sensor['display_name']}"
+                    if metric.get('custom_label') and label_key in self.label_entries:
+                        self.label_entries[label_key]['entry'].insert(0, metric['custom_label'])
                     break
 
         # Force update after all metrics loaded to ensure preview refreshes
@@ -1819,6 +1797,15 @@ class MetricSelectorGUI:
 
         self.update_counter()
 
+    def get_display_label_for_metric(self, sensor):
+        """Get custom label if set, otherwise return sensor name"""
+        sensor_key = sensor.get('wmi_identifier') or f"{sensor['source']}_{sensor['display_name']}"
+        if sensor_key in self.label_entries:
+            custom = self.label_entries[sensor_key]['entry'].get().strip()
+            if custom:
+                return custom[:10]  # Enforce 10 char limit
+        return sensor['name']
+
     def update_counter(self):
         count = len(self.selected_metrics)
         self.counter_label.config(text=f"Selected: {count}/{MAX_METRICS}")
@@ -1828,8 +1815,8 @@ class MetricSelectorGUI:
         else:
             self.counter_label.config(fg="#ffffff")
 
-        # Update preview
-        preview = " | ".join([f"{i+1}. {m['name']}" for i, m in enumerate(self.selected_metrics[:MAX_METRICS])])
+        # Update preview - now shows custom labels
+        preview = " | ".join([f"{i+1}. {self.get_display_label_for_metric(m)}" for i, m in enumerate(self.selected_metrics[:MAX_METRICS])])
         self.preview_text.config(text=preview if preview else "(none selected)")
 
     def clear_all(self):
@@ -1925,7 +1912,7 @@ class MetricSelectorGUI:
 
         # Build config
         config = {
-            "version": "2.0",
+            "version": "2.1",
             "esp32_ip": esp_ip,
             "udp_port": udp_port,
             "update_interval": update_interval,
@@ -1938,7 +1925,7 @@ class MetricSelectorGUI:
             metric_config["id"] = i + 1
 
             # Get custom label if set
-            sensor_key = f"{sensor['source']}_{sensor['display_name']}"
+            sensor_key = sensor.get('wmi_identifier') or f"{sensor['source']}_{sensor['display_name']}"
             if sensor_key in self.label_entries:
                 custom_label = self.label_entries[sensor_key]['entry'].get().strip()
                 if custom_label:
