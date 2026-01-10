@@ -1,0 +1,5 @@
+# PC Stats Monitor v2.0 - macOS Dependencies
+# Install with: pip3 install -r requirements_macos.txt
+
+psutil>=5.9.0
+rumps>=0.4.0

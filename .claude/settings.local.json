@@ -16,7 +16,9 @@
       "Bash(dir:*)",
       "Bash(python:*)",
       "Bash(findstr:*)",
-      "Bash(move:*)"
+      "Bash(move:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
