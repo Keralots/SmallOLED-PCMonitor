@@ -1084,39 +1084,46 @@ def discover_sensors():
             except:
                 current_value = 0
 
+            # Check if this is an active network interface (has traffic)
+            is_active_nic = False
+            sensor_type_lower = sensor.SensorType.lower()
+            if "nic" in sensor.Identifier.lower() and sensor_type_lower == "throughput":
+                if current_value > 0:
+                    is_active_nic = True
+
             sensor_info = {
                 "name": short_name,
                 "display_name": display_name,
                 "source": "wmi",
-                "type": sensor.SensorType.lower(),
+                "type": sensor_type_lower,
                 "unit": get_unit_from_type(sensor.SensorType),
                 "wmi_identifier": sensor.Identifier,
                 "wmi_sensor_name": sensor.Name,
                 "custom_label": "",
-                "current_value": current_value
+                "current_value": current_value,
+                "is_active_nic": is_active_nic
             }
 
             # Categorize sensor
-            sensor_type = sensor.SensorType.lower()
-            if sensor_type == "temperature":
+            if sensor_type_lower == "temperature":
                 sensor_database["temperature"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "fan":
+            elif sensor_type_lower == "fan":
                 sensor_database["fan"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "load":
+            elif sensor_type_lower == "load":
                 sensor_database["load"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "clock":
+            elif sensor_type_lower == "clock":
                 sensor_database["clock"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "power":
+            elif sensor_type_lower == "power":
                 sensor_database["power"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "data":
+            elif sensor_type_lower == "data":
                 sensor_database["data"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "throughput":
+            elif sensor_type_lower == "throughput":
                 sensor_database["throughput"].append(sensor_info)
                 sensor_count += 1
             else:

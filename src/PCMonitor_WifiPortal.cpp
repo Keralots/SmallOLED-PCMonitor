@@ -198,6 +198,8 @@ Settings settings;
 unsigned long lastReceived = 0;
 const unsigned long TIMEOUT = 6000;
 bool ntpSynced = false;  // Track NTP sync status
+unsigned long lastNtpSyncTime = 0;  // Track when NTP was last synced
+const unsigned long NTP_RESYNC_INTERVAL = 3600000;  // Verify NTP every 1 hour (ms)
 unsigned long wifiDisconnectTime = 0;  // Track WiFi disconnect time
 const unsigned long WIFI_RECONNECT_TIMEOUT = 30000;  // 30s before restart
 bool displayAvailable = false;  // Track if display is working
@@ -888,15 +890,19 @@ void setup() {
   struct tm timeinfo;
   for (int i = 0; i < 10; i++) {
     if (getLocalTime(&timeinfo, 100)) {
-      ntpSynced = true;
-      Serial.println("NTP time synchronized successfully");
-      break;
+      // Verify time is reasonable (year > 2020) before accepting
+      if (timeinfo.tm_year > 120) {  // tm_year is years since 1900
+        ntpSynced = true;
+        lastNtpSyncTime = millis();
+        Serial.println("NTP time synchronized successfully");
+        break;
+      }
     }
     delay(100);
   }
 
   if (!ntpSynced) {
-    // Serial.println("NTP sync pending, will retry in background");
+    Serial.println("NTP sync pending, will retry in background");
   }
 
   // Configure hardware watchdog timer (15 seconds)
@@ -1357,18 +1363,43 @@ void saveSettings() {
 }
 
 void applyTimezone() {
+  static long lastGmtOffset = -999999;  // Invalid initial value
+  static int lastDstOffset = -1;
+  static unsigned long lastConfigTime = 0;
+  const unsigned long MIN_CONFIG_INTERVAL = 5000;  // Minimum 5 seconds between configTime calls
+
   long gmtOffset_sec = settings.gmtOffset * 60;  // gmtOffset is now in minutes
   int dstOffset_sec = settings.daylightSaving ? 3600 : 0;
-  configTime(gmtOffset_sec, dstOffset_sec, ntpServer);
+
+  // Only call configTime if settings changed OR enough time has passed
+  bool settingsChanged = (gmtOffset_sec != lastGmtOffset || dstOffset_sec != lastDstOffset);
+  bool enoughTimePassed = (millis() - lastConfigTime > MIN_CONFIG_INTERVAL);
+
+  if (settingsChanged || (lastConfigTime == 0) || enoughTimePassed) {
+    configTime(gmtOffset_sec, dstOffset_sec, ntpServer);
+    lastGmtOffset = gmtOffset_sec;
+    lastDstOffset = dstOffset_sec;
+    lastConfigTime = millis();
+
+    if (settingsChanged) {
+      Serial.println("Timezone settings changed, NTP reconfigured");
+    }
+  } else {
+    Serial.println("Skipping configTime (rate limited, settings unchanged)");
+  }
 }
 
 // Helper function to get time with short timeout
 bool getTimeWithTimeout(struct tm* timeinfo, unsigned long timeout_ms = 100) {
   if (!ntpSynced) {
     if (getLocalTime(timeinfo, timeout_ms)) {
-      ntpSynced = true;
-      Serial.println("NTP successfully synchronized");
-      return true;
+      // Verify time is reasonable (year > 2020) before accepting
+      if (timeinfo->tm_year > 120) {  // tm_year is years since 1900
+        ntpSynced = true;
+        lastNtpSyncTime = millis();
+        Serial.println("NTP successfully synchronized");
+        return true;
+      }
     }
     return false;
   }
@@ -3127,6 +3158,7 @@ void handleSave() {
 
   saveSettings();
   applyTimezone();
+  ntpSynced = false;  // Force NTP resync after timezone change
 
   // Reset Mario animation state when switching modes
   mario_state = MARIO_IDLE;
@@ -3421,6 +3453,7 @@ void handleImportConfig() {
     // Save imported settings
     saveSettings();
     applyTimezone();
+    ntpSynced = false;  // Force NTP resync after config import
 
     server.send(200, "application/json", "{\"success\":true,\"message\":\"Configuration imported successfully\"}");
   } else {
@@ -3527,7 +3560,14 @@ void loop() {
     if (wifiDisconnectTime != 0) {
       Serial.println("WiFi reconnected successfully!");
       wifiDisconnectTime = 0;
+      ntpSynced = false;  // Force NTP resync after WiFi reconnection
     }
+  }
+
+  // Periodic NTP verification - force resync every hour to prevent drift
+  if (ntpSynced && (millis() - lastNtpSyncTime > NTP_RESYNC_INTERVAL)) {
+    Serial.println("Periodic NTP resync triggered");
+    ntpSynced = false;  // Force NTP to resync
   }
 
   int packetSize = udp.parsePacket();
