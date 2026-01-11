@@ -281,6 +281,8 @@ def discover_sensors_via_http(host, port):
                             throughput_in_mb = True
                             # Convert MB/s to KB/s for consistency
                             sensor_value = sensor_value * 1024
+                        # Multiply by 10 to preserve 1 decimal place (ESP32 will divide by 10)
+                        sensor_value = sensor_value * 10
                 except:
                     sensor_value = 0
 
@@ -412,6 +414,7 @@ def get_metric_value_via_http(metric_config, host, port):
         return 0
 
     url = f"http://{host}:{port}/data.json"
+    is_throughput = metric_config.get("unit", "") == "KB/s"
 
     try:
         req = urllib_request.Request(url, method='GET')
@@ -431,11 +434,20 @@ def get_metric_value_via_http(metric_config, host, port):
             for sensor in sensors:
                 if sensor.get("SensorId", "") == sensor_id:
                     value = sensor.get("Value", "0")
+                    value_str = str(value)
                     # Parse value from string (e.g., "45.0 °C" -> 45.0)
                     try:
-                        value_match = re.search(r'[-+]?\d*\.?\d+', str(value))
+                        value_match = re.search(r'[-+]?\d*\.?\d+', value_str)
                         if value_match:
-                            return int(float(value_match.group()))
+                            float_value = float(value_match.group())
+                            # For throughput: multiply by 10 to preserve 1 decimal place
+                            # ESP32 will divide by 10 when displaying
+                            if is_throughput:
+                                # Check if value is in MB/s and convert to KB/s
+                                if "MB/s" in value_str or "mb/s" in value_str.lower():
+                                    float_value = float_value * 1024
+                                float_value = float_value * 10
+                            return int(float_value)
                     except:
                         pass
                     return 0
@@ -1072,39 +1084,46 @@ def discover_sensors():
             except:
                 current_value = 0
 
+            # Check if this is an active network interface (has traffic)
+            is_active_nic = False
+            sensor_type_lower = sensor.SensorType.lower()
+            if "nic" in sensor.Identifier.lower() and sensor_type_lower == "throughput":
+                if current_value > 0:
+                    is_active_nic = True
+
             sensor_info = {
                 "name": short_name,
                 "display_name": display_name,
                 "source": "wmi",
-                "type": sensor.SensorType.lower(),
+                "type": sensor_type_lower,
                 "unit": get_unit_from_type(sensor.SensorType),
                 "wmi_identifier": sensor.Identifier,
                 "wmi_sensor_name": sensor.Name,
                 "custom_label": "",
-                "current_value": current_value
+                "current_value": current_value,
+                "is_active_nic": is_active_nic
             }
 
             # Categorize sensor
-            sensor_type = sensor.SensorType.lower()
-            if sensor_type == "temperature":
+            if sensor_type_lower == "temperature":
                 sensor_database["temperature"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "fan":
+            elif sensor_type_lower == "fan":
                 sensor_database["fan"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "load":
+            elif sensor_type_lower == "load":
                 sensor_database["load"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "clock":
+            elif sensor_type_lower == "clock":
                 sensor_database["clock"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "power":
+            elif sensor_type_lower == "power":
                 sensor_database["power"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "data":
+            elif sensor_type_lower == "data":
                 sensor_database["data"].append(sensor_info)
                 sensor_count += 1
-            elif sensor_type == "throughput":
+            elif sensor_type_lower == "throughput":
                 sensor_database["throughput"].append(sensor_info)
                 sensor_count += 1
             else:
@@ -1971,7 +1990,12 @@ def get_metric_value(metric_config):
 
             sensors = w.Sensor(Identifier=identifier)
             if sensors:
-                return int(sensors[0].Value)
+                value = float(sensors[0].Value)
+                # For throughput: multiply by 10 to preserve 1 decimal place
+                # ESP32 will divide by 10 when displaying
+                if metric_config.get("unit", "") == "KB/s":
+                    value = value * 10
+                return int(value)
         except:
             pass
 
