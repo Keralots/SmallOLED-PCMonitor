@@ -22,7 +22,7 @@
 
 // ========== Display Type Selection ==========
 // Set to 0 for 0.96" SSD1306 (I2C: 0x3C), set to 1 for 1.3" SH1106 (I2C: 0x3D)
-#define DISPLAY_TYPE 0  // Change to 1 for 1.3" OLED
+#define DISPLAY_TYPE 1  // Change to 1 for 1.3" OLED
 
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -4098,11 +4098,19 @@ void displayMetricCompact(Metric* m) {
   if (settings.useRpmKFormat && strcmp(m->unit, "RPM") == 0 && m->value >= 1000) {
     // RPM with K suffix: "FAN1: 1.2K"
     snprintf(text, 40, "%s:%s%.1fK", displayLabel, spaces, m->value / 1000.0);
-  } else if (settings.useNetworkMBFormat && strcmp(m->unit, "KB/s") == 0) {
-    // Network speed with M suffix: "DL: 1.2M" or "DL: 0.5M"
-    snprintf(text, 40, "%s:%s%.1fM", displayLabel, spaces, m->value / 1000.0);
+  } else if (strcmp(m->unit, "KB/s") == 0) {
+    // Network throughput - value is multiplied by 10 from Python for decimal precision
+    // Divide by 10 to get actual value, then format appropriately
+    float actualValue = m->value / 10.0;
+    if (settings.useNetworkMBFormat) {
+      // M suffix: "DL: 1.2M" (value in MB/s)
+      snprintf(text, 40, "%s:%s%.1fM", displayLabel, spaces, actualValue / 1000.0);
+    } else {
+      // Show with 1 decimal: "DL: 1.5KB/s"
+      snprintf(text, 40, "%s:%s%.1f%s", displayLabel, spaces, actualValue, m->unit);
+    }
   } else {
-    // Normal: "CPU: 45%" or "FAN1: 1800RPM" or "DL: 1200KB/s"
+    // Normal: "CPU: 45%" or "FAN1: 1800RPM"
     snprintf(text, 40, "%s:%s%d%s", displayLabel, spaces, m->value, m->unit);
   }
 
@@ -4112,8 +4120,19 @@ void displayMetricCompact(Metric* m) {
     for (int c = 0; c < metricData.count; c++) {
       if (metricData.metrics[c].id == m->companionId) {
         Metric& companion = metricData.metrics[c];
-        char companionText[15];
-        snprintf(companionText, 15, " %d%s", companion.value, companion.unit);
+        char companionText[20];
+        // Handle KB/s throughput values (multiplied by 10 from Python)
+        if (strcmp(companion.unit, "KB/s") == 0) {
+          float compValue = companion.value / 10.0;
+          if (settings.useNetworkMBFormat) {
+            // M suffix for companion too: " 1.2M"
+            snprintf(companionText, 20, " %.1fM", compValue / 1000.0);
+          } else {
+            snprintf(companionText, 20, " %.1f%s", compValue, companion.unit);
+          }
+        } else {
+          snprintf(companionText, 20, " %d%s", companion.value, companion.unit);
+        }
         strncat(text, companionText, 40 - strlen(text) - 1);
         break;
       }
@@ -4138,7 +4157,14 @@ void drawProgressBar(int x, int y, int width, Metric* m) {
   int range = m->barMax - m->barMin;
   if (range <= 0) range = 100;  // Avoid division by zero
 
-  int valueInRange = constrain(m->value, m->barMin, m->barMax) - m->barMin;
+  // For KB/s throughput: value is x10, but barMin/barMax are normal
+  // So divide value by 10 for proper bar display
+  int displayValue = m->value;
+  if (strcmp(m->unit, "KB/s") == 0) {
+    displayValue = m->value / 10;
+  }
+
+  int valueInRange = constrain(displayValue, m->barMin, m->barMax) - m->barMin;
   int fillWidth = map(valueInRange, 0, range, 0, actualWidth - 2);
 
   // Draw bar outline (8px tall, full row height)
