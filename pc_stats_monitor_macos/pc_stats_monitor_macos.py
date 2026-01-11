@@ -1,20 +1,27 @@
 """
-PC Stats Monitor v2.0 - macOS Edition
+PC Stats Monitor v2.1 - macOS Edition
 ======================================
 System monitoring for macOS with ESP32 OLED display support.
 
 Features:
 - psutil-based system metrics (CPU, RAM, Disk, Network)
 - ioreg-based hardware sensors (temperature, fans - hardware dependent)
-- Tkinter GUI for configuration
+- Tkinter GUI for configuration with custom labels
 - rumps menu bar integration for background operation
+- Auto-detach from terminal when running minimized
 - LaunchAgent autostart support
-- UDP protocol v2.0 compatible with ESP32 firmware
+- UDP protocol v2.1 compatible with ESP32 firmware
+
+Version 2.1 Improvements:
+- Custom labels now visible in preview (live updates)
+- Auto-detach from terminal - no longer stays open
+- Improved GUI layout and user experience
+- Better network metrics handling
 
 Usage:
     python3 pc_stats_monitor_macos.py           # First run - opens GUI
     python3 pc_stats_monitor_macos.py --configure   # Reconfigure
-    python3 pc_stats_monitor_macos.py --minimized   # Run in menu bar
+    python3 pc_stats_monitor_macos.py --minimized   # Run in menu bar (auto-detaches)
     python3 pc_stats_monitor_macos.py --autostart enable  # Enable autostart
 
 Requirements:
@@ -52,7 +59,7 @@ CONFIG_FILE = "monitor_config_macos.json"
 
 # Default configuration
 DEFAULT_CONFIG = {
-    "version": "2.0",
+    "version": "2.1",
     "esp32_ip": "192.168.0.163",
     "udp_port": 4210,
     "update_interval": 3,
@@ -219,7 +226,7 @@ def discover_sensors():
     Discover all available sensors on macOS
     """
     print("=" * 60)
-    print(f"PC STATS MONITOR v2.0 - SENSOR DISCOVERY (macOS {get_macos_version()})")
+    print(f"PC STATS MONITOR v2.1 - SENSOR DISCOVERY (macOS {get_macos_version()})")
     print("=" * 60)
     print(f"Hardware Type: {HARDWARE_TYPE.replace('_', ' ').title()}")
 
@@ -384,18 +391,30 @@ def get_unit_from_type(sensor_type):
 
 
 def load_config():
-    """Load configuration from file"""
+    """Load configuration from file with version checking"""
     if not os.path.exists(CONFIG_FILE):
         return None
 
     try:
         with open(CONFIG_FILE, 'r') as f:
             config = json.load(f)
-        print(f"\nLoaded configuration from {CONFIG_FILE}")
-        print(f"  Selected metrics: {len(config.get('metrics', []))}")
+
+        # Version check - show info if old version
+        config_version = config.get("version", "1.0")
+        if config_version < "2.1":
+            print(f"\n✓ Loaded configuration from {CONFIG_FILE} (v{config_version})")
+            print(f"  Selected metrics: {len(config.get('metrics', []))}")
+            print(f"\n  Note: Config is from older version. Consider reconfiguring")
+            print(f"        to benefit from latest improvements (v2.1):")
+            print(f"        - Custom labels now shown in preview")
+            print(f"        - Improved background execution")
+            print(f"        - Better GUI layout")
+        else:
+            print(f"\n✓ Loaded configuration from {CONFIG_FILE}")
+            print(f"  Selected metrics: {len(config.get('metrics', []))}")
         return config
     except Exception as e:
-        print(f"\nError loading config: {e}")
+        print(f"\n✗ Error loading config: {e}")
         return None
 
 
@@ -492,7 +511,7 @@ class MetricSelectorGUI:
     """
     def __init__(self, root, existing_config=None):
         self.root = root
-        self.root.title("PC Monitor v2.0 - macOS Configuration")
+        self.root.title("PC Monitor v2.1 - macOS Configuration")
         self.root.geometry("1200x800")
         self.root.resizable(False, False)
 
@@ -717,6 +736,9 @@ class MetricSelectorGUI:
                 label_entry = tk.Entry(label_frame, width=15, font=("Arial", 8))
                 label_entry.pack(side=tk.LEFT, padx=5)
 
+                # Update preview when label text changes
+                label_entry.bind("<KeyRelease>", lambda e: self.update_counter())
+
                 # Store reference to label entry
                 sensor_key = f"{sensor['source']}_{sensor['display_name']}"
                 self.label_entries[sensor_key] = {
@@ -832,6 +854,15 @@ class MetricSelectorGUI:
 
         self.update_counter()
 
+    def get_display_label_for_metric(self, sensor):
+        """Get custom label if set, otherwise return sensor name"""
+        sensor_key = f"{sensor['source']}_{sensor['display_name']}"
+        if sensor_key in self.label_entries:
+            custom = self.label_entries[sensor_key]['entry'].get().strip()
+            if custom:
+                return custom[:10]  # Enforce 10 char limit
+        return sensor['name']
+
     def update_counter(self):
         count = len(self.selected_metrics)
         self.counter_label.config(text=f"Selected: {count}/{MAX_METRICS}")
@@ -841,8 +872,8 @@ class MetricSelectorGUI:
         else:
             self.counter_label.config(fg="#ffffff")
 
-        # Update preview
-        preview = " | ".join([f"{i+1}. {m['name']}"
+        # Update preview - now shows custom labels
+        preview = " | ".join([f"{i+1}. {self.get_display_label_for_metric(m)}"
                               for i, m in enumerate(self.selected_metrics[:MAX_METRICS])])
         self.preview_text.config(text=preview if preview else "(none selected)")
 
@@ -929,7 +960,7 @@ class MetricSelectorGUI:
 
         # Build config
         config = {
-            "version": "2.0",
+            "version": "2.1",
             "esp32_ip": esp_ip,
             "udp_port": udp_port,
             "update_interval": update_interval,
@@ -1122,7 +1153,9 @@ def run_minimized(config):
     @app.menu("Configure")
     def configure_callback(_):
         """Open configuration GUI"""
-        os.system(f'"{sys.executable}" "{os.path.abspath(__file__)}" --configure &')
+        # Use subprocess to launch config GUI in background
+        subprocess.Popen([sys.executable, os.path.abspath(__file__), '--configure'],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     @app.menu("Quit")
     def quit_callback(_):
@@ -1139,7 +1172,11 @@ def run_minimized(config):
         "Quit"
     ]
 
-    print(f"\nRunning in menu bar. Click the menu bar icon to control.")
+    # Only print messages when running directly (not detached or from LaunchAgent)
+    if sys.stdin.isatty() and not os.environ.get('__PYVENV_LAUNCHER__'):
+        print(f"\n✓ Running in menu bar. Click the menu bar icon to control.")
+        print("✓ You can now close this Terminal window.\n")
+
     app.run()
 
 
@@ -1149,13 +1186,13 @@ def main():
     """
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='PC Stats Monitor v2.0 - macOS Edition',
+        description='PC Stats Monitor v2.1 - macOS Edition',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
     python3 pc_stats_monitor_macos.py           # First run - opens GUI
     python3 pc_stats_monitor_macos.py --configure   # Reconfigure
-    python3 pc_stats_monitor_macos.py --minimized   # Run in menu bar
+    python3 pc_stats_monitor_macos.py --minimized   # Run in menu bar (auto-detaches)
     python3 pc_stats_monitor_macos.py --autostart enable  # Enable autostart
         """
     )
@@ -1167,7 +1204,30 @@ Examples:
                        help='Enable/disable autostart (LaunchAgent)')
     parser.add_argument('--minimized', action='store_true',
                        help='Run minimized to menu bar')
+    parser.add_argument('--detached', action='store_true',
+                       help=argparse.SUPPRESS)  # Internal flag for background process
     args = parser.parse_args()
+
+    # Auto-detach from terminal when running minimized (unless already detached)
+    if args.minimized and not args.detached and sys.stdin.isatty():
+        # Running from terminal - relaunch as background process
+        print("\n" + "=" * 60)
+        print("  Launching PC Monitor in background...")
+        print("=" * 60)
+        print("\n✓ The app will appear in your menu bar (top right)")
+        print("✓ You can close this Terminal window now")
+        print("\nTo configure later, run:")
+        print(f"  python3 {os.path.basename(__file__)} --configure\n")
+
+        # Relaunch with --detached flag
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), '--minimized', '--detached'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True  # Fully detach from parent
+        )
+        return
 
     # Handle autostart
     if args.autostart:
@@ -1182,7 +1242,7 @@ Examples:
         return
 
     print("\n" + "=" * 60)
-    print("  PC STATS MONITOR v2.0 - macOS Edition")
+    print("  PC STATS MONITOR v2.1 - macOS Edition")
     print("  System Monitoring with GUI Configuration")
     print("=" * 60 + "\n")
 
