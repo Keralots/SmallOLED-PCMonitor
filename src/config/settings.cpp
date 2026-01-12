@@ -250,8 +250,10 @@ void loadSettings() {
                          MAX_METRICS * sizeof(int));
     preferences.getBytes("barMax", settings.metricBarMax,
                          MAX_METRICS * sizeof(int));
-    preferences.getBytes("barWidths", settings.metricBarWidths, MAX_METRICS);
-    preferences.getBytes("barOffsets", settings.metricBarOffsets, MAX_METRICS);
+    preferences.getBytes("barWidths", settings.metricBarWidths,
+                         MAX_METRICS * sizeof(int));
+    preferences.getBytes("barOffsets", settings.metricBarOffsets,
+                         MAX_METRICS * sizeof(int));
     Serial.println("Loaded progress bar settings from NVS");
   } else {
     // Default: no progress bars
@@ -360,8 +362,10 @@ void saveSettings() {
                        MAX_METRICS * sizeof(int));
   preferences.putBytes("barMax", settings.metricBarMax,
                        MAX_METRICS * sizeof(int));
-  preferences.putBytes("barWidths", settings.metricBarWidths, MAX_METRICS);
-  preferences.putBytes("barOffsets", settings.metricBarOffsets, MAX_METRICS);
+  preferences.putBytes("barWidths", settings.metricBarWidths,
+                       MAX_METRICS * sizeof(int));
+  preferences.putBytes("barOffsets", settings.metricBarOffsets,
+                       MAX_METRICS * sizeof(int));
 
   // Save custom metric labels
   for (int i = 0; i < MAX_METRICS; i++) {
