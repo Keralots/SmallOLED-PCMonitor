@@ -1,0 +1,43 @@
+/*
+ * SmallOLED-PCMonitor - Display Module
+ *
+ * Display initialization and global display object.
+ * Supports both SSD1306 and SH1106 displays via compile-time selection.
+ */
+
+#ifndef DISPLAY_H
+#define DISPLAY_H
+
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include "../config/user_config.h"
+
+// Include appropriate display library based on DISPLAY_TYPE
+#ifndef DISPLAY_TYPE
+  #define DISPLAY_TYPE DEFAULT_DISPLAY_TYPE
+#endif
+
+#if DISPLAY_TYPE == 1
+  #include <Adafruit_SH110X.h>
+  extern Adafruit_SH1106G display;
+  #ifndef DISPLAY_WHITE
+    #define DISPLAY_WHITE SH110X_WHITE
+  #endif
+  #ifndef DISPLAY_BLACK
+    #define DISPLAY_BLACK SH110X_BLACK
+  #endif
+#else
+  #include <Adafruit_SSD1306.h>
+  extern Adafruit_SSD1306 display;
+  #ifndef DISPLAY_WHITE
+    #define DISPLAY_WHITE SSD1306_WHITE
+  #endif
+  #ifndef DISPLAY_BLACK
+    #define DISPLAY_BLACK SSD1306_BLACK
+  #endif
+#endif
+
+// Initialize display - returns true on success
+bool initDisplay();
+
+#endif // DISPLAY_H

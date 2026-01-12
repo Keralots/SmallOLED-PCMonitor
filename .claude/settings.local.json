@@ -18,7 +18,8 @@
       "Bash(findstr:*)",
       "Bash(move:*)",
       "Bash(cat:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(\"C:\\\\Users\\\\rafal\\\\.platformio\\\\penv\\\\Scripts\\\\platformio.exe\" run -d \"c:/Users/rafal/Documents/PlatformIO/Projects/SmallOLED-PCMonitor\")"
     ],
     "deny": [],
     "ask": []
