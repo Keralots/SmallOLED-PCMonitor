@@ -18,7 +18,7 @@
 //   1 = SH1106  (1.3" OLED, larger displays)
 //
 // CHANGE THIS VALUE to match your OLED display type!
-#define DEFAULT_DISPLAY_TYPE 0
+#define DEFAULT_DISPLAY_TYPE 1
 
 // I2C pins for ESP32-C3
 #define I2C_SDA_PIN 8

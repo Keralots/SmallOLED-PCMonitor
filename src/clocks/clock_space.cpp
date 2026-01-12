@@ -8,6 +8,7 @@
 #include "../config/config.h"
 #include "../display/display.h"
 #include "clocks.h"
+#include "clock_constants.h"
 
 // ========== Forward Declarations ==========
 void fireSpaceLaser(int target_digit_idx);
@@ -115,7 +116,7 @@ void handleSpaceSlidingState() {
   float target_x = target_x_positions[current_target_index];
 
   // Slide horizontally to target
-  if (abs(space_x - target_x) > 1.0) {
+  if (abs(space_x - target_x) > MOVEMENT_THRESHOLD) {
     if (space_x < target_x) {
       space_x += (settings.spaceAttackSpeed / 10.0);
       if (space_x > target_x) space_x = target_x;
@@ -140,7 +141,7 @@ void handleSpaceShootingState() {
 void handleSpaceExplodingState() {
   space_explosion_timer++;
   // Move away quickly - don't wait for explosion to finish
-  if (space_explosion_timer >= 5) {
+  if (space_explosion_timer >= SPACE_EXPLOSION_FRAMES) {
     current_target_index++;
     if (current_target_index < num_targets) {
       space_state = SPACE_MOVING_NEXT;
@@ -154,7 +155,7 @@ void handleSpaceExplodingState() {
 void handleSpaceMovingNextState() {
   float target_x = target_x_positions[current_target_index];
 
-  if (abs(space_x - target_x) > 1.0) {
+  if (abs(space_x - target_x) > MOVEMENT_THRESHOLD) {
     if (space_x < target_x) {
       space_x += (settings.spaceAttackSpeed / 10.0);
       if (space_x > target_x) space_x = target_x;
@@ -171,9 +172,9 @@ void handleSpaceMovingNextState() {
 
 // Handle returning to patrol - slide back to center
 void handleSpaceReturningState() {
-  float center_x = 64;
+  float center_x = SCREEN_CENTER_X;
 
-  if (abs(space_x - center_x) > 1.0) {
+  if (abs(space_x - center_x) > MOVEMENT_THRESHOLD) {
     if (space_x < center_x) {
       space_x += (settings.spacePatrolSpeed / 10.0);
       if (space_x > center_x) space_x = center_x;
@@ -237,7 +238,7 @@ void updateSpaceLaser() {
 // Fire space laser
 void fireSpaceLaser(int target_digit_idx) {
   space_laser.x = space_x;
-  space_laser.y = space_y - 4;  // Start from top of character
+  space_laser.y = space_y - SPACE_LASER_OFFSET_Y;  // Start from top of character
   space_laser.length = 0;
   space_laser.active = true;
   space_laser.target_digit_idx = target_digit_idx;

@@ -14,6 +14,9 @@
 // Get time with timeout (defined in main.cpp)
 bool getTimeWithTimeout(struct tm* timeinfo, unsigned long timeout_ms = 100);
 
+// Animation detection for adaptive refresh rate
+bool isAnimationActive();
+
 // Helper to determine if colon should be displayed (blinking mode)
 bool shouldShowColon();
 

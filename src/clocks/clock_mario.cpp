@@ -7,6 +7,7 @@
 #include "../config/config.h"
 #include "../display/display.h"
 #include "clocks.h"
+#include "clock_constants.h"
 
 // Forward declarations for helper functions used by Mario clock
 void drawTimeWithBounce();
@@ -109,7 +110,7 @@ void displayClockWithMario() {
       break;
   }
 
-  int date_x = (SCREEN_WIDTH - 60) / 2;
+  int date_x = (SCREEN_WIDTH - DATE_DISPLAY_WIDTH) / 2;
   display.setCursor(date_x, 4);
   display.print(dateStr);
 
@@ -140,12 +141,12 @@ void updateMarioAnimation(struct tm* timeinfo) {
     animation_triggered = false;
   }
 
-  if (seconds >= 55 && !animation_triggered && mario_state == MARIO_IDLE) {
+  if (seconds >= MARIO_ANIMATION_TRIGGER_SECOND && !animation_triggered && mario_state == MARIO_IDLE) {
     animation_triggered = true;
     calculateTargetDigits(displayed_hour, displayed_min);
     if (num_targets > 0) {
       current_target_index = 0;
-      mario_x = -15;
+      mario_x = MARIO_START_X;
       mario_state = MARIO_WALKING;
       mario_facing_right = true;
       digit_bounce_triggered = false;
@@ -155,19 +156,19 @@ void updateMarioAnimation(struct tm* timeinfo) {
   switch (mario_state) {
     case MARIO_IDLE:
       mario_walk_frame = 0;
-      mario_x = -15;
+      mario_x = MARIO_START_X;
       break;
 
     case MARIO_WALKING:
       if (current_target_index < num_targets) {
         int target = target_x_positions[current_target_index];
 
-        if (abs(mario_x - target) > 3) {
+        if (abs(mario_x - target) > MARIO_TARGET_PROXIMITY) {
           if (mario_x < target) {
-            mario_x += 2.5;
+            mario_x += MARIO_WALK_SPEED;
             mario_facing_right = true;
           } else {
-            mario_x -= 2.5;
+            mario_x -= MARIO_WALK_SPEED;
             mario_facing_right = false;
           }
           mario_walk_frame = (mario_walk_frame + 1) % 2;
@@ -199,7 +200,7 @@ void updateMarioAnimation(struct tm* timeinfo) {
           updateSpecificDigit(target_digit_index[current_target_index],
                              target_digit_values[current_target_index]);
 
-          jump_velocity = 2.0;
+          jump_velocity = MARIO_BOUNCE_VELOCITY;
         }
 
         if (mario_jump_y >= 0) {
@@ -221,12 +222,12 @@ void updateMarioAnimation(struct tm* timeinfo) {
       break;
 
     case MARIO_WALKING_OFF:
-      mario_x += 2.5;
+      mario_x += MARIO_WALK_SPEED;
       mario_walk_frame = (mario_walk_frame + 1) % 2;
 
       if (mario_x > SCREEN_WIDTH + 15) {
         mario_state = MARIO_IDLE;
-        mario_x = -15;
+        mario_x = MARIO_START_X;
       }
       break;
   }

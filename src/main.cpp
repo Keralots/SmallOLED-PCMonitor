@@ -62,95 +62,12 @@ unsigned long lastReceived = 0;
 unsigned long wifiDisconnectTime = 0;
 unsigned long nextDisplayUpdate = 0;
 
-// ========== Digit X positions for time display ==========
-// Standard digit positions for Mario, Standard, Large, Space, Pong clocks
-// (evenly spaced 18px)
-extern const int DIGIT_X[5] = {19, 37, 55, 73, 91};
-
-// Progressive fragmentation: spawn 25%, then 50%, then 25%
-extern const float FRAGMENT_SPAWN_PERCENT[3] = {0.25, 0.50, 0.25};
-
-// ========== Mario Clock Globals ==========
-MarioState mario_state = MARIO_IDLE;
-float mario_x = -15;
-float mario_jump_y = 0.0;
-float jump_velocity = 0.0;
-int mario_base_y = 62;
-bool mario_facing_right = true;
-int mario_walk_frame = 0;
-unsigned long last_mario_update = 0;
-int displayed_hour = 0;
-int displayed_min = 0;
-bool time_overridden = false;
-int last_minute = -1;
-bool animation_triggered = false;
-bool digit_bounce_triggered = false;
-int num_targets = 0;
-int target_x_positions[4] = {0};
-int target_digit_index[4] = {0};
-int target_digit_values[4] = {0};
-int current_target_index = 0;
-float digit_offset_y[5] = {0};
-float digit_velocity[5] = {0};
-
-// ========== Space Clock Globals ==========
-SpaceState space_state = SPACE_PATROL;
-float space_x = 64.0;
-const float space_y = 56; // Fixed Y position at bottom
-int space_anim_frame = 0;
-int space_patrol_direction = 1;
-unsigned long last_space_update = 0;
-unsigned long last_space_sprite_toggle = 0;
-Laser space_laser = {0, 0, 0, false, -1};
-SpaceFragment space_fragments[MAX_SPACE_FRAGMENTS];
-int space_explosion_timer = 0;
-
-// ========== Pong Clock Globals ==========
-PongBall pong_balls[MAX_PONG_BALLS];
-SpaceFragment pong_fragments[MAX_PONG_FRAGMENTS];
-FragmentTarget fragment_targets[MAX_PONG_FRAGMENTS];
-DigitTransition digit_transitions[5];
-BreakoutPaddle breakout_paddle = {64, 20, 64, 3}; // x, width, target_x, speed
-unsigned long last_pong_update = 0;
-bool ball_stuck_to_paddle[MAX_PONG_BALLS] = {false};
-unsigned long ball_stick_release_time[MAX_PONG_BALLS] = {0};
-int ball_stuck_x_offset[MAX_PONG_BALLS] = {0};
-int paddle_last_x = 64;
-
-// ========== Pac-Man Clock Globals ==========
-PacmanState pacman_state = PACMAN_PATROL;
-float pacman_x = 30.0;
-float pacman_y = 56.0; // Bottom patrol line
-int pacman_direction = 1;
-int pacman_mouth_frame = 0;
-unsigned long last_pacman_update = 0;
-unsigned long last_pacman_mouth_toggle = 0;
-int last_minute_pacman = -1;
-bool pacman_animation_triggered = false;
-bool digit_being_eaten[5] = {false};
-int digit_eaten_rows_left[5] = {0};
-int digit_eaten_rows_right[5] = {0};
-PatrolPellet patrol_pellets[MAX_PATROL_PELLETS];
-int num_pellets = 0;
-uint8_t digitEatenPellets[5][5] = {{0}};
-uint8_t current_eating_digit_index = 0;
-uint8_t current_eating_digit_value = 0;
-uint8_t current_path_step = 0;
-float pellet_eat_distance = 0.0;
-uint8_t target_digit_queue[4] = {0};
-uint8_t target_digit_new_values[4] = {0};
-uint8_t target_queue_length = 0;
-uint8_t target_queue_index = 0;
-uint8_t pending_digit_index = 255;
-uint8_t pending_digit_value = 0;
-
 // ========== Forward Declarations ==========
 // Redundant forward declarations removed (covered by headers)
 void displayStats();
 void displayStatsCompactGrid();
 void displayMetricCompact(Metric *m);
 void drawProgressBar(int x, int y, int width, Metric *m);
-bool isAnimationActive();
 int getOptimalRefreshRate();
 bool allSpaceFragmentsInactive(); // Required if not in clocks.h
 
@@ -205,6 +122,7 @@ void updateSpecificDigit(uint8_t digitIndex, uint8_t newValue);
 // ========== Module Includes ==========
 #include "display/display.h"
 #include "clocks/clocks.h"
+#include "clocks/clock_globals.h"
 #include "metrics/metrics.h"
 #include "network/network.h"
 #include "web/web.h"
@@ -227,59 +145,6 @@ bool getTimeWithTimeout(struct tm *timeinfo, unsigned long timeout_ms) {
     return false;
   }
   return getLocalTime(timeinfo, timeout_ms);
-}
-
-// Detects if any animation is currently active for refresh rate boosting
-bool isAnimationActive() {
-  // Only check for animations in clock mode (when offline)
-  if (metricData.online) {
-    return false; // No animations in metrics mode
-  }
-
-  // Check Mario clock animations (clockStyle == 0)
-  if (settings.clockStyle == 0) {
-    // Check if Mario is jumping
-    if (mario_state == MARIO_JUMPING) {
-      return true;
-    }
-    // Check if any digit is bouncing (digit_offset_y != 0)
-    for (int i = 0; i < 5; i++) {
-      if (digit_offset_y[i] != 0.0) {
-        return true;
-      }
-    }
-  }
-
-  // Check Space clock animations (clockStyle == 3 or 4)
-  if (settings.clockStyle == 3 || settings.clockStyle == 4) {
-    // Check if space character is in action state (not just patrolling)
-    if (space_state != SPACE_PATROL) {
-      return true;
-    }
-    // Check if laser is active
-    if (space_laser.active) {
-      return true;
-    }
-    // Check if explosion fragments are active
-    if (!allSpaceFragmentsInactive()) {
-      return true;
-    }
-  }
-
-  // Check Pong clock animations (clockStyle == 5)
-  if (settings.clockStyle == 5) {
-    // Pong is always active (ball moving, paddles tracking)
-    return true;
-  }
-
-  // Check Pac-Man clock animations (clockStyle == 6)
-  if (settings.clockStyle == 6) {
-    // Always active - Pac-Man is constantly moving and eating pellets
-    return true;
-  }
-
-  // Standard and Large clocks (clockStyle 1 & 2) have no animations
-  return false;
 }
 
 // Returns optimal refresh rate in Hz based on current display mode
@@ -384,30 +249,7 @@ void loop() {
   server.handleClient();
 
   // Handle UDP packets
-  int packetSize = udp.parsePacket();
-  if (packetSize) {
-    static char buffer[2048];
-    int len = udp.read(buffer, sizeof(buffer) - 1);
-    if (len > 0) {
-      buffer[len] = '\0';
-      Serial.print("UDP packet: ");
-      Serial.print(packetSize);
-      Serial.print(" bytes, read: ");
-      Serial.print(len);
-      Serial.println(" bytes");
-
-      if (packetSize > (int)sizeof(buffer) - 1) {
-        Serial.printf(
-            "ERROR: Packet %d bytes exceeds buffer %d bytes! Data truncated.\n",
-            packetSize, (int)sizeof(buffer));
-        udp.flush();
-        lastReceived = millis();
-      } else {
-        parseStats(buffer);
-        lastReceived = millis();
-      }
-    }
-  }
+  handleUDP();
 
   // Check timeout
   if (millis() - lastReceived > TIMEOUT && metricData.online) {

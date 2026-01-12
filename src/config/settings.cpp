@@ -161,11 +161,11 @@ void loadSettings() {
   settings.pacmanEatingSpeed =
       preferences.getUChar("pacmanEatSpeed", 20); // Default: 2.0 eating speed
   settings.pacmanMouthSpeed =
-      preferences.getUChar("pacmanMouthSpeed", 10); // Default: 1.0 Hz
+      preferences.getUChar("pacmanMouthSpd", 10); // Default: 1.0 Hz (shortened key name)
   settings.pacmanPelletCount =
-      preferences.getUChar("pacmanPelletCount", 8); // Default: 8
+      preferences.getUChar("pacmanPellCount", 8); // Default: 8 (shortened key name)
   settings.pacmanPelletRandomSpacing =
-      preferences.getBool("pacmanPelletRand", true); // Default: true
+      preferences.getBool("pacmanPellRand", true); // Default: true (shortened key name)
   settings.pacmanBounceEnabled =
       preferences.getBool("pacmanBounce", true); // Default: true
   settings.spaceCharacterType =
@@ -262,6 +262,13 @@ void loadSettings() {
       settings.metricBarWidths[i] = 60; // Default width
       settings.metricBarOffsets[i] = 0; // Default: no offset
     }
+    // CRITICAL FIX: Save default bar settings to NVS so they persist across reboots
+    preferences.putBytes("metricBarPos", settings.metricBarPositions, MAX_METRICS);
+    preferences.putBytes("barMin", settings.metricBarMin, MAX_METRICS * sizeof(int));
+    preferences.putBytes("barMax", settings.metricBarMax, MAX_METRICS * sizeof(int));
+    preferences.putBytes("barWidths", settings.metricBarWidths, MAX_METRICS * sizeof(int));
+    preferences.putBytes("barOffsets", settings.metricBarOffsets, MAX_METRICS * sizeof(int));
+    Serial.println("Initialized and saved default progress bar settings to NVS");
   }
 
   // Load custom metric labels
@@ -319,9 +326,9 @@ void saveSettings() {
   preferences.putUChar("pongPadWid", settings.pongPaddleWidth);
   preferences.putUChar("pacmanSpeed", settings.pacmanSpeed);
   preferences.putUChar("pacmanEatSpeed", settings.pacmanEatingSpeed);
-  preferences.putUChar("pacmanMouthSpeed", settings.pacmanMouthSpeed);
-  preferences.putUChar("pacmanPelletCount", settings.pacmanPelletCount);
-  preferences.putBool("pacmanPelletRand", settings.pacmanPelletRandomSpacing);
+  preferences.putUChar("pacmanMouthSpd", settings.pacmanMouthSpeed);
+  preferences.putUChar("pacmanPellCount", settings.pacmanPelletCount);
+  preferences.putBool("pacmanPellRand", settings.pacmanPelletRandomSpacing);
   preferences.putBool("pacmanBounce", settings.pacmanBounceEnabled);
   preferences.putUChar("spaceChar", settings.spaceCharacterType);
   preferences.putUChar("spacePatrol", settings.spacePatrolSpeed);
