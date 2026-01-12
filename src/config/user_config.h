@@ -34,7 +34,7 @@
 // ========== WiFi Configuration ==========
 // Access Point name and password for initial setup
 #define AP_NAME "PCMonitor-Setup"
-#define AP_PASSWORD "pcmonitor123"
+#define AP_PASSWORD "monitor123"
 
 // ========== Optional Hardcoded WiFi Credentials ==========
 // Use this if your ESP32 module has a faulty WiFi AP mode
