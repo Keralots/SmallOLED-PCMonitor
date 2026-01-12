@@ -36,6 +36,13 @@
 #define AP_NAME "PCMonitor-Setup"
 #define AP_PASSWORD "pcmonitor123"
 
+// ========== Optional Hardcoded WiFi Credentials ==========
+// Use this if your ESP32 module has a faulty WiFi AP mode
+// Set SSID and password to your home network, then upload
+// Leave as empty strings "" to use normal WiFiManager portal
+#define HARDCODED_WIFI_SSID ""
+#define HARDCODED_WIFI_PASSWORD ""
+
 // WiFi reconnection timeout (ms) - restart if WiFi lost for this long
 #define WIFI_RECONNECT_TIMEOUT 60000
 

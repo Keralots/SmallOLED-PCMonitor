@@ -36,29 +36,12 @@
 #include "config/config.h"
 #include "utils/utils.h"
 
+// ========== External Objects ==========
+extern WiFiUDP udp;              // Defined in network.cpp
+extern WebServer server;         // Defined in web.cpp
+extern Preferences preferences;  // Defined in settings.cpp
 
-// ========== WiFi Portal Configuration ==========
-#ifndef AP_NAME
-#define AP_NAME "PCMonitor-Setup"
-#endif
-#ifndef AP_PASSWORD
-#define AP_PASSWORD "monitor123"
-#endif
-
-// ========== Optional Hardcoded WiFi (for modules with faulty AP) ==========
-const char *HARDCODED_SSID = "";
-const char *HARDCODED_PASSWORD = "";
-
-// ========== UDP Configuration ==========
-extern WiFiUDP udp; // Defined in network.cpp
-
-// ========== Web Server ==========
-extern WebServer server;        // Defined in web.cpp
-extern Preferences preferences; // Defined in settings.cpp
-
-// ========== Display Configuration ==========
-#define SDA_PIN 8
-#define SCL_PIN 9
+// ========== Display Object ==========
 #if DISPLAY_TYPE == 1
 Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define DISPLAY_WHITE SH110X_WHITE
@@ -68,9 +51,6 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 #define DISPLAY_WHITE SSD1306_WHITE
 #define DISPLAY_BLACK SSD1306_BLACK
 #endif
-
-// ========== NTP Configuration ==========
-const char *ntpServer = "pool.ntp.org";
 
 // ========== Global State ==========
 Settings settings;
@@ -223,6 +203,7 @@ void drawPacman(int x, int y, int direction, int mouthFrame);
 void updateSpecificDigit(uint8_t digitIndex, uint8_t newValue);
 
 // ========== Module Includes ==========
+#include "display/display.h"
 #include "clocks/clocks.h"
 #include "metrics/metrics.h"
 #include "network/network.h"
@@ -340,28 +321,11 @@ void setup() {
   // Load settings from flash
   loadSettings();
 
-  Wire.begin(SDA_PIN, SCL_PIN);
-
-  // Attempt display initialization with retries
-  for (int attempt = 0; attempt < 3; attempt++) {
-#if DISPLAY_TYPE == 1
-    byte addrToTry = (attempt == 0) ? 0x3C : 0x3D;
-    display.begin(addrToTry);
-    display.setContrast(255);
-    displayAvailable = true;
-    break;
-#else
-    if (display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
-      displayAvailable = true;
-      break;
-    }
-#endif
-    delay(500);
-  }
+  // Initialize display
+  displayAvailable = initDisplay();
 
   if (!displayAvailable) {
-    Serial.println(
-        "WARNING: Display not available, continuing without display");
+    Serial.println("WARNING: Display not available, continuing without display");
   } else {
     display.clearDisplay();
     display.setTextColor(DISPLAY_WHITE);
@@ -374,11 +338,11 @@ void setup() {
   }
 
   // Check if hardcoded WiFi credentials are provided
-  bool useManualWiFi = (strlen(HARDCODED_SSID) > 0);
+  bool useManualWiFi = (strlen(HARDCODED_WIFI_SSID) > 0);
 
   if (useManualWiFi) {
     Serial.println("\n*** USING HARDCODED WIFI CREDENTIALS ***");
-    if (!connectManualWiFi(HARDCODED_SSID, HARDCODED_PASSWORD)) {
+    if (!connectManualWiFi(HARDCODED_WIFI_SSID, HARDCODED_WIFI_PASSWORD)) {
       Serial.println("Manual WiFi connection failed!");
       Serial.println("Falling back to WiFiManager portal...");
       useManualWiFi = false;
@@ -506,32 +470,5 @@ void loop() {
   }
 
   // WiFi reconnection handling
-  if (WiFi.status() != WL_CONNECTED) {
-    if (wifiDisconnectTime == 0) {
-      wifiDisconnectTime = millis();
-      Serial.println("WiFi disconnected, attempting reconnection...");
-      WiFi.reconnect();
-    }
-
-    if (millis() - wifiDisconnectTime > 60000) {
-      Serial.println("WiFi reconnection failed, restarting...");
-      ESP.restart();
-    }
-
-    if (displayAvailable && (millis() / 500) % 2 == 0) {
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setCursor(10, 20);
-      display.println("WiFi Lost");
-      display.setCursor(10, 35);
-      display.println("Reconnecting...");
-      display.display();
-    }
-  } else {
-    if (wifiDisconnectTime != 0) {
-      Serial.println("WiFi reconnected successfully!");
-      wifiDisconnectTime = 0;
-      ntpSynced = false;
-    }
-  }
+  handleWiFiReconnection();
 }
