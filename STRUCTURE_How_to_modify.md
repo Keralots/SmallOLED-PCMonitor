@@ -18,6 +18,10 @@ src/config/user_config.h
 | `AP_NAME` | user_config.h:28 | WiFi setup portal name |
 | `AP_PASSWORD` | user_config.h:29 | WiFi setup portal password |
 | `UDP_PORT` | user_config.h:36 | Port for receiving PC stats (4210) |
+| `TOUCH_BUTTON_ENABLED` | user_config.h:73 | TTP223 touch sensor: 1 = enabled, 0 = disabled |
+| `TOUCH_BUTTON_PIN` | user_config.h:74 | GPIO pin for TTP223 touch sensor (default: 7) |
+| `TOUCH_DEBOUNCE_MS` | user_config.h:75 | Button debounce delay in milliseconds (default: 200) |
+| `TOUCH_ACTIVE_LEVEL` | user_config.h:76 | TTP223 signal level: HIGH or LOW (default: HIGH) |
 
 ---
 
@@ -160,3 +164,48 @@ All runtime settings are configurable via web interface at `http://<device-ip>/`
 - PC metrics display options
 
 Settings persist in ESP32 flash memory (NVS).
+
+---
+
+## Touch Button Feature (TTP223 Sensor)
+
+### Overview
+Optional TTP223 capacitive touch sensor allows toggling between PC monitoring mode and clock mode via a physical button press.
+
+### Hardware Connection
+```
+TTP223 Module          ESP32-C3
+-----------          ----------
+  VCC      ------>   3.3V
+  GND      ------>   GND
+  SIG      ------>   GPIO 7
+```
+
+**Note:** The TTP223 sensor is optional. Set `TOUCH_BUTTON_ENABLED = 0` in `user_config.h` if not using it.
+
+### Button Behavior
+
+**When PC is Online** (sending stats):
+- Press button → Toggle between PC metrics display and clock display
+- Press again → Return to previous mode
+- Animation runs at smooth 40 Hz when in clock mode
+
+**When PC is Offline** (no stats/timeout):
+- Press button → Cycle through clock styles
+- Cycle order: Mario → Standard → Large → Space Invaders → Space Ship → Pong → Pac-Man → repeat
+- Changes are temporary (not saved to flash)
+
+### Configuration
+
+Edit `src/config/user_config.h`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `TOUCH_BUTTON_ENABLED` | 0 | Set to 1 to enable touch button support |
+| `TOUCH_BUTTON_PIN` | 7 | GPIO pin connected to TTP223 signal |
+| `TOUCH_DEBOUNCE_MS` | 200 | Button debounce delay (milliseconds) |
+| `TOUCH_ACTIVE_LEVEL` | HIGH | Signal level when touched (HIGH or LOW) |
+
+**To enable:** Set `TOUCH_BUTTON_ENABLED 1` and rebuild/upload.
+
+**To disable:** Set `TOUCH_BUTTON_ENABLED 0` and rebuild (no performance overhead when disabled).

@@ -159,8 +159,21 @@ int getOptimalRefreshRate() {
   }
 
   // Auto mode - adaptive based on content
+#if TOUCH_BUTTON_ENABLED
+  if (!metricData.online || manualClockMode) {
+#else
   if (!metricData.online) {
-    // Clock mode (offline)
+#endif
+    // Clock mode (offline OR manual clock mode)
+
+#if TOUCH_BUTTON_ENABLED
+    // Immediately boost to 40 Hz when in manual clock mode for animated clocks
+    if (manualClockMode && settings.boostAnimationRefresh &&
+        (settings.clockStyle == 0 || settings.clockStyle == 3 ||
+         settings.clockStyle == 4 || settings.clockStyle == 5)) {
+      return 40; // Instant boost for smooth manual clock mode
+    }
+#endif
 
     // Check for animation boost (smooth animations during active motion)
     if (settings.boostAnimationRefresh && isAnimationActive()) {
@@ -258,16 +271,28 @@ void loop() {
   server.handleClient();
 
   // Handle UDP packets
+#if TOUCH_BUTTON_ENABLED
+  // When in manual clock mode, completely skip UDP to keep animation smooth
+  if (!manualClockMode) {
+    handleUDP();
+  }
+  // else: Skip all UDP handling when in manual clock mode
+#else
   handleUDP();
+#endif
 
 #if TOUCH_BUTTON_ENABLED
   // Handle touch button press
   if (checkTouchButtonPressed()) {
-    if (metricData.online) {
-      // PC is online - toggle between metrics and clock
-      manualClockMode = !manualClockMode;
-      Serial.print("Touch button: Manual clock mode ");
-      Serial.println(manualClockMode ? "ENABLED" : "DISABLED");
+    if (manualClockMode) {
+      // Currently in manual clock mode - exit back to PC metrics
+      manualClockMode = false;
+      Serial.println("Touch button: Exiting manual clock mode");
+      handleUDP();  // Try to receive latest UDP data
+    } else if (metricData.online) {
+      // PC is online - enter manual clock mode
+      manualClockMode = true;
+      Serial.println("Touch button: Entering manual clock mode (PC is online)");
     } else {
       // PC is offline - cycle through clock styles
       settings.clockStyle = (settings.clockStyle + 1) % 7;
