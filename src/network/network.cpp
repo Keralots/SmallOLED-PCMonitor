@@ -9,6 +9,10 @@
 #include "../utils/utils.h"
 #include <Preferences.h>
 
+#if TOUCH_BUTTON_ENABLED
+extern bool manualClockMode;  // Defined in main.cpp
+#endif
+
 // Global network objects
 WiFiUDP udp;
 WiFiManager wifiManager;
@@ -354,6 +358,14 @@ void parseStatsV2(JsonDocument& doc) {
   }
 
   metricData.online = true;
+
+#if TOUCH_BUTTON_ENABLED
+  // Clear manual clock override when PC stats resume
+  if (manualClockMode) {
+    manualClockMode = false;
+    Serial.println("PC stats resumed - auto-returning to PC metrics mode");
+  }
+#endif
 
   Serial.print("Received ");
   Serial.print(metricData.count);

@@ -62,6 +62,10 @@ unsigned long lastReceived = 0;
 unsigned long wifiDisconnectTime = 0;
 unsigned long nextDisplayUpdate = 0;
 
+#if TOUCH_BUTTON_ENABLED
+bool manualClockMode = false;  // Manual override to force clock mode when PC is online
+#endif
+
 // ========== Forward Declarations ==========
 // Redundant forward declarations removed (covered by headers)
 void displayStats();
@@ -233,6 +237,11 @@ void setup() {
   // Setup web server
   setupWebServer();
 
+#if TOUCH_BUTTON_ENABLED
+  // Initialize touch button
+  initTouchButton();
+#endif
+
   // Show IP address for 5 seconds
   if (displayAvailable) {
     displayConnected();
@@ -250,6 +259,23 @@ void loop() {
 
   // Handle UDP packets
   handleUDP();
+
+#if TOUCH_BUTTON_ENABLED
+  // Handle touch button press
+  if (checkTouchButtonPressed()) {
+    if (metricData.online) {
+      // PC is online - toggle between metrics and clock
+      manualClockMode = !manualClockMode;
+      Serial.print("Touch button: Manual clock mode ");
+      Serial.println(manualClockMode ? "ENABLED" : "DISABLED");
+    } else {
+      // PC is offline - cycle through clock styles
+      settings.clockStyle = (settings.clockStyle + 1) % 7;
+      Serial.print("Touch button: Clock style -> ");
+      Serial.println(settings.clockStyle);
+    }
+  }
+#endif
 
   // Check timeout
   if (millis() - lastReceived > TIMEOUT && metricData.online) {
@@ -279,7 +305,11 @@ void loop() {
 
     display.clearDisplay();
 
+#if TOUCH_BUTTON_ENABLED
+    if (metricData.online && !manualClockMode) {
+#else
     if (metricData.online) {
+#endif
       displayStats();
     } else {
       switch (settings.clockStyle) {

@@ -18,7 +18,7 @@
 //   1 = SH1106  (1.3" OLED, larger displays)
 //
 // CHANGE THIS VALUE to match your OLED display type!
-#define DEFAULT_DISPLAY_TYPE 1
+#define DEFAULT_DISPLAY_TYPE 0
 
 // I2C pins for ESP32-C3
 #define I2C_SDA_PIN 8
@@ -64,5 +64,16 @@
 // ========== Watchdog Configuration ==========
 // Watchdog timeout in seconds
 #define WATCHDOG_TIMEOUT_SECONDS 30
+
+// ========== Touch Button Configuration ==========
+// TTP223 capacitive touch sensor support
+// Enable touch button to toggle between PC metrics and clock mode
+// - When PC is online: Button toggles between metrics and clock
+// - When PC is offline: Button cycles through clock animations (0-6)
+// - Auto-returns to PC metrics when stats resume after timeout
+#define TOUCH_BUTTON_ENABLED 0    // 1 = enabled, 0 = disabled (default)
+#define TOUCH_BUTTON_PIN 7        // GPIO pin for TTP223 signal (default: GPIO 7)
+#define TOUCH_DEBOUNCE_MS 200     // Debounce delay in milliseconds (default: 200ms)
+#define TOUCH_ACTIVE_LEVEL HIGH   // HIGH = active HIGH, LOW = active LOW (TTP223 default: HIGH)
 
 #endif // USER_CONFIG_H

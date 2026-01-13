@@ -75,3 +75,57 @@ void assertBounds(int value, int minVal, int maxVal, const char* name) {
                   name ? name : "value", value, minVal, maxVal);
   }
 }
+
+#if TOUCH_BUTTON_ENABLED
+// ========== Touch Button Implementation ==========
+
+static int lastButtonState = !TOUCH_ACTIVE_LEVEL;  // Initial state (opposite of active)
+static unsigned long lastDebounceTime = 0;
+static bool buttonTriggered = false;  // One-shot flag
+
+void initTouchButton() {
+  pinMode(TOUCH_BUTTON_PIN, INPUT_PULLDOWN);
+  lastButtonState = digitalRead(TOUCH_BUTTON_PIN);
+  lastDebounceTime = millis();
+  buttonTriggered = false;
+
+  Serial.print("Touch button initialized on GPIO ");
+  Serial.print(TOUCH_BUTTON_PIN);
+  Serial.print(" (active ");
+  Serial.print(TOUCH_ACTIVE_LEVEL == HIGH ? "HIGH" : "LOW");
+  Serial.println(")");
+}
+
+bool checkTouchButtonPressed() {
+  int reading = digitalRead(TOUCH_BUTTON_PIN);
+  bool pressed = false;
+
+  // Check if button state changed (noise or actual press)
+  if (reading != lastButtonState) {
+    lastDebounceTime = millis();  // Reset debounce timer
+  }
+
+  // Check if button is stable for debounce period
+  if ((millis() - lastDebounceTime) > TOUCH_DEBOUNCE_MS) {
+    // Check if button is in active state and not yet triggered
+    if (reading == TOUCH_ACTIVE_LEVEL && !buttonTriggered) {
+      buttonTriggered = true;
+      pressed = true;
+      Serial.println("Touch button PRESSED");
+    }
+    // Check if button released - reset trigger
+    else if (reading != TOUCH_ACTIVE_LEVEL) {
+      buttonTriggered = false;
+    }
+  }
+
+  lastButtonState = reading;
+  return pressed;
+}
+
+void resetTouchButtonState() {
+  buttonTriggered = false;
+  lastButtonState = digitalRead(TOUCH_BUTTON_PIN);
+}
+
+#endif // TOUCH_BUTTON_ENABLED
