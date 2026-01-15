@@ -170,7 +170,8 @@ int getOptimalRefreshRate() {
     // Immediately boost to 40 Hz when in manual clock mode for animated clocks
     if (manualClockMode && settings.boostAnimationRefresh &&
         (settings.clockStyle == 0 || settings.clockStyle == 3 ||
-         settings.clockStyle == 4 || settings.clockStyle == 5)) {
+         settings.clockStyle == 4 || settings.clockStyle == 5 ||
+         settings.clockStyle == 6)) {
       return 40; // Instant boost for smooth manual clock mode
     }
 #endif
@@ -182,8 +183,9 @@ int getOptimalRefreshRate() {
     }
 
     if (settings.clockStyle == 0 || settings.clockStyle == 3 ||
-        settings.clockStyle == 4 || settings.clockStyle == 5) {
-      // Animated clocks (Mario, Space Invaders, Space Ship, Pong)
+        settings.clockStyle == 4 || settings.clockStyle == 5 ||
+        settings.clockStyle == 6) {
+      // Animated clocks (Mario, Space Invaders, Space Ship, Pong, Pac-Man)
       return 20; // 20 Hz keeps character movement smooth
     } else {
       // Static clocks (Standard, Large)
@@ -270,25 +272,24 @@ void loop() {
   // Handle web server requests
   server.handleClient();
 
-  // Handle UDP packets
-#if TOUCH_BUTTON_ENABLED
-  // When in manual clock mode, completely skip UDP to keep animation smooth
-  if (!manualClockMode) {
-    handleUDP();
-  }
-  // else: Skip all UDP handling when in manual clock mode
-#else
+  // Handle UDP packets - always process to track PC online status accurately
   handleUDP();
-#endif
 
 #if TOUCH_BUTTON_ENABLED
   // Handle touch button press
   if (checkTouchButtonPressed()) {
     if (manualClockMode) {
-      // Currently in manual clock mode - exit back to PC metrics
-      manualClockMode = false;
-      Serial.println("Touch button: Exiting manual clock mode");
-      handleUDP();  // Try to receive latest UDP data
+      // Check if PC is currently online (UDP is always processed, so status is accurate)
+      if (metricData.online) {
+        // PC is online - exit manual clock mode to show PC metrics
+        manualClockMode = false;
+        Serial.println("Touch button: Exiting manual clock mode (PC is online)");
+      } else {
+        // PC is offline (timeout triggered) - cycle through clock styles
+        settings.clockStyle = (settings.clockStyle + 1) % 7;
+        Serial.print("Touch button: PC offline, cycling clock style -> ");
+        Serial.println(settings.clockStyle);
+      }
     } else if (metricData.online) {
       // PC is online - enter manual clock mode
       manualClockMode = true;
@@ -305,6 +306,10 @@ void loop() {
   // Check timeout
   if (millis() - lastReceived > TIMEOUT && metricData.online) {
     metricData.online = false;
+#if TOUCH_BUTTON_ENABLED
+    // Reset manual clock mode so PC metrics auto-show when PC comes back online
+    manualClockMode = false;
+#endif
     Serial.println("PC stats timeout - switching to clock mode");
   }
 

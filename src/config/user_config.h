@@ -70,7 +70,7 @@
 // Enable touch button to toggle between PC metrics and clock mode
 // - When PC is online: Button toggles between metrics and clock
 // - When PC is offline: Button cycles through clock animations (0-6)
-#define TOUCH_BUTTON_ENABLED 0           // 1 = enabled, 0 = disabled (default)
+#define TOUCH_BUTTON_ENABLED 1           // 1 = enabled, 0 = disabled (default)
 #define TOUCH_BUTTON_PIN 7               // GPIO pin for TTP223 signal (default: GPIO 7)
 #define TOUCH_DEBOUNCE_MS 200            // Debounce delay in milliseconds (default: 200ms)
 #define TOUCH_ACTIVE_LEVEL HIGH          // HIGH = active HIGH, LOW = active LOW (TTP223 default: HIGH)
