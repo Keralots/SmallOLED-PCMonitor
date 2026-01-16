@@ -99,7 +99,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 #define TOUCH_ACTIVE_LEVEL HIGH     // HIGH for TTP223 (active HIGH)
 ```
 
-The touch button is **enabled by default**. Set `TOUCH_BUTTON_ENABLED` to `0` if you don't have a touch sensor connected.
+The touch button is **disabled by default**. Set `TOUCH_BUTTON_ENABLED` to `1` if you have a touch sensor connected.
 
 ## Software Setup
 
