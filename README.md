@@ -69,13 +69,37 @@ For detailed instructions, keep reading below.
 ### ESP32 Setup
 - **ESP32-C3 Super Mini** (or compatible ESP32 board)
 - **SSD1306 OLED Display** (128x64, I2C)
+- **TTP223 Touch Sensor** (optional - for physical button control)
 - **Wiring:**
   - SDA → GPIO 8
   - SCL → GPIO 9
   - VCC → 3.3V
   - GND → GND
+  - TTP223 Signal → GPIO 7 (optional)
 
 ![Wiring](img/wiring.JPG)
+
+### Touch Button (Optional)
+
+The firmware supports an optional **TTP223 capacitive touch sensor** for physical control of the display:
+
+**Functionality:**
+- **When PC is online:** Touch toggles between PC metrics view and clock display
+- **When PC is offline:** Touch cycles through different clock animations (Mario, Standard, Large, Space Invaders, Pong, Pac-Man)
+
+**Hardware Setup:**
+- Connect TTP223 signal pin to GPIO 7
+- Power the TTP223 with 3.3V and GND
+
+**Configuration** (in `src/config/user_config.h`):
+```cpp
+#define TOUCH_BUTTON_ENABLED 1      // 1 = enabled, 0 = disabled
+#define TOUCH_BUTTON_PIN 7          // GPIO pin (default: 7)
+#define TOUCH_DEBOUNCE_MS 200       // Debounce delay (default: 200ms)
+#define TOUCH_ACTIVE_LEVEL HIGH     // HIGH for TTP223 (active HIGH)
+```
+
+The touch button is **enabled by default**. Set `TOUCH_BUTTON_ENABLED` to `0` if you don't have a touch sensor connected.
 
 ## Software Setup
 
