@@ -84,7 +84,7 @@ class LHMHealthMonitor:
     def record_failure(self):
         """Record a failed API call"""
         self.consecutive_failures += 1
-        if self.consecutive_failures >= 3:
+        if self.consecutive_failures >= 2:  # Trigger faster (was 3)
             if self.is_healthy:
                 print("  ⚠ LHM REST API unhealthy - entering recovery mode")
             self.is_healthy = False
@@ -484,7 +484,7 @@ def get_metric_value_via_http(metric_config, host, port):
         req = urllib_request.Request(url, method='GET')
         req.add_header('User-Agent', 'PC-Stats-Monitor/2.0')
 
-        with urllib_request.urlopen(req, timeout=2) as response:
+        with urllib_request.urlopen(req, timeout=1) as response:  # 1s timeout for fast failure detection
             if response.status != 200:
                 lhm_health_monitor.record_failure()
                 return None
@@ -2053,6 +2053,9 @@ def get_metric_value(metric_config):
     elif source == "wmi":
         # Check if we should use REST API instead (LHM 0.9.5+ workaround)
         if use_rest_api:
+            # Skip HTTP requests when API is known to be down (avoids timeout delays)
+            if not lhm_health_monitor.is_healthy:
+                return None  # Use cached value instead of waiting for timeout
             return get_metric_value_via_http(metric_config, rest_api_host, rest_api_port)
 
         # Use WMI for older LibreHardwareMonitor versions
@@ -2076,7 +2079,15 @@ def get_metric_value(metric_config):
     return None
 
 
-def send_metrics(sock, config, last_good_values=None):
+# Status codes (must match ESP32 config.h)
+STATUS_OK = 1
+STATUS_API_ERROR = 2
+STATUS_LHM_NOT_RUNNING = 3
+STATUS_LHM_STARTING = 4
+STATUS_UNKNOWN_ERROR = 5
+
+
+def send_metrics(sock, config, last_good_values=None, status_code=STATUS_OK):
     """
     Collect metric values and send to ESP32
 
@@ -2084,6 +2095,7 @@ def send_metrics(sock, config, last_good_values=None):
         sock: UDP socket
         config: Configuration dictionary
         last_good_values: Dict to track last known good values per metric ID
+        status_code: LHM status code (1=OK, 2=API error, 3=LHM not running, etc.)
 
     Returns:
         Tuple of (success: bool, last_good_values: dict, has_fresh_data: bool)
@@ -2095,9 +2107,10 @@ def send_metrics(sock, config, last_good_values=None):
     has_fresh_data = False
     stale_count = 0
 
-    # Build JSON payload
+    # Build JSON payload with status code
     payload = {
-        "version": "2.0",
+        "version": "2.2",
+        "status": status_code,  # LHM health status code
         "timestamp": "",  # Will be set based on data freshness
         "metrics": []
     }
@@ -2128,6 +2141,20 @@ def send_metrics(sock, config, last_good_values=None):
         }
         payload["metrics"].append(metric_data)
 
+    # Override status if data is stale (even if health monitor says OK)
+    # This catches the case where API starts failing but health monitor hasn't triggered yet
+    total_metrics = len(config["metrics"])
+    if total_metrics > 0 and stale_count >= total_metrics:
+        # All metrics are stale - definitely an API error
+        if status_code == STATUS_OK:
+            status_code = STATUS_API_ERROR
+        payload["status"] = status_code
+    elif stale_count > 0 and stale_count >= total_metrics * 0.5:
+        # More than half metrics stale - likely API issue
+        if status_code == STATUS_OK:
+            status_code = STATUS_API_ERROR
+        payload["status"] = status_code
+
     # Set timestamp only if we have fresh data
     # Empty timestamp signals ESP32 that data may be stale
     if has_fresh_data:
@@ -2140,14 +2167,25 @@ def send_metrics(sock, config, last_good_values=None):
         message = json.dumps(payload).encode('utf-8')
         sock.sendto(message, (config["esp32_ip"], config["udp_port"]))
 
-        # Print status with stale indicator
+        # Print status with stale indicator and status code
         timestamp = payload["timestamp"] if payload["timestamp"] else "STALE"
         metrics_str = " | ".join([f"{m['name']}:{m['value']}{m['unit']}" for m in payload["metrics"][:4]])
         if len(payload["metrics"]) > 4:
             metrics_str += f" ... +{len(payload['metrics'])-4} more"
 
         stale_indicator = f" [!{stale_count} stale]" if stale_count > 0 else ""
-        print(f"[{timestamp}] {metrics_str}{stale_indicator}")
+
+        # Status code indicator
+        status_names = {
+            STATUS_OK: "",
+            STATUS_API_ERROR: " [API ERR]",
+            STATUS_LHM_NOT_RUNNING: " [LHM DOWN]",
+            STATUS_LHM_STARTING: " [LHM STARTING]",
+            STATUS_UNKNOWN_ERROR: " [ERROR]"
+        }
+        status_indicator = status_names.get(status_code, f" [STATUS:{status_code}]")
+
+        print(f"[{timestamp}] {metrics_str}{stale_indicator}{status_indicator}")
 
         return True, last_good_values, has_fresh_data
     except Exception as e:
@@ -2199,25 +2237,30 @@ def run_minimized(config):
         while not stop_event.is_set():
             current_time = time.time()
 
-            # If LHM is unhealthy, try to recover
+            # Determine current status code based on health monitor state
+            current_status = STATUS_OK
+
             if use_rest_api and not lhm_health_monitor.is_healthy:
-                if current_time - last_lhm_check >= 30:
+                # Unhealthy - determine specific error status
+                if is_lhm_process_running():
+                    current_status = STATUS_API_ERROR
+                else:
+                    current_status = STATUS_LHM_NOT_RUNNING
+
+                # Try to recover periodically (every 5 seconds)
+                if current_time - last_lhm_check >= 5:
                     last_lhm_check = current_time
                     if is_lhm_process_running():
-                        success, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
-                        if success:
+                        success_check, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
+                        if success_check:
                             lhm_health_monitor.record_success()
+                            current_status = STATUS_OK
 
-            # Send metrics
-            success, last_good_values, has_fresh = send_metrics(sock, config, last_good_values)
+            # Send metrics with status code
+            success, last_good_values, has_fresh = send_metrics(sock, config, last_good_values, current_status)
 
-            # Determine sleep interval
-            if use_rest_api and not lhm_health_monitor.is_healthy:
-                sleep_time = min(lhm_health_monitor.get_retry_delay(), config["update_interval"])
-            else:
-                sleep_time = config["update_interval"]
-
-            time.sleep(sleep_time)
+            # Always use normal update interval to keep ESP32 alive
+            time.sleep(config["update_interval"])
 
         sock.close()
 
@@ -2276,37 +2319,40 @@ def run_monitoring(config):
         while True:
             current_time = time.time()
 
-            # If LHM is unhealthy, try to recover
+            # Determine current status code based on health monitor state
+            # (health state is updated during send_metrics -> get_metric_value calls)
+            current_status = STATUS_OK
+
             if use_rest_api and not lhm_health_monitor.is_healthy:
-                # Check LHM process status periodically (every 30 seconds)
-                if current_time - last_lhm_check >= 30:
+                # Unhealthy - determine specific error status
+                if is_lhm_process_running():
+                    current_status = STATUS_API_ERROR
+                else:
+                    current_status = STATUS_LHM_NOT_RUNNING
+
+                # Try to recover periodically (every 5 seconds for quick feedback)
+                if current_time - last_lhm_check >= 5:
                     last_lhm_check = current_time
 
                     if is_lhm_process_running():
                         # Process is running, try to reconnect
-                        success, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
-                        if success:
+                        success_check, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
+                        if success_check:
                             print(f"\n  ✓ LHM REST API restored ({count} sensors available)")
                             lhm_health_monitor.record_success()
+                            current_status = STATUS_OK
                         else:
                             if lhm_health_monitor.should_print_warning():
                                 print(f"  ⚠ LHM process found but REST API not responding")
-                                print(f"    Retry in {lhm_health_monitor.get_retry_delay()}s...")
                     else:
                         if lhm_health_monitor.should_print_warning():
                             print("  ⚠ Waiting for LibreHardwareMonitor to restart...")
 
-            # Send metrics (will use cached values if LHM is down)
-            success, last_good_values, has_fresh = send_metrics(sock, config, last_good_values)
+            # Send metrics with status code (will use cached values if LHM is down)
+            success, last_good_values, has_fresh = send_metrics(sock, config, last_good_values, current_status)
 
-            # Determine sleep interval
-            if use_rest_api and not lhm_health_monitor.is_healthy:
-                # Use exponential backoff when unhealthy
-                sleep_time = min(lhm_health_monitor.get_retry_delay(), config["update_interval"])
-            else:
-                sleep_time = config["update_interval"]
-
-            time.sleep(sleep_time)
+            # Always use normal update interval to keep ESP32 alive
+            time.sleep(config["update_interval"])
 
     except KeyboardInterrupt:
         print("\n\nMonitoring stopped.")
@@ -2377,6 +2423,23 @@ def main():
     if not config.get("metrics"):
         print("\nNo metrics configured. Run with --edit to configure.")
         return
+
+    # Initialize REST API detection if not already done (important for running without --edit)
+    global use_rest_api
+    if not use_rest_api:
+        print("Checking sensor connectivity...")
+        # Try REST API first (for LHM 0.9.5+)
+        rest_success, rest_count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
+        if rest_success and rest_count > 0:
+            use_rest_api = True
+            print(f"  ✓ Using REST API ({rest_count} sensors available)")
+        else:
+            # Try WMI
+            wmi_success, wmi_count, _ = check_wmi_connectivity()
+            if wmi_success and wmi_count > 0:
+                print(f"  ✓ Using WMI ({wmi_count} sensors available)")
+            else:
+                print("  ⚠ No sensor source available - will use psutil fallback")
 
     # Run monitoring (minimized or console)
     if args.minimized:

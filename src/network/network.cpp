@@ -267,6 +267,31 @@ void handleUDP() {
 
 // ========== Stats Parsing ==========
 void parseStatsV2(JsonDocument& doc) {
+  // Parse status code (1=OK, 2=API error, 3=LHM not running, etc.)
+  uint8_t newStatus = doc["status"] | STATUS_OK;
+
+  if (newStatus != metricData.status) {
+    // Status changed - log it
+    switch (newStatus) {
+      case STATUS_OK:
+        Serial.println("Status: LHM OK");
+        break;
+      case STATUS_API_ERROR:
+        Serial.println("Status: LHM API error - check REST API");
+        break;
+      case STATUS_LHM_NOT_RUNNING:
+        Serial.println("Status: LHM not running!");
+        break;
+      case STATUS_LHM_STARTING:
+        Serial.println("Status: LHM starting up...");
+        break;
+      default:
+        Serial.printf("Status: Unknown error (%d)\n", newStatus);
+        break;
+    }
+  }
+  metricData.status = newStatus;
+
   const char* ts = doc["timestamp"];
   if (ts && strlen(ts) > 0) {
     // Valid timestamp - update it
@@ -446,6 +471,65 @@ void displayConnected() {
   display.println("Open IP in browser");
   display.setCursor(12, 56);
   display.println("to change settings");
+
+  display.display();
+}
+
+void displayErrorStatus(uint8_t status) {
+  display.clearDisplay();
+  display.setTextSize(1);
+
+  // Header with warning
+  display.setCursor(30, 0);
+  display.println("PC MONITOR");
+  display.drawLine(0, 10, 128, 10, DISPLAY_WHITE);
+
+  // Status icon (exclamation mark in box)
+  display.drawRect(4, 16, 20, 20, DISPLAY_WHITE);
+  display.setTextSize(2);
+  display.setCursor(10, 18);
+  display.print("!");
+  display.setTextSize(1);
+
+  // Status message
+  display.setCursor(30, 18);
+  switch (status) {
+    case STATUS_API_ERROR:
+      display.println("LHM API Error");
+      display.setCursor(30, 28);
+      display.println("Check REST API");
+      break;
+    case STATUS_LHM_NOT_RUNNING:
+      display.println("LHM Not Running");
+      display.setCursor(30, 28);
+      display.println("Start LHM app");
+      break;
+    case STATUS_LHM_STARTING:
+      display.println("LHM Starting");
+      display.setCursor(30, 28);
+      display.println("Please wait...");
+      break;
+    default:
+      display.println("Unknown Error");
+      display.setCursor(30, 28);
+      display.print("Code: ");
+      display.println(status);
+      break;
+  }
+
+  display.drawLine(0, 42, 128, 42, DISPLAY_WHITE);
+
+  // Show timestamp if available
+  if (metricData.timestamp[0] != '\0') {
+    display.setCursor(4, 48);
+    display.print("Last OK: ");
+    display.println(metricData.timestamp);
+  }
+
+  // Show IP for reference
+  display.setCursor(4, 56);
+  display.print("IP: ");
+  display.println(WiFi.localIP().toString().c_str());
 
   display.display();
 }

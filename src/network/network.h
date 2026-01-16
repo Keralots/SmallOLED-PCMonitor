@@ -45,6 +45,7 @@ void handleWiFiReconnection();
 void displaySetupInstructions();
 void displayConnecting();
 void displayConnected();
+void displayErrorStatus(uint8_t status);
 
 // WiFi callbacks for WiFiManager
 void configModeCallback(WiFiManager *myWiFiManager);

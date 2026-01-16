@@ -247,6 +247,7 @@ void setup() {
   // Initialize metricData
   metricData.count = 0;
   metricData.online = false;
+  metricData.status = 0;  // No status received yet
   Serial.println("Waiting for PC stats data...");
 
   // Setup web server
@@ -287,6 +288,8 @@ void loop() {
       } else {
         // PC is offline (timeout triggered) - cycle through clock styles
         settings.clockStyle = (settings.clockStyle + 1) % 7;
+        // Skip reserved clock style 4
+        if (settings.clockStyle == 4) settings.clockStyle = 5;
         Serial.print("Touch button: PC offline, cycling clock style -> ");
         Serial.println(settings.clockStyle);
       }
@@ -297,6 +300,8 @@ void loop() {
     } else {
       // PC is offline - cycle through clock styles
       settings.clockStyle = (settings.clockStyle + 1) % 7;
+      // Skip reserved clock style 4
+      if (settings.clockStyle == 4) settings.clockStyle = 5;
       Serial.print("Touch button: Clock style -> ");
       Serial.println(settings.clockStyle);
     }
@@ -336,10 +341,15 @@ void loop() {
     display.clearDisplay();
 
 #if TOUCH_BUTTON_ENABLED
-    if (metricData.online && !manualClockMode) {
+    bool showStats = metricData.online && !manualClockMode;
 #else
-    if (metricData.online) {
+    bool showStats = metricData.online;
 #endif
+
+    // Show error status if PC is connected but LHM has issues
+    if (showStats && metricData.status != STATUS_OK && metricData.status != 0) {
+      displayErrorStatus(metricData.status);
+    } else if (showStats) {
       displayStats();
     } else {
       switch (settings.clockStyle) {

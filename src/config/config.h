@@ -34,11 +34,19 @@ struct Metric {
   int barOffsetX;       // Progress bar X offset
 };
 
+// Status codes for PC monitor connection
+#define STATUS_OK 1
+#define STATUS_API_ERROR 2
+#define STATUS_LHM_NOT_RUNNING 3
+#define STATUS_LHM_STARTING 4
+#define STATUS_UNKNOWN_ERROR 5
+
 struct MetricData {
   Metric metrics[MAX_METRICS];
   uint8_t count;
   char timestamp[6];  // "HH:MM\0"
   bool online;
+  uint8_t status;     // Connection status code (see STATUS_* defines)
 };
 
 // ========== Settings Structure ==========
