@@ -17,8 +17,8 @@ bool isAnimationActive() {
 
   // Check Mario clock animations (clockStyle == 0)
   if (settings.clockStyle == 0) {
-    // Check if Mario is jumping
-    if (mario_state == MARIO_JUMPING) {
+    // Check if Mario is in any active state (walking, jumping, walking off)
+    if (mario_state == MARIO_WALKING || mario_state == MARIO_JUMPING || mario_state == MARIO_WALKING_OFF) {
       return true;
     }
     // Check if any digit is bouncing (digit_offset_y != 0)
@@ -31,18 +31,8 @@ bool isAnimationActive() {
 
   // Check Space clock animations (clockStyle == 3 or 4)
   if (settings.clockStyle == 3 || settings.clockStyle == 4) {
-    // Check if space character is in action state (not just patrolling)
-    if (space_state != SPACE_PATROL) {
-      return true;
-    }
-    // Check if laser is active
-    if (space_laser.active) {
-      return true;
-    }
-    // Check if explosion fragments are active
-    if (!allSpaceFragmentsInactive()) {
-      return true;
-    }
+    // Space clock is always animating (patrol, shooting, or exploding)
+    return true;
   }
 
   // Check Pong clock animations (clockStyle == 5)
