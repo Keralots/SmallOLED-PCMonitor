@@ -31,6 +31,7 @@ extern unsigned long last_mario_update;
 extern int displayed_hour;
 extern int displayed_min;
 extern bool time_overridden;
+extern unsigned long time_override_start;  // Track when override started for timeout
 
 // Animation control
 extern int last_minute;

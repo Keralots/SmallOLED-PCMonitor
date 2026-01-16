@@ -29,6 +29,7 @@ unsigned long last_mario_update = 0;
 int displayed_hour = 0;
 int displayed_min = 0;
 bool time_overridden = false;
+unsigned long time_override_start = 0;  // Track when override started for timeout
 
 // Animation control
 int last_minute = -1;

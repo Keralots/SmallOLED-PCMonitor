@@ -9,6 +9,7 @@
 #include "../display/display.h"
 #include "clocks.h"
 #include "clock_constants.h"
+#include "clock_globals.h"
 
 // ========== Forward Declarations ==========
 void fireSpaceLaser(int target_digit_idx);
@@ -340,6 +341,7 @@ void updateSpaceAnimation(struct tm* timeinfo) {
   if (seconds >= 55 && !animation_triggered && space_state == SPACE_PATROL) {
     animation_triggered = true;
     time_overridden = true;
+    time_override_start = millis();
     calculateTargetDigits(displayed_hour, displayed_min);
 
     if (num_targets > 0) {
@@ -396,10 +398,21 @@ void displayClockWithSpaceInvader() {
     displayed_min = timeinfo.tm_min;
   }
 
-  // Reset time_overridden when real time catches up AND space character is in PATROL state
-  if (time_overridden && timeinfo.tm_hour == displayed_hour &&
-      timeinfo.tm_min == displayed_min && space_state == SPACE_PATROL) {
-    time_overridden = false;
+  // Check if time override should be cleared
+  if (time_overridden) {
+    bool ntp_matches = (timeinfo.tm_hour == displayed_hour &&
+                        timeinfo.tm_min == displayed_min &&
+                        space_state == SPACE_PATROL);
+    bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
+
+    if (ntp_matches || timeout_expired) {
+      time_overridden = false;
+      // If timeout expired but NTP doesn't match, force sync to real time
+      if (timeout_expired && !ntp_matches) {
+        displayed_hour = timeinfo.tm_hour;
+        displayed_min = timeinfo.tm_min;
+      }
+    }
   }
 
   // Date (at top, Y=4)

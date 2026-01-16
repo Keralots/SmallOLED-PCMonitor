@@ -8,6 +8,7 @@
 #include "../display/display.h"
 #include "clocks.h"
 #include "clock_constants.h"
+#include "clock_globals.h"
 
 // Forward declarations for helper functions used by Mario clock
 void drawTimeWithBounce();
@@ -43,6 +44,7 @@ void advanceDisplayedTime() {
     }
   }
   time_overridden = true;
+  time_override_start = millis();
 }
 
 // ========== Update Specific Digit ==========
@@ -69,6 +71,7 @@ void updateSpecificDigit(int digitIndex, int newValue) {
   }
 
   time_overridden = true;
+  time_override_start = millis();
 }
 
 // ========== Display Clock With Mario ==========
@@ -90,8 +93,19 @@ void displayClockWithMario() {
     displayed_min = timeinfo.tm_min;
   }
 
-  if (time_overridden && timeinfo.tm_hour == displayed_hour && timeinfo.tm_min == displayed_min) {
-    time_overridden = false;
+  // Check if time override should be cleared
+  if (time_overridden) {
+    bool ntp_matches = (timeinfo.tm_hour == displayed_hour && timeinfo.tm_min == displayed_min);
+    bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
+
+    if (ntp_matches || timeout_expired) {
+      time_overridden = false;
+      // If timeout expired but NTP doesn't match, force sync to real time
+      if (timeout_expired && !ntp_matches) {
+        displayed_hour = timeinfo.tm_hour;
+        displayed_min = timeinfo.tm_min;
+      }
+    }
   }
 
   // Date at top

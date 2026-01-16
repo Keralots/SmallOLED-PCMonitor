@@ -268,9 +268,14 @@ void handleUDP() {
 // ========== Stats Parsing ==========
 void parseStatsV2(JsonDocument& doc) {
   const char* ts = doc["timestamp"];
-  if (ts) {
+  if (ts && strlen(ts) > 0) {
+    // Valid timestamp - update it
     strncpy(metricData.timestamp, ts, 5);
     metricData.timestamp[5] = '\0';
+  } else {
+    // Empty timestamp signals stale data from Python script (LHM may be down)
+    // Keep the previous timestamp - don't overwrite with empty
+    Serial.println("Warning: Empty timestamp received (LHM may be recovering)");
   }
 
   JsonArray metricsArray = doc["metrics"];

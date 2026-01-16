@@ -7,6 +7,7 @@
 #include "../config/config.h"
 #include "../display/display.h"
 #include "clocks.h"
+#include "clock_globals.h"
 
 // ========== Pac-Man Digit X positions ==========
 // Pac-Man clock uses different spacing (wider gaps for pellet layout)
@@ -182,9 +183,21 @@ void displayClockWithPacman() {
     displayed_min = timeinfo.tm_min;
   }
 
-  if (time_overridden && timeinfo.tm_hour == displayed_hour &&
-      timeinfo.tm_min == displayed_min && pacman_state == PACMAN_PATROL) {
-    time_overridden = false;
+  // Check if time override should be cleared
+  if (time_overridden) {
+    bool ntp_matches = (timeinfo.tm_hour == displayed_hour &&
+                        timeinfo.tm_min == displayed_min &&
+                        pacman_state == PACMAN_PATROL);
+    bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
+
+    if (ntp_matches || timeout_expired) {
+      time_overridden = false;
+      // If timeout expired but NTP doesn't match, force sync to real time
+      if (timeout_expired && !ntp_matches) {
+        displayed_hour = timeinfo.tm_hour;
+        displayed_min = timeinfo.tm_min;
+      }
+    }
   }
 
   // Date at top
@@ -293,6 +306,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
   if (seconds >= 55 && !pacman_animation_triggered && pacman_state == PACMAN_PATROL) {
     pacman_animation_triggered = true;
     time_overridden = true;
+    time_override_start = millis();
 
     // Calculate which digits will change
     calculateTargetDigits(displayed_hour, displayed_min);
@@ -804,4 +818,5 @@ void updateSpecificDigit(uint8_t digitIndex, uint8_t newValue) {
   }
 
   time_overridden = true;
+  time_override_start = millis();
 }

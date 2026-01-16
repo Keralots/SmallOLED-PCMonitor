@@ -61,6 +61,11 @@
 // Timeout for PC stats (ms) - show clock if no data received
 #define STATS_TIMEOUT 10000
 
+// Maximum time (ms) that animated clocks can override NTP time
+// After this, force resync even if animation is still running
+// Prevents clock drift when packets are dropped during animations
+#define TIME_OVERRIDE_MAX_MS 60000
+
 // ========== Watchdog Configuration ==========
 // Watchdog timeout in seconds
 #define WATCHDOG_TIMEOUT_SECONDS 30

@@ -62,6 +62,66 @@ rest_api_port = 8085
 use_rest_api = False  # Auto-detected; True when WMI fails but REST API works
 
 
+class LHMHealthMonitor:
+    """
+    Monitors LibreHardwareMonitor REST API health.
+    Tracks consecutive failures and provides exponential backoff for recovery.
+    """
+    def __init__(self):
+        self.consecutive_failures = 0
+        self.last_success_time = time.time()
+        self.is_healthy = True
+        self.last_warning_time = 0
+
+    def record_success(self):
+        """Record a successful API call"""
+        if not self.is_healthy:
+            print("  ✓ LHM connection restored!")
+        self.consecutive_failures = 0
+        self.last_success_time = time.time()
+        self.is_healthy = True
+
+    def record_failure(self):
+        """Record a failed API call"""
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= 3:
+            if self.is_healthy:
+                print("  ⚠ LHM REST API unhealthy - entering recovery mode")
+            self.is_healthy = False
+
+    def get_retry_delay(self):
+        """Exponential backoff: 3s, 6s, 12s, max 30s"""
+        if self.consecutive_failures <= 1:
+            return 3
+        delay = min(3 * (2 ** (self.consecutive_failures - 1)), 30)
+        return delay
+
+    def should_print_warning(self):
+        """Limit warning messages to once per 30 seconds"""
+        now = time.time()
+        if now - self.last_warning_time >= 30:
+            self.last_warning_time = now
+            return True
+        return False
+
+
+# Global health monitor instance
+lhm_health_monitor = LHMHealthMonitor()
+
+
+def is_lhm_process_running():
+    """Check if LibreHardwareMonitor process is running"""
+    lhm_names = ["librehardwaremonitor", "libre hardware monitor"]
+    for proc in psutil.process_iter(['name']):
+        try:
+            proc_name = proc.info['name'].lower()
+            if any(name in proc_name for name in lhm_names):
+                return True
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    return False
+
+
 def discover_wmi_namespaces():
     """
     Quick check for WMI namespace (simplified for 0.9.5+ compatibility)
@@ -408,10 +468,14 @@ def get_metric_value_via_http(metric_config, host, port):
     """
     Get sensor value via LibreHardwareMonitor REST API
     Used when use_rest_api = True
+
+    Returns: int value on success, None on failure (to distinguish from real zeros)
     """
+    global lhm_health_monitor
+
     sensor_id = metric_config.get("wmi_identifier", "")
     if not sensor_id:
-        return 0
+        return None
 
     url = f"http://{host}:{port}/data.json"
     is_throughput = metric_config.get("unit", "") == "KB/s"
@@ -422,7 +486,8 @@ def get_metric_value_via_http(metric_config, host, port):
 
         with urllib_request.urlopen(req, timeout=2) as response:
             if response.status != 200:
-                return 0
+                lhm_health_monitor.record_failure()
+                return None
 
             data = response.read().decode('utf-8')
             root = json.loads(data)
@@ -447,15 +512,21 @@ def get_metric_value_via_http(metric_config, host, port):
                                 if "MB/s" in value_str or "mb/s" in value_str.lower():
                                     float_value = float_value * 1024
                                 float_value = float_value * 10
+                            lhm_health_monitor.record_success()
                             return int(float_value)
                     except:
                         pass
+                    # Sensor found but value parsing failed
+                    lhm_health_monitor.record_success()  # API is working
                     return 0
 
+            # Sensor not found in response
+            lhm_health_monitor.record_success()  # API is working
             return 0
 
     except Exception:
-        return 0
+        lhm_health_monitor.record_failure()
+        return None
 
 
 # Global tracker for generated names to ensure uniqueness
@@ -1962,6 +2033,8 @@ class MetricSelectorGUI:
 def get_metric_value(metric_config):
     """
     Get current value for a configured metric
+
+    Returns: int value on success, None on failure (for WMI/REST API sources)
     """
     source = metric_config["source"]
 
@@ -1998,23 +2071,49 @@ def get_metric_value(metric_config):
                 return int(value)
         except:
             pass
+        return None  # WMI failed
 
-    return 0
+    return None
 
 
-def send_metrics(sock, config):
+def send_metrics(sock, config, last_good_values=None):
     """
     Collect metric values and send to ESP32
+
+    Args:
+        sock: UDP socket
+        config: Configuration dictionary
+        last_good_values: Dict to track last known good values per metric ID
+
+    Returns:
+        Tuple of (success: bool, last_good_values: dict, has_fresh_data: bool)
     """
+    if last_good_values is None:
+        last_good_values = {}
+
+    # Track if we got any fresh data
+    has_fresh_data = False
+    stale_count = 0
+
     # Build JSON payload
     payload = {
         "version": "2.0",
-        "timestamp": datetime.now().strftime('%H:%M'),
+        "timestamp": "",  # Will be set based on data freshness
         "metrics": []
     }
 
     for metric_config in config["metrics"]:
         value = get_metric_value(metric_config)
+        metric_id = metric_config["id"]
+
+        if value is not None:
+            # Fresh data - update cache
+            last_good_values[metric_id] = value
+            has_fresh_data = True
+        else:
+            # Stale data - use cached value if available
+            value = last_good_values.get(metric_id, 0)
+            stale_count += 1
 
         # Use custom label if set, otherwise use generated name
         display_name = metric_config.get("custom_label", "")
@@ -2022,29 +2121,38 @@ def send_metrics(sock, config):
             display_name = metric_config["name"]
 
         metric_data = {
-            "id": metric_config["id"],
+            "id": metric_id,
             "name": display_name,
             "value": value,
             "unit": metric_config["unit"]
         }
         payload["metrics"].append(metric_data)
 
+    # Set timestamp only if we have fresh data
+    # Empty timestamp signals ESP32 that data may be stale
+    if has_fresh_data:
+        payload["timestamp"] = datetime.now().strftime('%H:%M')
+    else:
+        payload["timestamp"] = ""  # Signal stale data to ESP32
+
     # Send via UDP
     try:
         message = json.dumps(payload).encode('utf-8')
         sock.sendto(message, (config["esp32_ip"], config["udp_port"]))
 
-        # Print status
-        timestamp = payload["timestamp"]
+        # Print status with stale indicator
+        timestamp = payload["timestamp"] if payload["timestamp"] else "STALE"
         metrics_str = " | ".join([f"{m['name']}:{m['value']}{m['unit']}" for m in payload["metrics"][:4]])
         if len(payload["metrics"]) > 4:
             metrics_str += f" ... +{len(payload['metrics'])-4} more"
-        print(f"[{timestamp}] {metrics_str}")
 
-        return True
+        stale_indicator = f" [!{stale_count} stale]" if stale_count > 0 else ""
+        print(f"[{timestamp}] {metrics_str}{stale_indicator}")
+
+        return True, last_good_values, has_fresh_data
     except Exception as e:
         print(f"Error sending data: {e}")
-        return False
+        return False, last_good_values, has_fresh_data
 
 
 def create_tray_icon():
@@ -2065,7 +2173,9 @@ def create_tray_icon():
 
 
 def run_minimized(config):
-    """Run monitoring loop in background with system tray icon"""
+    """Run monitoring loop in background with system tray icon and LHM recovery"""
+    global lhm_health_monitor
+
     if not TRAY_AVAILABLE:
         print("\nWARNING: pystray not available, running in console mode")
         print("Install with: pip install pystray pillow")
@@ -2078,12 +2188,36 @@ def run_minimized(config):
     stop_event = threading.Event()
 
     def monitoring_thread():
+        global lhm_health_monitor
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         psutil.cpu_percent(interval=1)
 
+        last_good_values = {}
+        last_lhm_check = time.time()
+
         while not stop_event.is_set():
-            send_metrics(sock, config)
-            time.sleep(config["update_interval"])
+            current_time = time.time()
+
+            # If LHM is unhealthy, try to recover
+            if use_rest_api and not lhm_health_monitor.is_healthy:
+                if current_time - last_lhm_check >= 30:
+                    last_lhm_check = current_time
+                    if is_lhm_process_running():
+                        success, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
+                        if success:
+                            lhm_health_monitor.record_success()
+
+            # Send metrics
+            success, last_good_values, has_fresh = send_metrics(sock, config, last_good_values)
+
+            # Determine sleep interval
+            if use_rest_api and not lhm_health_monitor.is_healthy:
+                sleep_time = min(lhm_health_monitor.get_retry_delay(), config["update_interval"])
+            else:
+                sleep_time = config["update_interval"]
+
+            time.sleep(sleep_time)
 
         sock.close()
 
@@ -2114,7 +2248,9 @@ def run_minimized(config):
 
 
 def run_monitoring(config):
-    """Run monitoring loop in console mode"""
+    """Run monitoring loop in console mode with LHM health monitoring and recovery"""
+    global lhm_health_monitor
+
     print(f"\nMonitoring {len(config['metrics'])} metrics:")
     for m in config["metrics"]:
         label_info = f" (Label: {m['custom_label']})" if m.get('custom_label') else ""
@@ -2131,11 +2267,47 @@ def run_monitoring(config):
     # Warm up psutil
     psutil.cpu_percent(interval=1)
 
-    # Main monitoring loop
+    # Initialize tracking variables
+    last_good_values = {}
+    last_lhm_check = time.time()
+
+    # Main monitoring loop with recovery logic
     try:
         while True:
-            send_metrics(sock, config)
-            time.sleep(config["update_interval"])
+            current_time = time.time()
+
+            # If LHM is unhealthy, try to recover
+            if use_rest_api and not lhm_health_monitor.is_healthy:
+                # Check LHM process status periodically (every 30 seconds)
+                if current_time - last_lhm_check >= 30:
+                    last_lhm_check = current_time
+
+                    if is_lhm_process_running():
+                        # Process is running, try to reconnect
+                        success, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
+                        if success:
+                            print(f"\n  ✓ LHM REST API restored ({count} sensors available)")
+                            lhm_health_monitor.record_success()
+                        else:
+                            if lhm_health_monitor.should_print_warning():
+                                print(f"  ⚠ LHM process found but REST API not responding")
+                                print(f"    Retry in {lhm_health_monitor.get_retry_delay()}s...")
+                    else:
+                        if lhm_health_monitor.should_print_warning():
+                            print("  ⚠ Waiting for LibreHardwareMonitor to restart...")
+
+            # Send metrics (will use cached values if LHM is down)
+            success, last_good_values, has_fresh = send_metrics(sock, config, last_good_values)
+
+            # Determine sleep interval
+            if use_rest_api and not lhm_health_monitor.is_healthy:
+                # Use exponential backoff when unhealthy
+                sleep_time = min(lhm_health_monitor.get_retry_delay(), config["update_interval"])
+            else:
+                sleep_time = config["update_interval"]
+
+            time.sleep(sleep_time)
+
     except KeyboardInterrupt:
         print("\n\nMonitoring stopped.")
     finally:
