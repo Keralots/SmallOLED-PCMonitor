@@ -13,7 +13,7 @@
 #define MARIO_START_X -15
 
 // Walking speed (pixels per frame at MARIO_ANIM_SPEED)
-#define MARIO_WALK_SPEED 2.5f
+#define MARIO_WALK_SPEED 2.0f
 
 // Velocity after hitting a digit (bounce upward)
 #define MARIO_BOUNCE_VELOCITY 2.0f

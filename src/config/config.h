@@ -129,7 +129,7 @@ enum MarioState {
 };
 
 // Mario animation constants
-#define MARIO_ANIM_SPEED 50
+#define MARIO_ANIM_SPEED 35
 #define JUMP_POWER -4.5
 #define GRAVITY 0.6
 #define TIME_Y 26

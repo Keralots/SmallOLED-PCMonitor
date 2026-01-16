@@ -185,7 +185,7 @@ void updateMarioAnimation(struct tm* timeinfo) {
             mario_x -= MARIO_WALK_SPEED;
             mario_facing_right = false;
           }
-          mario_walk_frame = (mario_walk_frame + 1) % 2;
+          mario_walk_frame = (mario_walk_frame + 1) % 4;
         } else {
           mario_x = target;
           mario_state = MARIO_JUMPING;
@@ -237,7 +237,7 @@ void updateMarioAnimation(struct tm* timeinfo) {
 
     case MARIO_WALKING_OFF:
       mario_x += MARIO_WALK_SPEED;
-      mario_walk_frame = (mario_walk_frame + 1) % 2;
+      mario_walk_frame = (mario_walk_frame + 1) % 4;
 
       if (mario_x > SCREEN_WIDTH + 15) {
         mario_state = MARIO_IDLE;
@@ -274,19 +274,31 @@ void drawMario(int x, int y, bool facingRight, int frame, bool jumping) {
     display.fillRect(sx + 2, sy + 3, 4, 3, DISPLAY_WHITE);
 
     if (facingRight) {
-      display.drawPixel(sx + 1, sy + 4, DISPLAY_WHITE);
-      display.drawPixel(sx + 6, sy + 3 + (frame % 2), DISPLAY_WHITE);
+      display.drawPixel(sx + 1, sy + 4 - (frame % 2), DISPLAY_WHITE);  // Back arm (opposite phase)
+      display.drawPixel(sx + 6, sy + 3 + (frame % 2), DISPLAY_WHITE);  // Front arm
     } else {
-      display.drawPixel(sx + 6, sy + 4, DISPLAY_WHITE);
-      display.drawPixel(sx + 1, sy + 3 + (frame % 2), DISPLAY_WHITE);
+      display.drawPixel(sx + 6, sy + 4 - (frame % 2), DISPLAY_WHITE);  // Back arm (opposite phase)
+      display.drawPixel(sx + 1, sy + 3 + (frame % 2), DISPLAY_WHITE);  // Front arm
     }
 
-    if (frame == 0) {
-      display.fillRect(sx + 2, sy + 6, 2, 3, DISPLAY_WHITE);
-      display.fillRect(sx + 4, sy + 6, 2, 3, DISPLAY_WHITE);
-    } else {
-      display.fillRect(sx + 1, sy + 6, 2, 3, DISPLAY_WHITE);
-      display.fillRect(sx + 5, sy + 6, 2, 3, DISPLAY_WHITE);
+    // 4-frame walk cycle for smoother animation
+    switch (frame % 4) {
+      case 0:  // Legs together (neutral)
+        display.fillRect(sx + 2, sy + 6, 2, 3, DISPLAY_WHITE);
+        display.fillRect(sx + 4, sy + 6, 2, 3, DISPLAY_WHITE);
+        break;
+      case 1:  // Left leg forward
+        display.fillRect(sx + 1, sy + 6, 2, 3, DISPLAY_WHITE);
+        display.fillRect(sx + 4, sy + 6, 2, 3, DISPLAY_WHITE);
+        break;
+      case 2:  // Legs apart (full stride)
+        display.fillRect(sx + 1, sy + 6, 2, 3, DISPLAY_WHITE);
+        display.fillRect(sx + 5, sy + 6, 2, 3, DISPLAY_WHITE);
+        break;
+      case 3:  // Right leg forward
+        display.fillRect(sx + 2, sy + 6, 2, 3, DISPLAY_WHITE);
+        display.fillRect(sx + 5, sy + 6, 2, 3, DISPLAY_WHITE);
+        break;
     }
   }
 }
