@@ -2435,9 +2435,9 @@ def main():
             print(f"  ✓ Using REST API ({rest_count} sensors available)")
         else:
             # Try WMI
-            wmi_success, wmi_count, _ = check_wmi_connectivity()
-            if wmi_success and wmi_count > 0:
-                print(f"  ✓ Using WMI ({wmi_count} sensors available)")
+            wmi_success, wmi_error, _ = check_wmi_connectivity()
+            if wmi_success:
+                print(f"  ✓ Using WMI")
             else:
                 print("  ⚠ No sensor source available - will use psutil fallback")
 
