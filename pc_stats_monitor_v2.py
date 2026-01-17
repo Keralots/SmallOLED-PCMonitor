@@ -25,8 +25,17 @@ try:
 except ImportError:
     TRAY_AVAILABLE = False
 
-# Configuration file path
-CONFIG_FILE = "monitor_config.json"
+# Try to import pythoncom for COM initialization (needed for WMI with pythonw.exe)
+try:
+    import pythoncom
+    PYTHONCOM_AVAILABLE = True
+except ImportError:
+    PYTHONCOM_AVAILABLE = False
+
+# Configuration file path - use absolute path to work correctly from any working directory
+# This fixes autostart issues where Windows ignores WorkingDirectory in shortcuts
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(SCRIPT_DIR, "monitor_config.json")
 
 # Default configuration
 DEFAULT_CONFIG = {
@@ -1460,13 +1469,15 @@ def setup_autostart(enable=True):
         script_path = os.path.abspath(__file__)
 
         shortcut.TargetPath = python_exe
-        shortcut.Arguments = f'"{script_path}" --minimized'
+        # Include 10s startup delay to wait for LibreHardwareMonitor to initialize
+        shortcut.Arguments = f'"{script_path}" --minimized --startup-delay 10'
         shortcut.WorkingDirectory = os.path.dirname(script_path)
         shortcut.IconLocation = python_exe
         shortcut.save()
 
         print(f"\n✓ Autostart enabled!")
         print(f"  Shortcut created: {shortcut_path}")
+        print(f"  Startup delay: 10 seconds (waiting for LHM to start)")
         return True
     else:
         # Remove shortcut
@@ -2228,6 +2239,13 @@ def run_minimized(config):
     def monitoring_thread():
         global lhm_health_monitor
 
+        # Initialize COM in this thread (required for WMI with pythonw.exe)
+        if PYTHONCOM_AVAILABLE:
+            try:
+                pythoncom.CoInitialize()
+            except Exception:
+                pass
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         psutil.cpu_percent(interval=1)
 
@@ -2263,6 +2281,13 @@ def run_minimized(config):
             time.sleep(config["update_interval"])
 
         sock.close()
+
+        # Uninitialize COM when thread exits
+        if PYTHONCOM_AVAILABLE:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
 
     # Create tray icon
     def on_quit(icon, item):
@@ -2370,7 +2395,22 @@ def main():
     parser.add_argument('--edit', action='store_true', help='Edit existing configuration')
     parser.add_argument('--autostart', choices=['enable', 'disable'], help='Enable/disable autostart')
     parser.add_argument('--minimized', action='store_true', help='Run minimized to system tray')
+    parser.add_argument('--startup-delay', type=int, default=0,
+                        help='Delay in seconds before starting (useful for autostart to wait for LHM)')
     args = parser.parse_args()
+
+    # Apply startup delay if specified (useful for Windows autostart)
+    if args.startup_delay > 0:
+        print(f"Waiting {args.startup_delay}s for system services to start...")
+        time.sleep(args.startup_delay)
+
+    # Initialize COM for WMI access (required when running with pythonw.exe / no console)
+    # Without this, WMI fails silently when launched from shortcuts
+    if PYTHONCOM_AVAILABLE:
+        try:
+            pythoncom.CoInitialize()
+        except Exception:
+            pass  # Already initialized or not needed
 
     # Handle autostart
     if args.autostart:
@@ -2428,18 +2468,30 @@ def main():
     global use_rest_api
     if not use_rest_api:
         print("Checking sensor connectivity...")
-        # Try REST API first (for LHM 0.9.5+)
-        rest_success, rest_count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
-        if rest_success and rest_count > 0:
-            use_rest_api = True
-            print(f"  ✓ Using REST API ({rest_count} sensors available)")
-        else:
-            # Try WMI
-            wmi_success, wmi_error, _ = check_wmi_connectivity()
-            if wmi_success:
-                print(f"  ✓ Using WMI")
+
+        # Retry logic for startup - WMI can take longer to initialize than REST API
+        max_retries = 5 if args.minimized else 1  # More retries for autostart
+        retry_delay = 3  # seconds between retries
+
+        for attempt in range(max_retries):
+            # Try REST API first (for LHM 0.9.5+)
+            rest_success, rest_count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
+            if rest_success and rest_count > 0:
+                use_rest_api = True
+                print(f"  ✓ Using REST API ({rest_count} sensors available)")
+                break
             else:
-                print("  ⚠ No sensor source available - will use psutil fallback")
+                # Try WMI (for LHM 0.9.4 and earlier)
+                wmi_success, wmi_error, _ = check_wmi_connectivity()
+                if wmi_success:
+                    print(f"  ✓ Using WMI")
+                    break
+                else:
+                    if attempt < max_retries - 1:
+                        print(f"  ⚠ Sensor source not ready, retrying in {retry_delay}s... ({attempt + 1}/{max_retries})")
+                        time.sleep(retry_delay)
+                    else:
+                        print("  ⚠ No sensor source available - will use psutil fallback")
 
     # Run monitoring (minimized or console)
     if args.minimized:
