@@ -333,9 +333,7 @@ def discover_sensors_via_http(host, port):
                     continue
 
                 # Parse value from string (e.g., "45.0 °C" -> 45.0)
-                # For throughput, also detect if value is in MB/s or KB/s
                 original_value_str = str(sensor_value)
-                throughput_in_mb = False
                 try:
                     # Extract numeric value from string like "45.0 °C" or "12.1 %"
                     value_match = re.search(r'[-+]?\d*\.?\d+', original_value_str)
@@ -344,12 +342,21 @@ def discover_sensors_via_http(host, port):
                     else:
                         sensor_value = 0
 
-                    # Check if throughput is in MB/s (need to convert to KB/s for ESP32)
+                    # Normalize throughput to KB/s for ESP32
                     if sensor_type == "throughput":
-                        if "MB/s" in original_value_str or "mb/s" in original_value_str.lower():
-                            throughput_in_mb = True
-                            # Convert MB/s to KB/s for consistency
+                        value_upper = original_value_str.upper()
+                        if "GB/S" in value_upper:
+                            # GB/s → KB/s: multiply by 1024*1024
+                            sensor_value = sensor_value * 1024 * 1024
+                        elif "MB/S" in value_upper:
+                            # MB/s → KB/s: multiply by 1024
                             sensor_value = sensor_value * 1024
+                        elif "KB/S" in value_upper:
+                            # Already KB/s, no conversion needed
+                            pass
+                        elif "B/S" in value_upper or not any(x in value_upper for x in ['/', 'S']):
+                            # B/s or raw bytes → KB/s: divide by 1024
+                            sensor_value = sensor_value / 1024
                         # Multiply by 10 to preserve 1 decimal place (ESP32 will divide by 10)
                         sensor_value = sensor_value * 10
                 except:
@@ -517,9 +524,20 @@ def get_metric_value_via_http(metric_config, host, port):
                             # For throughput: multiply by 10 to preserve 1 decimal place
                             # ESP32 will divide by 10 when displaying
                             if is_throughput:
-                                # Check if value is in MB/s and convert to KB/s
-                                if "MB/s" in value_str or "mb/s" in value_str.lower():
+                                # Normalize throughput to KB/s for ESP32
+                                value_upper = value_str.upper()
+                                if "GB/S" in value_upper:
+                                    # GB/s → KB/s
+                                    float_value = float_value * 1024 * 1024
+                                elif "MB/S" in value_upper:
+                                    # MB/s → KB/s
                                     float_value = float_value * 1024
+                                elif "KB/S" in value_upper:
+                                    # Already KB/s
+                                    pass
+                                elif "B/S" in value_upper or not any(x in value_upper for x in ['/', 'S']):
+                                    # B/s or raw bytes → KB/s
+                                    float_value = float_value / 1024
                                 float_value = float_value * 10
                             lhm_health_monitor.record_success()
                             return int(float_value)
@@ -2078,10 +2096,11 @@ def get_metric_value(metric_config):
             sensors = w.Sensor(Identifier=identifier)
             if sensors:
                 value = float(sensors[0].Value)
-                # For throughput: multiply by 10 to preserve 1 decimal place
+                # For throughput: WMI returns B/s, convert to KB/s and multiply by 10
                 # ESP32 will divide by 10 when displaying
                 if metric_config.get("unit", "") == "KB/s":
-                    value = value * 10
+                    value = value / 1024  # B/s → KB/s
+                    value = value * 10    # Preserve 1 decimal place
                 return int(value)
         except:
             pass
