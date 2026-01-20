@@ -52,12 +52,16 @@ void initPongAnimation() {
   breakout_paddle.target_x = 64;
   breakout_paddle.width = settings.pongPaddleWidth;  // Use user-configured width
 
-  // Clear digit transitions
+  // Clear digit transitions and reset bounce offsets
   for (int i = 0; i < 5; i++) {
     digit_transitions[i].state = DIGIT_NORMAL;
     digit_transitions[i].hit_count = 0;
     digit_transitions[i].fragments_spawned = 0;
     digit_transitions[i].assembly_progress = 0.0;
+    digit_offset_x[i] = 0;
+    digit_offset_y[i] = 0;
+    digit_velocity_x[i] = 0;
+    digit_velocity[i] = 0;
   }
 
   // Clear fragments and targets
@@ -586,13 +590,25 @@ void checkPongCollisions(int ballIndex) {
       // Apply visible push to digit - always push AWAY from ball
       float push_strength = 3.0;  // Strong enough to see (2-3 pixel visible movement)
 
-      // Simple logic: push digit away from ball's vertical position
-      if (ball_cy < digit_cy) {
-        // Ball is above digit center - push digit DOWN
-        digit_velocity[d] = push_strength;
+      // Determine hit direction and apply appropriate push
+      if (abs(ball_cx - digit_cx) > 4 && settings.pongHorizontalBounce) {
+        // Side hit - push digit horizontally (only if horizontal bounce enabled)
+        if (ball_cx < digit_cx) {
+          // Ball is left of digit center - push digit RIGHT
+          digit_velocity_x[d] = push_strength;
+        } else {
+          // Ball is right of digit center - push digit LEFT
+          digit_velocity_x[d] = -push_strength;
+        }
       } else {
-        // Ball is below digit center - push digit UP
-        digit_velocity[d] = -push_strength;
+        // Top/bottom hit OR horizontal bounce disabled - push digit vertically
+        if (ball_cy < digit_cy) {
+          // Ball is above digit center - push digit DOWN
+          digit_velocity[d] = push_strength;
+        } else {
+          // Ball is below digit center - push digit UP
+          digit_velocity[d] = -push_strength;
+        }
       }
 
       // Check if this is a breaking digit (target for hits)
@@ -638,6 +654,62 @@ void checkPongCollisions(int ballIndex) {
       }
 
       break;  // Only process one collision per frame
+    }
+  }
+
+  // Check for ball in gap between adjacent digit pairs (hours: 0-1, minutes: 3-4)
+  // This handles the case where ball flows straight through without hitting either digit
+  // Only active when horizontal bounce is enabled - otherwise ball passes through freely
+  if (settings.pongHorizontalBounce) {
+    int dy1 = PONG_TIME_Y + 1;
+    int dy2 = PONG_TIME_Y + 23;
+
+    // Only check if ball is at digit Y level
+    if (ball_py + PONG_BALL_SIZE >= dy1 && ball_py <= dy2) {
+      // Check gap between hour digits (0 and 1)
+      int gap1_left = DIGIT_X[0] + 14;   // Right edge of digit 0
+      int gap1_right = DIGIT_X[1] + 1;   // Left edge of digit 1
+      int ball_cx = ball_px + PONG_BALL_SIZE / 2;
+
+      if (ball_cx > gap1_left && ball_cx < gap1_right) {
+        // Ball is in gap between hour digits - bounce and push both apart
+        float push_strength = 3.0;
+        digit_velocity_x[0] = -push_strength;  // Push left digit left
+        digit_velocity_x[1] = push_strength;   // Push right digit right
+
+        // Reverse ball horizontal direction
+        pong_balls[ballIndex].vx = -pong_balls[ballIndex].vx;
+
+        // Push ball out of gap
+        if (pong_balls[ballIndex].vx > 0) {
+          ball_px = gap1_right + 1;
+        } else {
+          ball_px = gap1_left - PONG_BALL_SIZE - 1;
+        }
+        pong_balls[ballIndex].x = ball_px * 16;
+      }
+
+      // Check gap between minute digits (3 and 4)
+      int gap2_left = DIGIT_X[3] + 14;   // Right edge of digit 3
+      int gap2_right = DIGIT_X[4] + 1;   // Left edge of digit 4
+
+      if (ball_cx > gap2_left && ball_cx < gap2_right) {
+        // Ball is in gap between minute digits - bounce and push both apart
+        float push_strength = 3.0;
+        digit_velocity_x[3] = -push_strength;  // Push left digit left
+        digit_velocity_x[4] = push_strength;   // Push right digit right
+
+        // Reverse ball horizontal direction
+        pong_balls[ballIndex].vx = -pong_balls[ballIndex].vx;
+
+        // Push ball out of gap
+        if (pong_balls[ballIndex].vx > 0) {
+          ball_px = gap2_right + 1;
+        } else {
+          ball_px = gap2_left - PONG_BALL_SIZE - 1;
+        }
+        pong_balls[ballIndex].x = ball_px * 16;
+      }
     }
   }
 }
@@ -731,9 +803,10 @@ void drawPongDigits() {
         if ((millis() / flicker_speed) % 2 == 0) continue;  // Skip rendering = flicker
       }
 
-      // Draw old digit
+      // Draw old digit with bounce offset
+      int x = DIGIT_X[i] + (int)digit_offset_x[i];
       int y = PONG_TIME_Y + (int)digit_offset_y[i];
-      display.setCursor(DIGIT_X[i], y);
+      display.setCursor(x, y);
       char old_digit = digit_transitions[i].old_char;
       display.print(old_digit);
 
@@ -742,16 +815,18 @@ void drawPongDigits() {
       // Don't draw the digit itself - fragments will converge to form it
       // Once assembly is complete (progress >= 0.8), start showing the solid digit
       if (digit_transitions[i].assembly_progress >= 0.8) {
+        int x = DIGIT_X[i] + (int)digit_offset_x[i];
         int y = PONG_TIME_Y + (int)digit_offset_y[i];
-        display.setCursor(DIGIT_X[i], y);
+        display.setCursor(x, y);
         char new_digit = digit_transitions[i].new_char;
         display.print(new_digit);
       }
 
     } else {
       // Normal rendering with bounce offset from ball hits
+      int x = DIGIT_X[i] + (int)digit_offset_x[i];
       int y = PONG_TIME_Y + (int)digit_offset_y[i];
-      display.setCursor(DIGIT_X[i], y);
+      display.setCursor(x, y);
       display.print(digits[i]);
     }
   }
@@ -780,12 +855,13 @@ void updateDigitBouncePong() {
   const float DAMPING = settings.pongBounceDamping / 100.0;          // Damping factor
 
   for (int i = 0; i < 5; i++) {
+    // Y-axis spring bounce (vertical)
     if (digit_offset_y[i] != 0 || digit_velocity[i] != 0) {
       // Spring force: pulls digit back to rest position (0)
-      float spring_force = -digit_offset_y[i] * SPRING_STRENGTH;
+      float spring_force_y = -digit_offset_y[i] * SPRING_STRENGTH;
 
       // Apply spring force and damping (scaled by physics rate)
-      digit_velocity[i] += spring_force * physicsScale;
+      digit_velocity[i] += spring_force_y * physicsScale;
       digit_velocity[i] *= pow(DAMPING, physicsScale);  // Exponential damping scaling
 
       // Update position
@@ -799,6 +875,29 @@ void updateDigitBouncePong() {
       if (abs(digit_offset_y[i]) < 0.1 && abs(digit_velocity[i]) < 0.1) {
         digit_offset_y[i] = 0;
         digit_velocity[i] = 0;
+      }
+    }
+
+    // X-axis spring bounce (horizontal)
+    if (digit_offset_x[i] != 0 || digit_velocity_x[i] != 0) {
+      // Spring force: pulls digit back to rest position (0)
+      float spring_force_x = -digit_offset_x[i] * SPRING_STRENGTH;
+
+      // Apply spring force and damping (scaled by physics rate)
+      digit_velocity_x[i] += spring_force_x * physicsScale;
+      digit_velocity_x[i] *= pow(DAMPING, physicsScale);  // Exponential damping scaling
+
+      // Update position
+      digit_offset_x[i] += digit_velocity_x[i] * physicsScale;
+
+      // Clamp to visible movement range (allow up to 4 pixels)
+      if (digit_offset_x[i] > 4) digit_offset_x[i] = 4;
+      if (digit_offset_x[i] < -4) digit_offset_x[i] = -4;
+
+      // Stop when very close to rest position
+      if (abs(digit_offset_x[i]) < 0.1 && abs(digit_velocity_x[i]) < 0.1) {
+        digit_offset_x[i] = 0;
+        digit_velocity_x[i] = 0;
       }
     }
   }

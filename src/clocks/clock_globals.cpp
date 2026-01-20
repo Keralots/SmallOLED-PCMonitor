@@ -46,6 +46,8 @@ int current_target_index = 0;
 // Digit bounce animation state
 float digit_offset_y[5] = {0};
 float digit_velocity[5] = {0};
+float digit_offset_x[5] = {0};  // Horizontal offset for Pong side hits
+float digit_velocity_x[5] = {0};  // Horizontal velocity for Pong side hits
 
 // ========== Space Clock Globals ==========
 SpaceState space_state = SPACE_PATROL;

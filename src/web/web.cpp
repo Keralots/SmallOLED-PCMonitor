@@ -374,7 +374,7 @@ void handleRoot() {
 
           <label for="marioBounceHeight">Bounce Height</label>
           <input type="range" name="marioBounceHeight" id="marioBounceHeight"
-                 min="10" max="80" step="5"
+                 min="10" max="50" step="5"
                  value=")rawliteral" + String(settings.marioBounceHeight) + R"rawliteral("
                  oninput="document.getElementById('bounceHeightValue').textContent = (this.value / 10).toFixed(1)">
           <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
@@ -395,6 +395,30 @@ void handleRoot() {
           <p style="color: #888; font-size: 12px; margin-top: 5px;">
             How fast digits fall back down. Higher = faster fall. Default: 0.6
           </p>
+
+          <label for="marioWalkSpeed" style="margin-top: 15px;">Walk Speed</label>
+          <input type="range" name="marioWalkSpeed" id="marioWalkSpeed"
+                 min="15" max="35" step="1"
+                 value=")rawliteral" + String(settings.marioWalkSpeed) + R"rawliteral("
+                 oninput="document.getElementById('walkSpeedValue').textContent = (this.value / 10).toFixed(1)">
+          <span style="color: #3b82f6; font-size: 14px; margin-left: 10px;">
+            <span id="walkSpeedValue">)rawliteral" + String(settings.marioWalkSpeed / 10.0, 1) + R"rawliteral(</span>
+          </span>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            How fast Mario walks. Higher = faster. Default: 2.0
+          </p>
+
+          <div style="margin-top: 15px;">
+            <label style="display: flex; align-items: center; cursor: pointer;">
+              <input type="checkbox" name="marioSmoothAnimation" id="marioSmoothAnimation"
+                     )rawliteral" + String(settings.marioSmoothAnimation ? "checked" : "") + R"rawliteral(
+                     style="margin-right: 10px; width: 18px; height: 18px;">
+              <span>Smooth Animation (4-frame walk cycle)</span>
+            </label>
+            <p style="color: #888; font-size: 12px; margin-top: 5px;">
+              Enable smoother 4-frame walking animation. Disabled = original 2-frame animation.
+            </p>
+          </div>
         </div>
 
         <!-- Pong Clock Settings (only visible when Pong is selected) -->
@@ -447,6 +471,15 @@ void handleRoot() {
           </span>
           <p style="color: #888; font-size: 12px; margin-top: 5px;">
             Size of the paddle. Narrower = harder, Wider = easier. Default: 20px
+          </p>
+
+          <label style="margin-top: 15px;">
+            <input type="checkbox" name="pongHorizontalBounce"
+                   )rawliteral" + String(settings.pongHorizontalBounce ? "checked" : "") + R"rawliteral(>
+            Horizontal Digit Bounce
+          </label>
+          <p style="color: #888; font-size: 12px; margin-top: 5px;">
+            When enabled, digits bounce sideways when hit from the side. Disable for vertical-only bounce. Default: Enabled
           </p>
         </div>
 
@@ -1528,6 +1561,12 @@ void handleSave() {
   if (server.hasArg("marioBounceSpeed")) {
     settings.marioBounceSpeed = server.arg("marioBounceSpeed").toInt();
   }
+  // Save Mario smooth animation checkbox
+  settings.marioSmoothAnimation = server.hasArg("marioSmoothAnimation");
+  // Save Mario walk speed
+  if (server.hasArg("marioWalkSpeed")) {
+    settings.marioWalkSpeed = server.arg("marioWalkSpeed").toInt();
+  }
 
   // Save Pong settings
   if (server.hasArg("pongBallSpeed")) {
@@ -1542,6 +1581,7 @@ void handleSave() {
   if (server.hasArg("pongPaddleWidth")) {
     settings.pongPaddleWidth = server.arg("pongPaddleWidth").toInt();
   }
+  settings.pongHorizontalBounce = server.hasArg("pongHorizontalBounce");
 
   // Save Pac-Man settings
   if (server.hasArg("pacmanSpeed")) {
@@ -1755,6 +1795,7 @@ void handleSave() {
   assertBounds(settings.refreshRateHz, 1, 60, "refreshRateHz");
   assertBounds(settings.marioBounceHeight, 10, 80, "marioBounceHeight");
   assertBounds(settings.marioBounceSpeed, 2, 15, "marioBounceSpeed");
+  assertBounds(settings.marioWalkSpeed, 15, 35, "marioWalkSpeed");
   assertBounds(settings.pongBallSpeed, 16, 30, "pongBallSpeed");
   assertBounds(settings.pongBounceStrength, 1, 8, "pongBounceStrength");
   assertBounds(settings.pongBounceDamping, 50, 95, "pongBounceDamping");

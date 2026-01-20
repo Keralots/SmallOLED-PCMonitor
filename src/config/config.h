@@ -85,6 +85,8 @@ struct Settings {
   // Mario clock settings
   uint8_t marioBounceHeight;  // Tenths (40 = 4.0)
   uint8_t marioBounceSpeed;   // Tenths (6 = 0.6)
+  bool marioSmoothAnimation;  // Enable 4-frame walk cycle (default: false = 2-frame)
+  uint8_t marioWalkSpeed;     // Tenths (20 = 2.0, 25 = 2.5 old/fast)
 
   // Space clock settings
   uint8_t spaceCharacterType;   // 0=Invader, 1=Ship
@@ -98,6 +100,7 @@ struct Settings {
   uint8_t pongBounceStrength;   // Tenths (3 = 0.3)
   uint8_t pongBounceDamping;    // Hundredths (85 = 0.85)
   uint8_t pongPaddleWidth;      // Pixels (20)
+  bool pongHorizontalBounce;    // Enable horizontal digit bounce on side hits
 
   // Pac-Man clock settings
   uint8_t pacmanSpeed;          // Tenths (10 = 1.0)
@@ -300,6 +303,8 @@ extern int target_digit_values[4];
 extern int current_target_index;
 extern float digit_offset_y[5];
 extern float digit_velocity[5];
+extern float digit_offset_x[5];
+extern float digit_velocity_x[5];
 
 // Space clock globals
 extern SpaceState space_state;

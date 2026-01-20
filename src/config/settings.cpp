@@ -36,10 +36,13 @@ void loadSettings() {
         true;                        // Default: Enable smooth animation boost
     settings.marioBounceHeight = 35; // Default: 3.5 (35 = 3.5 in tenths)
     settings.marioBounceSpeed = 6;   // Default: 0.6 (6 = 0.6 in tenths)
+    settings.marioSmoothAnimation = false; // Default: 2-frame animation
+    settings.marioWalkSpeed = 20;    // Default: 2.0 (20 = 2.0 in tenths)
     settings.pongBallSpeed = 18;     // Default: 18 (1.125 px/frame)
     settings.pongBounceStrength = 3; // Default: 0.3 (3 = 0.3 in tenths)
     settings.pongBounceDamping = 85; // Default: 0.85 (85 = 0.85 in hundredths)
     settings.pongPaddleWidth = 20;   // Default: 20 pixels
+    settings.pongHorizontalBounce = true; // Default: enabled
     settings.spaceCharacterType = 1; // Default: Ship (1 = Ship, 0 = Invader)
     settings.spacePatrolSpeed = 5;   // Default: 0.5 (5 = 0.5 in tenths)
     settings.spaceAttackSpeed = 25;  // Default: 2.5 (25 = 2.5 in tenths)
@@ -86,6 +89,8 @@ void loadSettings() {
     preferences.putBool("boostAnim", true);   // Default: Enable animation boost
     preferences.putUChar("marioBnceH", 35);   // Default: 3.5
     preferences.putUChar("marioBnceS", 6);    // Default: 0.6
+    preferences.putBool("marioSmooth", false); // Default: 2-frame animation
+    preferences.putUChar("marioWalkSpd", 20); // Default: 2.0
     preferences.putUChar("pongBallSpd", 18);  // Default: 18
     preferences.putUChar("pongBncStr", 3);    // Default: 0.3
     preferences.putUChar("pongBncDmp", 85);   // Default: 0.85
@@ -148,6 +153,10 @@ void loadSettings() {
       preferences.getUChar("marioBnceH", 35); // Default: 3.5
   settings.marioBounceSpeed =
       preferences.getUChar("marioBnceS", 6); // Default: 0.6
+  settings.marioSmoothAnimation =
+      preferences.getBool("marioSmooth", false); // Default: 2-frame
+  settings.marioWalkSpeed =
+      preferences.getUChar("marioWalkSpd", 20); // Default: 2.0
   settings.pongBallSpeed =
       preferences.getUChar("pongBallSpd", 18); // Default: 18
   settings.pongBounceStrength =
@@ -156,6 +165,8 @@ void loadSettings() {
       preferences.getUChar("pongBncDmp", 85); // Default: 0.85
   settings.pongPaddleWidth =
       preferences.getUChar("pongPadWid", 20); // Default: 20
+  settings.pongHorizontalBounce =
+      preferences.getBool("pongHorizBnc", true); // Default: true
   settings.pacmanSpeed =
       preferences.getUChar("pacmanSpeed", 10); // Default: 1.0 patrol speed
   settings.pacmanEatingSpeed =
@@ -322,10 +333,13 @@ void saveSettings() {
   preferences.putBool("boostAnim", settings.boostAnimationRefresh);
   preferences.putUChar("marioBnceH", settings.marioBounceHeight);
   preferences.putUChar("marioBnceS", settings.marioBounceSpeed);
+  preferences.putBool("marioSmooth", settings.marioSmoothAnimation);
+  preferences.putUChar("marioWalkSpd", settings.marioWalkSpeed);
   preferences.putUChar("pongBallSpd", settings.pongBallSpeed);
   preferences.putUChar("pongBncStr", settings.pongBounceStrength);
   preferences.putUChar("pongBncDmp", settings.pongBounceDamping);
   preferences.putUChar("pongPadWid", settings.pongPaddleWidth);
+  preferences.putBool("pongHorizBnc", settings.pongHorizontalBounce);
   preferences.putUChar("pacmanSpeed", settings.pacmanSpeed);
   preferences.putUChar("pacmanEatSpeed", settings.pacmanEatingSpeed);
   preferences.putUChar("pacmanMouthSpd", settings.pacmanMouthSpeed);

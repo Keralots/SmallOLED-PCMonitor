@@ -48,6 +48,8 @@ extern int current_target_index;
 // Digit bounce animation state
 extern float digit_offset_y[5];
 extern float digit_velocity[5];
+extern float digit_offset_x[5];  // Horizontal offset for Pong side hits
+extern float digit_velocity_x[5];  // Horizontal velocity for Pong side hits
 
 // ========== Space Clock Globals ==========
 extern SpaceState space_state;
