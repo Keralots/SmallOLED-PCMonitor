@@ -217,7 +217,7 @@ struct FragmentTarget {
 // Pong constants
 #define MAX_PONG_BALLS 2
 #define MAX_PONG_FRAGMENTS 40
-#define PONG_BALL_SIZE 3
+#define PONG_BALL_SIZE 2
 #define PONG_TIME_Y 16
 #define PONG_PLAY_AREA_TOP 10          // Above digits (ball can enter date area)
 #define BREAKOUT_PADDLE_Y 60
