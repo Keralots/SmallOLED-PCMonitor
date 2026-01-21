@@ -221,7 +221,7 @@ struct FragmentTarget {
 #define PONG_TIME_Y 16
 #define PONG_PLAY_AREA_TOP 10          // Above digits (ball can enter date area)
 #define BREAKOUT_PADDLE_Y 60
-#define BREAKOUT_PADDLE_HEIGHT 3
+#define BREAKOUT_PADDLE_HEIGHT 2
 #define PONG_UPDATE_INTERVAL 20
 #define BALL_SPAWN_DELAY 500
 #define PONG_FRAG_GRAVITY 0.3
