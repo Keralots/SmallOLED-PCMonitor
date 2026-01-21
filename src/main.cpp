@@ -61,6 +61,7 @@ unsigned long lastNtpSyncTime = 0;
 unsigned long lastReceived = 0;
 unsigned long wifiDisconnectTime = 0;
 unsigned long nextDisplayUpdate = 0;
+bool wifiConnected = false;  // WiFi connection status for icon display
 
 #if TOUCH_BUTTON_ENABLED
 bool manualClockMode = false;  // Manual override to force clock mode when PC is online
@@ -239,6 +240,9 @@ void setup() {
 
   // Initialize NTP
   initNTP();
+
+  // Initialize WiFi connection status flag
+  wifiConnected = (WiFi.status() == WL_CONNECTED);
 
   // Configure hardware watchdog timer
   esp_task_wdt_init(15, true);

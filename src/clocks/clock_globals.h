@@ -116,4 +116,7 @@ extern uint8_t target_queue_index;
 extern uint8_t pending_digit_index;
 extern uint8_t pending_digit_value;
 
+// ========== WiFi Status Icon ==========
+void drawNoWiFiIcon(int x, int y);
+
 #endif // CLOCK_GLOBALS_H

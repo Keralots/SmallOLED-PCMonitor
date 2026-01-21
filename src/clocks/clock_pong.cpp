@@ -1,13 +1,14 @@
 /*
- * SmallOLED-PCMonitor - Pong/Breakout Clock
+ * SmallOLED-PCMonitor - Arkanoid Clock
  *
- * Breakout-style clock with ball physics, paddle, and digit transitions.
+ * Breakout/Arkanoid-style clock with ball physics, paddle, and digit transitions.
  * Ball bounces off walls and digits, breaking them on time changes.
  */
 
 #include "../config/config.h"
 #include "../display/display.h"
 #include "clocks.h"
+#include "clock_globals.h"
 
 // Fragment pool helper functions
 SpaceFragment* findFreePongFragment() {
@@ -124,7 +125,7 @@ void updateBreakoutPaddle() {
     }
   }
 
-  // Set target to ball X position (perfect tracking)
+  // Set target to ball X position (direct tracking - no lag)
   if (closest_ball >= 0) {
     int ball_x = pong_balls[closest_ball].x / 16;
     breakout_paddle.target_x = ball_x;
@@ -1075,4 +1076,9 @@ void displayClockWithPong() {
 
   // 5. Ball(s) (on top)
   drawPongBall();
+
+  // Draw no-WiFi icon if disconnected
+  if (!wifiConnected) {
+    drawNoWiFiIcon(0, 0);
+  }
 }

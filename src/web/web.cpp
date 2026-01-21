@@ -364,7 +364,7 @@ void handleRoot() {
           <option value="1" )rawliteral" + String(settings.clockStyle == 1 ? "selected" : "") + R"rawliteral(>Standard Clock</option>
           <option value="2" )rawliteral" + String(settings.clockStyle == 2 ? "selected" : "") + R"rawliteral(>Large Clock</option>
           <option value="3" )rawliteral" + String(settings.clockStyle == 3 ? "selected" : "") + R"rawliteral(>Space Invaders</option>
-          <option value="5" )rawliteral" + String(settings.clockStyle == 5 ? "selected" : "") + R"rawliteral(>Pong Clock</option>
+          <option value="5" )rawliteral" + String(settings.clockStyle == 5 ? "selected" : "") + R"rawliteral(>Arkanoid</option>
           <option value="6" )rawliteral" + String(settings.clockStyle == 6 ? "selected" : "") + R"rawliteral(>Pac-Man Clock</option>
         </select>
 
@@ -421,9 +421,9 @@ void handleRoot() {
           </div>
         </div>
 
-        <!-- Pong Clock Settings (only visible when Pong is selected) -->
+        <!-- Arkanoid Clock Settings (only visible when Arkanoid is selected) -->
         <div id="pongSettings" style="display: )rawliteral" + String(settings.clockStyle == 5 ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #3b82f6;">
-          <h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">🎮 Pong Animation Settings</h4>
+          <h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">🎮 Arkanoid Animation Settings</h4>
 
           <label for="pongBallSpeed">Ball Speed</label>
           <input type="range" name="pongBallSpeed" id="pongBallSpeed"

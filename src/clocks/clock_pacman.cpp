@@ -273,6 +273,11 @@ void displayClockWithPacman() {
 
   // Draw Pac-Man
   drawPacman((int)pacman_x, (int)pacman_y, pacman_direction, pacman_mouth_frame);
+
+  // Draw no-WiFi icon if disconnected
+  if (!wifiConnected) {
+    drawNoWiFiIcon(0, 0);
+  }
 }
 
 void updatePacmanAnimation(struct tm* timeinfo) {

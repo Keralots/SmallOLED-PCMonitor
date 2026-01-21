@@ -205,33 +205,41 @@ void initNTP() {
 }
 
 // ========== WiFi Reconnection Handling ==========
+// Reconnection interval in milliseconds (try every 30 seconds)
+#define WIFI_RECONNECT_INTERVAL 30000
+
 void handleWiFiReconnection() {
+  static unsigned long lastReconnectAttempt = 0;
+
   if (WiFi.status() != WL_CONNECTED) {
+    // Update global flag for icon display
+    wifiConnected = false;
+
     if (wifiDisconnectTime == 0) {
       wifiDisconnectTime = millis();
-      Serial.println("WiFi disconnected, attempting reconnection...");
+      Serial.println("WiFi disconnected");
+    }
+
+    // Periodic reconnection attempt every 30 seconds
+    unsigned long currentMillis = millis();
+    if (currentMillis - lastReconnectAttempt > WIFI_RECONNECT_INTERVAL) {
+      Serial.println("Attempting WiFi reconnection...");
       WiFi.reconnect();
+      lastReconnectAttempt = currentMillis;
     }
 
-    if (millis() - wifiDisconnectTime > WIFI_RECONNECT_TIMEOUT) {
-      Serial.println("WiFi reconnection failed, restarting...");
-      ESP.restart();
-    }
-
-    if (displayAvailable && (millis() / 500) % 2 == 0) {
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setCursor(10, 20);
-      display.println("WiFi Lost");
-      display.setCursor(10, 35);
-      display.println("Reconnecting...");
-      display.display();
-    }
+    // NOTE: Auto-reboot removed - device continues as clock-only
+    // NOTE: Display drawing removed - clock functions show small icon instead
   } else {
+    // WiFi is connected
+    wifiConnected = true;
+
     if (wifiDisconnectTime != 0) {
       Serial.println("WiFi reconnected successfully!");
+      Serial.print("IP Address: ");
+      Serial.println(WiFi.localIP());
       wifiDisconnectTime = 0;
-      ntpSynced = false;
+      ntpSynced = false;  // Force NTP resync after reconnection
     }
   }
 }

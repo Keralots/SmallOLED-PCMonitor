@@ -219,7 +219,7 @@ struct FragmentTarget {
 #define MAX_PONG_FRAGMENTS 40
 #define PONG_BALL_SIZE 3
 #define PONG_TIME_Y 16
-#define PONG_PLAY_AREA_TOP 14
+#define PONG_PLAY_AREA_TOP 10          // Above digits (ball can enter date area)
 #define BREAKOUT_PADDLE_Y 60
 #define BREAKOUT_PADDLE_HEIGHT 3
 #define PONG_UPDATE_INTERVAL 20
@@ -280,6 +280,7 @@ extern unsigned long lastNtpSyncTime;
 extern unsigned long lastReceived;
 extern unsigned long wifiDisconnectTime;
 extern unsigned long nextDisplayUpdate;
+extern bool wifiConnected;  // WiFi connection status for icon display
 
 // Mario clock globals
 extern MarioState mario_state;

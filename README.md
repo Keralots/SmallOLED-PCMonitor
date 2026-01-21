@@ -30,7 +30,7 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 - **Dual Display Modes:**
   - **PC Online**: Real-time stats with customizable metrics and positions
-  - **PC Offline**: Animated clock (Mario, Space Invaders, Pong, Pacman, Standard, or Large styles)
+  - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pacman, Standard, or Large styles)
 - **v2.0 Python GUI (NEW!)**:
   - Easy graphical configuration - no more editing files!
   - Select from all available sensors on your system
@@ -85,7 +85,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 
 **Functionality:**
 - **When PC is online:** Touch toggles between PC metrics view and clock display
-- **When PC is offline:** Touch cycles through different clock animations (Mario, Standard, Large, Space Invaders, Pong, Pac-Man)
+- **When PC is offline:** Touch cycles through different clock animations (Mario, Standard, Large, Space Invaders, Arkanoid, Pac-Man)
 
 **Hardware Setup:**
 - Connect TTP223 signal pin to GPIO 7
@@ -155,7 +155,7 @@ Once connected to WiFi, access the full configuration page:
 ![ESP32 Web Portal - Clock Settings](img/ESP-WEBPortal1.png)
 
 2. **Clock Settings:**
-   - Idle clock style (Mario animation, Space Invaders, Pong, Pacman Standard, or Large)
+   - Idle clock style (Mario animation, Space Invaders, Arkanoid, Pacman, Standard, or Large)
    - Time format (12/24 hour)
    - Date format (DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD)
 

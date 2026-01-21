@@ -5,6 +5,7 @@
  */
 
 #include "clocks.h"
+#include "clock_globals.h"
 #include "../display/display.h"
 
 // ========== Colon Blink Helper ==========
@@ -180,6 +181,11 @@ void displayStandardClock() {
   int day_x = (SCREEN_WIDTH - day_width) / 2;
   display.setCursor(day_x, 52);
   display.print(dayName);
+
+  // Draw no-WiFi icon if disconnected
+  if (!wifiConnected) {
+    drawNoWiFiIcon(0, 0);
+  }
 }
 
 // ========== Large Clock Display ==========
@@ -243,4 +249,9 @@ void displayLargeClock() {
   int date_x = (SCREEN_WIDTH - 60) / 2;
   display.setCursor(date_x, 54);
   display.print(dateStr);
+
+  // Draw no-WiFi icon if disconnected
+  if (!wifiConnected) {
+    drawNoWiFiIcon(0, 0);
+  }
 }

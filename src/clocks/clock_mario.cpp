@@ -136,6 +136,11 @@ void displayClockWithMario() {
   int mario_draw_y = mario_base_y + (int)mario_jump_y;
   bool isJumping = (mario_state == MARIO_JUMPING);
   drawMario((int)mario_x, mario_draw_y, mario_facing_right, mario_walk_frame, isJumping);
+
+  // Draw no-WiFi icon if disconnected
+  if (!wifiConnected) {
+    drawNoWiFiIcon(0, 0);
+  }
 }
 
 // ========== Update Mario Animation ==========

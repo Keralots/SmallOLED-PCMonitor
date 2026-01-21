@@ -7,6 +7,7 @@
 
 #include "clock_globals.h"
 #include "clock_constants.h"
+#include "../display/display.h"
 
 // ========== Common Digit Positioning ==========
 // Standard digit X positions for time display (18px spacing, starting at 19)
@@ -68,7 +69,7 @@ PongBall pong_balls[MAX_PONG_BALLS];
 SpaceFragment pong_fragments[MAX_PONG_FRAGMENTS];
 FragmentTarget fragment_targets[MAX_PONG_FRAGMENTS];
 DigitTransition digit_transitions[5];
-BreakoutPaddle breakout_paddle = {SCREEN_CENTER_X, 20, SCREEN_CENTER_X, 3};
+BreakoutPaddle breakout_paddle = {SCREEN_CENTER_X, SCREEN_CENTER_X, 20, 3};  // x, target_x, width, speed
 unsigned long last_pong_update = 0;
 
 // Ball state
@@ -113,3 +114,30 @@ uint8_t target_queue_length = 0;
 uint8_t target_queue_index = 0;
 uint8_t pending_digit_index = 255;
 uint8_t pending_digit_value = 0;
+
+// ========== WiFi Status Icon ==========
+// Draw a "no WiFi" icon (8x8 pixels) - WiFi symbol with diagonal cross
+void drawNoWiFiIcon(int x, int y) {
+  // WiFi arcs (signal strength bars)
+  // Small arc (closest to antenna)
+  display.drawPixel(x + 3, y + 5, DISPLAY_WHITE);
+  display.drawPixel(x + 4, y + 5, DISPLAY_WHITE);
+
+  // Medium arc
+  display.drawPixel(x + 2, y + 4, DISPLAY_WHITE);
+  display.drawPixel(x + 5, y + 4, DISPLAY_WHITE);
+  display.drawPixel(x + 2, y + 3, DISPLAY_WHITE);
+  display.drawPixel(x + 5, y + 3, DISPLAY_WHITE);
+
+  // Large arc (outer signal)
+  display.drawPixel(x + 1, y + 2, DISPLAY_WHITE);
+  display.drawPixel(x + 6, y + 2, DISPLAY_WHITE);
+  display.drawPixel(x + 0, y + 1, DISPLAY_WHITE);
+  display.drawPixel(x + 7, y + 1, DISPLAY_WHITE);
+
+  // Center dot (antenna/device)
+  display.fillRect(x + 3, y + 6, 2, 2, DISPLAY_WHITE);
+
+  // Diagonal cross (X through the icon to indicate "no connection")
+  display.drawLine(x, y, x + 7, y + 7, DISPLAY_WHITE);
+}
