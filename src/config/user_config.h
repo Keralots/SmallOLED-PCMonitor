@@ -15,10 +15,11 @@
 // ========== Display Configuration ==========
 // Display type:
 //   0 = SSD1306 (0.96" OLED, common small displays)
-//   1 = SH1106  (1.3" OLED, larger displays)
+//   1 = SH1106  (1.3" OLED, larger displays - has 132x64 RAM with 2-col offset)
+//   2 = SSD1309 (2.42" OLED, uses SSD1306 driver - 128x64 RAM, no offset)
 //
 // CHANGE THIS VALUE to match your OLED display type!
-#define DEFAULT_DISPLAY_TYPE 0
+#define DEFAULT_DISPLAY_TYPE 2
 
 // I2C pins for ESP32-C3
 #define I2C_SDA_PIN 8

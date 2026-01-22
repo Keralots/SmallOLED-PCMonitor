@@ -17,6 +17,7 @@
   #define DISPLAY_TYPE DEFAULT_DISPLAY_TYPE
 #endif
 
+// Display type 1: SH1106 (1.3") - has 132x64 RAM, driver applies 2-column offset
 #if DISPLAY_TYPE == 1
   #include <Adafruit_SH110X.h>
   extern Adafruit_SH1106G display;
@@ -26,6 +27,7 @@
   #ifndef DISPLAY_BLACK
     #define DISPLAY_BLACK SH110X_BLACK
   #endif
+// Display types 0 & 2: SSD1306 (0.96") and SSD1309 (2.42") - both have 128x64 RAM, no offset
 #else
   #include <Adafruit_SSD1306.h>
   extern Adafruit_SSD1306 display;
