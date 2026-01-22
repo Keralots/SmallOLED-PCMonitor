@@ -107,7 +107,7 @@ The touch button is **disabled by default**. Set `TOUCH_BUTTON_ENABLED` to `1` i
 
 #### Option A: Pre-built Binary (Easy - No Compilation Needed)
 
-**Download the latest release**: [v1.3.3](release/v1.3.3/)
+**Download the latest release**: [v1.4.1](release/v1.4.1/)
 
 **Easiest Method - Web Flasher (No Installation Required!):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
