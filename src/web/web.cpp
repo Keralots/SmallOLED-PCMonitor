@@ -90,7 +90,7 @@ void handleRoot() {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PC Monitor Settings</title>
+  <title>Mini OLED Configurator v1.4.1</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -337,7 +337,7 @@ void handleRoot() {
 </head>
 <body>
   <div class="container">
-    <h1>&#128421; PC Monitor</h1>
+    <h1>&#128421; Mini OLED Configurator <span style="font-size: 0.5em; font-weight: normal;">v1.4.1</span></h1>
     <div class="status">
       <strong>IP:</strong> )rawliteral" + WiFi.localIP().toString() + R"rawliteral( | <strong>UDP Port:</strong> 4210
     </div>
