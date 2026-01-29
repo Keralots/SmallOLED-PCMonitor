@@ -41,5 +41,7 @@
 
 // Initialize display - returns true on success
 bool initDisplay();
+void applyDisplayBrightness();
+void checkScheduledBrightness();
 
 #endif // DISPLAY_H

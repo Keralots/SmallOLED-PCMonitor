@@ -149,6 +149,16 @@ void loadSettings() {
       preferences.getUChar("refreshHz", 10); // Default: 10 Hz
   settings.boostAnimationRefresh =
       preferences.getBool("boostAnim", true); // Default: Enable
+  settings.displayBrightness =
+      preferences.getUChar("brightness", 255); // Default: 255 (max)
+  settings.enableScheduledDimming =
+      preferences.getBool("schedDim", false); // Default: Disabled
+  settings.dimStartHour =
+      preferences.getUChar("dimStart", 22); // Default: 10 PM
+  settings.dimEndHour =
+      preferences.getUChar("dimEnd", 7); // Default: 7 AM
+  settings.dimBrightness =
+      preferences.getUChar("dimBright", 50); // Default: ~20% (50/255)
   settings.marioBounceHeight =
       preferences.getUChar("marioBnceH", 35); // Default: 3.5
   settings.marioBounceSpeed =
@@ -331,6 +341,11 @@ void saveSettings() {
   preferences.putUChar("refreshMode", settings.refreshRateMode);
   preferences.putUChar("refreshHz", settings.refreshRateHz);
   preferences.putBool("boostAnim", settings.boostAnimationRefresh);
+  preferences.putUChar("brightness", settings.displayBrightness);
+  preferences.putBool("schedDim", settings.enableScheduledDimming);
+  preferences.putUChar("dimStart", settings.dimStartHour);
+  preferences.putUChar("dimEnd", settings.dimEndHour);
+  preferences.putUChar("dimBright", settings.dimBrightness);
   preferences.putUChar("marioBnceH", settings.marioBounceHeight);
   preferences.putUChar("marioBnceS", settings.marioBounceSpeed);
   preferences.putBool("marioSmooth", settings.marioSmoothAnimation);

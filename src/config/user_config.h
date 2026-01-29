@@ -19,7 +19,7 @@
 //   2 = SSD1309 (2.42" OLED, uses SSD1306 driver - 128x64 RAM, no offset)
 //
 // CHANGE THIS VALUE to match your OLED display type!
-#define DEFAULT_DISPLAY_TYPE 2
+#define DEFAULT_DISPLAY_TYPE 0
 
 // I2C pins for ESP32-C3
 #define I2C_SDA_PIN 8

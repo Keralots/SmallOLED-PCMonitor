@@ -209,6 +209,11 @@ void setup() {
   // Initialize display
   displayAvailable = initDisplay();
 
+  // Apply saved brightness setting
+  if (displayAvailable) {
+    applyDisplayBrightness();
+  }
+
   if (!displayAvailable) {
     Serial.println("WARNING: Display not available, continuing without display");
   } else {
@@ -273,6 +278,9 @@ void setup() {
 void loop() {
   // Feed watchdog
   esp_task_wdt_reset();
+
+  // Check and apply scheduled brightness (time-based dimming)
+  checkScheduledBrightness();
 
   // Handle web server requests
   server.handleClient();
