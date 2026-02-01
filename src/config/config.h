@@ -77,6 +77,12 @@ struct Settings {
   uint8_t dimEndHour;           // Hour to end dimming (0-23)
   uint8_t dimBrightness;        // Brightness level during dim period (0-255)
 
+  // LED Night Light settings
+#if LED_PWM_ENABLED
+  bool ledEnabled;              // LED night light on/off (default: false)
+  uint8_t ledBrightness;        // LED brightness 0-255 (default: 128 = 50%)
+#endif
+
   // Format options
   bool useRpmKFormat;       // Show RPM as K (e.g., 1.2K instead of 1200)
   bool useNetworkMBFormat;  // Show network as MB/s instead of KB/s

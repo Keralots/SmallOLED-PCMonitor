@@ -159,6 +159,10 @@ void loadSettings() {
       preferences.getUChar("dimEnd", 7); // Default: 7 AM
   settings.dimBrightness =
       preferences.getUChar("dimBright", 50); // Default: ~20% (50/255)
+#if LED_PWM_ENABLED
+  settings.ledEnabled = preferences.getBool("ledEnabled", false); // Default: Off
+  settings.ledBrightness = preferences.getUChar("ledBright", 128); // Default: 50%
+#endif
   settings.marioBounceHeight =
       preferences.getUChar("marioBnceH", 35); // Default: 3.5
   settings.marioBounceSpeed =
@@ -346,6 +350,10 @@ void saveSettings() {
   preferences.putUChar("dimStart", settings.dimStartHour);
   preferences.putUChar("dimEnd", settings.dimEndHour);
   preferences.putUChar("dimBright", settings.dimBrightness);
+#if LED_PWM_ENABLED
+  preferences.putBool("ledEnabled", settings.ledEnabled);
+  preferences.putUChar("ledBright", settings.ledBrightness);
+#endif
   preferences.putUChar("marioBnceH", settings.marioBounceHeight);
   preferences.putUChar("marioBnceS", settings.marioBounceSpeed);
   preferences.putBool("marioSmooth", settings.marioSmoothAnimation);

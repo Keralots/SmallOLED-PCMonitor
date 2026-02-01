@@ -214,6 +214,12 @@ void setup() {
     applyDisplayBrightness();
   }
 
+#if LED_PWM_ENABLED
+  // Initialize LED PWM night light
+  initLEDPWM();
+  setLEDBrightness(settings.ledBrightness);
+#endif
+
   if (!displayAvailable) {
     Serial.println("WARNING: Display not available, continuing without display");
   } else {
@@ -289,8 +295,19 @@ void loop() {
   handleUDP();
 
 #if TOUCH_BUTTON_ENABLED
-  // Handle touch button press
+  // Handle touch button gestures
+#if LED_PWM_ENABLED
+  // Check for long press (LED on/off toggle - hold for 1 second)
+  if (checkTouchButtonLongPress()) {
+    enableLED(!settings.ledEnabled);  // Toggle LED
+    Serial.println(settings.ledEnabled ? "LED ON" : "LED OFF");
+  }
+  // Regular short press (mode toggle / clock style cycle)
+  else if (checkTouchButtonPressed()) {
+#else
+  // No LED PWM - just handle regular button press
   if (checkTouchButtonPressed()) {
+#endif
     if (manualClockMode) {
       // Check if PC is currently online (UDP is always processed, so status is accurate)
       if (metricData.online) {
