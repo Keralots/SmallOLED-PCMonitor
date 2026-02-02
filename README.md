@@ -80,6 +80,13 @@ For detailed instructions, keep reading below.
 ![Wiring](img/wiring.JPG)
 
 ### Touch Button (Optional)
+##### Wiring for optional filament led and TTP223 sensor
+
+This wiring is for 2.42" OLED. Use the same firmware as for 0.96" OLED for flashing.
+No need to change firmware, TTP223 and LED will work.
+
+![Wiring with optional TTP223 and LED](img/circuit_image.png)
+
 
 The firmware supports an optional **TTP223 capacitive touch sensor** for physical control of the display:
 
@@ -98,8 +105,6 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 #define TOUCH_DEBOUNCE_MS 200       // Debounce delay (default: 200ms)
 #define TOUCH_ACTIVE_LEVEL HIGH     // HIGH for TTP223 (active HIGH)
 ```
-
-The touch button is **disabled by default**. Set `TOUCH_BUTTON_ENABLED` to `1` if you have a touch sensor connected.
 
 ## Software Setup
 
@@ -499,14 +504,6 @@ With the v2.0 GUI, you can easily select any sensors available on your system:
 - **5-row/6-row display modes** with optimized spacing (13px vs 10px)
 - **Export/Import** configuration for easy backup and sharing
 - **Systemd integration** (Linux) for proper service management
-
-##### Wiring for optional filament led and TTP223 sensor
-
-This wiring is for 2.42" OLED. Use the same firmware as for 0.96" OLED for flashing.
-No need to change firmware, TTP223 and LED will work.
-
-![Wiring with optional TTP223 and LED](img/circuit_image.png)
-
 
 ### Libraries Used
 
