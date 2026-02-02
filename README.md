@@ -14,6 +14,9 @@ https://aliexpress.com/item/1005006262908701.html
 For 1.3" OLED (SH1106) I have used this version: 
 https://aliexpress.com/item/1005009757205826.html
 
+For 2.42" OLED (SSD1309) I have used this version: 
+https://aliexpress.com/item/4000002579405.html
+
 ESP32-C3 SuperMini:
 https://aliexpress.com/item/1005008988143743.html
 
