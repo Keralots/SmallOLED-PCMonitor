@@ -203,12 +203,6 @@ void handleRoot() {
  oninput="document.getElementById('brightnessValue').textContent = Math.round((this.value / 255) * 100)"><span style="color: #3b82f6; font-size: 14px; margin-left: 10px;"><span id="brightnessValue">)rawliteral" + String((settings.displayBrightness * 100) / 255) + R"rawliteral(</span>%
  </span><p style="color: #888; font-size: 12px; margin-top: 5px;">
  Brightness control (0-100%). Display remains visible at 0%.
- </p><label for="ledBrightness" style="margin-top: 15px; display: block;">LED Night Light Brightness</label><input type="range" name="ledBrightness" id="ledBrightness"
- min="0" max="255" step="5"
- value=")rawliteral" + String(settings.ledBrightness) + R"rawliteral("
- oninput="document.getElementById('ledBrightnessValue').textContent = Math.round((this.value / 255) * 100)"><span style="color: #fbbf24; font-size: 14px; margin-left: 10px;"><span id="ledBrightnessValue">)rawliteral" + String((settings.ledBrightness * 100) / 255) + R"rawliteral(</span>%
- </span><p style="color: #888; font-size: 12px; margin-top: 5px;">
- LED brightness control (0-100%). Toggle via touch button long press (hold 1 second).
  </p><div style="margin-top: 15px;"><label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" name="enableScheduledDimming" id="enableScheduledDimming" style="margin-right: 10px;" )rawliteral" + String(settings.enableScheduledDimming ? "checked" : "") + R"rawliteral( onchange="toggleScheduledDimming()"><span style="font-size: 14px;">
  <strong>&#127749; Scheduled Night Mode</strong>
  </span></label></div><div id="scheduledDimmingFields" style="display: )rawliteral" + String(settings.enableScheduledDimming ? "block" : "none") + R"rawliteral(; padding: 15px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b; margin-top: 10px;"><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;"><div><label for="dimStartHour" style="font-size: 13px; color: #e2e8f0; display: block; margin-bottom: 5px;">Start Dimming At</label><select name="dimStartHour" id="dimStartHour" style="width: 100%; padding: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #f1f5f9; font-size: 13px;">)rawliteral" + startHourOptions + R"rawliteral(</select></div><div><label for="dimEndHour" style="font-size: 13px; color: #e2e8f0; display: block; margin-bottom: 5px;">End Dimming At</label><select name="dimEndHour" id="dimEndHour" style="width: 100%; padding: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #f1f5f9; font-size: 13px;">)rawliteral" + endHourOptions + R"rawliteral(</select></div></div><label for="dimBrightness" style="font-size: 13px; color: #e2e8f0; display: block; margin-bottom: 5px;">Dim Brightness Level</label><input type="range" name="dimBrightness" id="dimBrightness"
@@ -217,7 +211,13 @@ void handleRoot() {
  oninput="document.getElementById('dimBrightnessValue').textContent = Math.round((this.value / 255) * 100)"><span style="color: #818cf8; font-size: 14px; margin-left: 10px;"><span id="dimBrightnessValue">)rawliteral" + String((settings.dimBrightness * 100) / 255) + R"rawliteral(</span>%
  </span><p style="color: #94a3b8; font-size: 11px; margin-top: 5px;">
  Brightness level during scheduled dim period. Recommended: 10-20% for night use.
- </p></div><script> function toggleScheduledDimming(){const enabled=document.getElementById('enableScheduledDimming').checked;document.getElementById('scheduledDimmingFields').style.display=enabled ? 'block':'none';}</script><div style="margin-top: 15px; padding: 10px; background: #0f172a; border-radius: 5px; border-left: 3px solid #3b82f6;"><p style="color: #93c5fd; font-size: 12px; margin: 0;"><strong>&#128161; Refresh Rate Auto Mode:</strong> Adapts refresh rate based on content.<br>
+ </p></div><script> function toggleScheduledDimming(){const enabled=document.getElementById('enableScheduledDimming').checked;document.getElementById('scheduledDimmingFields').style.display=enabled ? 'block':'none';}</script><label for="ledBrightness" style="margin-top: 15px; display: block;">LED Night Light Brightness</label><input type="range" name="ledBrightness" id="ledBrightness"
+ min="0" max="255" step="5"
+ value=")rawliteral" + String(settings.ledBrightness) + R"rawliteral("
+ oninput="document.getElementById('ledBrightnessValue').textContent = Math.round((this.value / 255) * 100)"><span style="color: #fbbf24; font-size: 14px; margin-left: 10px;"><span id="ledBrightnessValue">)rawliteral" + String((settings.ledBrightness * 100) / 255) + R"rawliteral(</span>%
+ </span><p style="color: #888; font-size: 12px; margin-top: 5px;">
+ LED brightness control (0-100%). Toggle via touch button long press (hold 1 second). This is optional feature and requires connected LED!
+ </p><div style="margin-top: 15px; padding: 10px; background: #0f172a; border-radius: 5px; border-left: 3px solid #3b82f6;"><p style="color: #93c5fd; font-size: 12px; margin: 0;"><strong>&#128161; Refresh Rate Auto Mode:</strong> Adapts refresh rate based on content.<br>
  • Static Clocks: 2 Hz (saves power)<br>
  • Idle Animations: 20 Hz (character movement)<br>
  • Active Animations: 40 Hz (with boost enabled, during bounces/explosions)<br>
