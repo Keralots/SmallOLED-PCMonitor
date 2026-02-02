@@ -15,7 +15,8 @@
 // ========== Display Configuration ==========
 // Display type:
 //   0 = SSD1306 (0.96" OLED, common small displays)
-//   1 = SH1106  (1.3" OLED, larger displays)
+//   1 = SH1106  (1.3" OLED, larger displays - has 132x64 RAM with 2-col offset)
+//   2 = SSD1309 (2.42" OLED, uses SSD1306 driver - 128x64 RAM, no offset)
 //
 // CHANGE THIS VALUE to match your OLED display type!
 #define DEFAULT_DISPLAY_TYPE 0
@@ -71,13 +72,22 @@
 #define WATCHDOG_TIMEOUT_SECONDS 30
 
 // ========== Touch Button Configuration ==========
-// TTP223 capacitive touch sensor support
-// Enable touch button to toggle between PC metrics and clock mode
-// - When PC is online: Button toggles between metrics and clock
-// - When PC is offline: Button cycles through clock animations (0-6)
-#define TOUCH_BUTTON_ENABLED 1           // 1 = enabled, 0 = disabled (default)
+// TTP223 capacitive touch sensor support (now always enabled for LED night light)
+// - Short press (< 1 second): Toggle between PC metrics and clock mode
+// - Long press (> 1 second): Toggle LED night light on/off
+// Note: If TTP223 is not connected, GPIO 7 just floats harmlessly
+#define TOUCH_BUTTON_ENABLED 1           // 1 = enabled, 0 = disabled (always enabled now)
 #define TOUCH_BUTTON_PIN 7               // GPIO pin for TTP223 signal (default: GPIO 7)
 #define TOUCH_DEBOUNCE_MS 200            // Debounce delay in milliseconds (default: 200ms)
 #define TOUCH_ACTIVE_LEVEL HIGH          // HIGH = active HIGH, LOW = active LOW (TTP223 default: HIGH)
+
+// ========== LED PWM Night Light Configuration ==========
+// Filament LED night light control via GPIO 1 and 2N2222 transistor
+// Gesture-based control using TTP223 touch button
+#define LED_PWM_ENABLED 1                // 1 = enabled, 0 = disabled (default: 0)
+#define LED_PWM_PIN 1                    // GPIO pin for PWM LED control (GPIO 1)
+#define LED_PWM_CHANNEL 0                // PWM channel (0-15)
+#define LED_PWM_FREQ 5000                // PWM frequency in Hz
+#define LED_PWM_RESOLUTION 8             // 8-bit resolution (0-255 brightness levels)
 
 #endif // USER_CONFIG_H

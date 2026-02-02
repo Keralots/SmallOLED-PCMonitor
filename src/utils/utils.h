@@ -26,4 +26,12 @@ bool checkTouchButtonPressed();
 void resetTouchButtonState();
 #endif
 
+#if LED_PWM_ENABLED
+// ========== LED PWM Night Light Functions ==========
+void initLEDPWM();
+void setLEDBrightness(uint8_t brightness);
+void enableLED(bool enable);
+bool checkTouchButtonLongPress();
+#endif
+
 #endif // UTILS_H

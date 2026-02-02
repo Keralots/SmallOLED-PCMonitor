@@ -14,6 +14,9 @@ https://aliexpress.com/item/1005006262908701.html
 For 1.3" OLED (SH1106) I have used this version: 
 https://aliexpress.com/item/1005009757205826.html
 
+For 2.42" OLED (SSD1309) I have used this version: 
+https://aliexpress.com/item/4000002579405.html
+
 ESP32-C3 SuperMini:
 https://aliexpress.com/item/1005008988143743.html
 
@@ -80,6 +83,13 @@ For detailed instructions, keep reading below.
 ![Wiring](img/wiring.JPG)
 
 ### Touch Button (Optional)
+##### Wiring for optional filament led and TTP223 sensor
+
+This wiring is for 2.42" OLED. Use the same firmware as for 0.96" OLED for flashing.
+No need to change firmware, TTP223 and LED will work.
+
+![Wiring with optional TTP223 and LED](img/circuit_image.png)
+
 
 The firmware supports an optional **TTP223 capacitive touch sensor** for physical control of the display:
 
@@ -98,8 +108,6 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 #define TOUCH_DEBOUNCE_MS 200       // Debounce delay (default: 200ms)
 #define TOUCH_ACTIVE_LEVEL HIGH     // HIGH for TTP223 (active HIGH)
 ```
-
-The touch button is **disabled by default**. Set `TOUCH_BUTTON_ENABLED` to `1` if you have a touch sensor connected.
 
 ## Software Setup
 

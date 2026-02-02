@@ -3,6 +3,7 @@
  */
 
 #include "utils.h"
+#include "../config/config.h"
 #include <string.h>
 
 // Helper function to trim trailing whitespace (only from Python names, not custom labels)
@@ -81,13 +82,16 @@ void assertBounds(int value, int minVal, int maxVal, const char* name) {
 
 static int lastButtonState = !TOUCH_ACTIVE_LEVEL;  // Initial state (opposite of active)
 static unsigned long lastDebounceTime = 0;
-static bool buttonTriggered = false;  // One-shot flag
+static unsigned long buttonPressStartTime = 0;  // Track when button was pressed
+static bool buttonIsPressed = false;  // Button is currently pressed (after debounce)
+static bool buttonHandled = false;  // Button action already handled
 
 void initTouchButton() {
   pinMode(TOUCH_BUTTON_PIN, INPUT_PULLDOWN);
   lastButtonState = digitalRead(TOUCH_BUTTON_PIN);
   lastDebounceTime = millis();
-  buttonTriggered = false;
+  buttonIsPressed = false;
+  buttonHandled = false;
 
   Serial.print("Touch button initialized on GPIO ");
   Serial.print(TOUCH_BUTTON_PIN);
@@ -107,15 +111,22 @@ bool checkTouchButtonPressed() {
 
   // Check if button is stable for debounce period
   if ((millis() - lastDebounceTime) > TOUCH_DEBOUNCE_MS) {
-    // Check if button is in active state and not yet triggered
-    if (reading == TOUCH_ACTIVE_LEVEL && !buttonTriggered) {
-      buttonTriggered = true;
-      pressed = true;
-      Serial.println("Touch button PRESSED");
+    // Button just pressed (after debounce)
+    if (reading == TOUCH_ACTIVE_LEVEL && !buttonIsPressed) {
+      buttonIsPressed = true;
+      buttonPressStartTime = millis();
+      buttonHandled = false;
+      // Don't return true yet - wait to see if it's a short or long press
     }
-    // Check if button released - reset trigger
-    else if (reading != TOUCH_ACTIVE_LEVEL) {
-      buttonTriggered = false;
+    // Button just released (after debounce)
+    else if (reading != TOUCH_ACTIVE_LEVEL && buttonIsPressed) {
+      buttonIsPressed = false;
+      // Only trigger if not already handled by long press
+      if (!buttonHandled) {
+        pressed = true;
+        Serial.println("Touch button PRESSED (short press)");
+      }
+      buttonHandled = false;  // Reset for next press
     }
   }
 
@@ -124,8 +135,68 @@ bool checkTouchButtonPressed() {
 }
 
 void resetTouchButtonState() {
-  buttonTriggered = false;
+  buttonIsPressed = false;
+  buttonHandled = false;
   lastButtonState = digitalRead(TOUCH_BUTTON_PIN);
+}
+
+#endif
+
+#if LED_PWM_ENABLED
+// ========== LED PWM Night Light Control ==========
+
+void initLEDPWM() {
+  ledcSetup(LED_PWM_CHANNEL, LED_PWM_FREQ, LED_PWM_RESOLUTION);
+  ledcAttachPin(LED_PWM_PIN, LED_PWM_CHANNEL);
+  Serial.print("LED PWM initialized on GPIO ");
+  Serial.println(LED_PWM_PIN);
+}
+
+void setLEDBrightness(uint8_t brightness) {
+  if (settings.ledEnabled) {
+    ledcWrite(LED_PWM_CHANNEL, brightness);
+  } else {
+    ledcWrite(LED_PWM_CHANNEL, 0);  // Off if disabled
+  }
+}
+
+void enableLED(bool enable) {
+  settings.ledEnabled = enable;
+  if (enable) {
+    setLEDBrightness(settings.ledBrightness);
+    Serial.print("LED enabled, brightness: ");
+    Serial.println(settings.ledBrightness);
+  } else {
+    ledcWrite(LED_PWM_CHANNEL, 0);
+    Serial.println("LED disabled");
+  }
+}
+
+// ========== Long Press Gesture Detection ==========
+// Shares state with checkTouchButtonPressed() to avoid conflicts
+
+static const unsigned long LONG_PRESS_THRESHOLD = 1000; // 1000ms = 1 second
+
+extern bool buttonIsPressed;  // Referenced from touch button code above
+extern unsigned long buttonPressStartTime;
+extern bool buttonHandled;
+
+bool checkTouchButtonLongPress() {
+  int reading = digitalRead(TOUCH_BUTTON_PIN);
+
+  // Only check if button is currently pressed and not yet handled
+  if (buttonIsPressed && !buttonHandled) {
+    unsigned long pressDuration = millis() - buttonPressStartTime;
+
+    // Check if long press threshold reached
+    if (pressDuration >= LONG_PRESS_THRESHOLD) {
+      buttonHandled = true;  // Mark as handled so short press won't fire
+      Serial.println("Long press detected - toggling LED!");
+      return true;  // Long press detected!
+    }
+  }
+
+  return false;
 }
 
 #endif // TOUCH_BUTTON_ENABLED
