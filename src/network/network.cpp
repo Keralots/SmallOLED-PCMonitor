@@ -8,6 +8,7 @@
 #include "../display/display.h"
 #include "../utils/utils.h"
 #include <Preferences.h>
+#include <esp_wifi.h>
 
 #if TOUCH_BUTTON_ENABLED
 extern bool manualClockMode;  // Defined in main.cpp
@@ -127,6 +128,23 @@ bool connectManualWiFi(const char* ssid, const char* password) {
   }
 }
 
+// ========== Check Stored WiFi Credentials ==========
+bool hasStoredCredentials() {
+  wifi_config_t conf;
+  if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK) {
+    return strlen((char*)conf.sta.ssid) > 0;
+  }
+  return false;
+}
+
+String getStoredSSID() {
+  wifi_config_t conf;
+  if (esp_wifi_get_config(WIFI_IF_STA, &conf) == ESP_OK) {
+    return String((char*)conf.sta.ssid);
+  }
+  return "";
+}
+
 // ========== Network Initialization ==========
 void initNetwork() {
   // Apply static IP if configured
@@ -138,6 +156,92 @@ void initNetwork() {
   wifiManager.setAPCallback(configModeCallback);
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   wifiManager.setDebugOutput(false);
+
+  WiFi.persistent(true);
+  WiFi.setAutoReconnect(true);
+  WiFi.mode(WIFI_STA);
+
+  delay(100);
+
+  if (hasStoredCredentials()) {
+    String savedSSID = getStoredSSID();
+    Serial.print("Stored WiFi credentials found for: ");
+    Serial.println(savedSSID);
+
+    if (displayAvailable) {
+      display.clearDisplay();
+      display.setTextSize(1);
+      display.setCursor(10, 20);
+      display.println("Connecting to");
+      display.setCursor(10, 35);
+      display.println(savedSSID.c_str());
+      display.display();
+    }
+
+    const int maxRounds = 3;
+    const int attemptsPerRound = 40;
+
+    for (int round = 0; round < maxRounds; round++) {
+      Serial.printf("Connection round %d/%d\n", round + 1, maxRounds);
+
+      if (round > 0) {
+        WiFi.disconnect(false);
+        delay(1000);
+      }
+
+      WiFi.begin();
+
+      int attempts = 0;
+      while (WiFi.status() != WL_CONNECTED && attempts < attemptsPerRound) {
+        delay(500);
+        attempts++;
+        Serial.print(".");
+
+        if (displayAvailable && attempts % 10 == 0) {
+          display.clearDisplay();
+          display.setTextSize(1);
+          display.setCursor(10, 20);
+          display.println("Connecting...");
+          display.setCursor(10, 35);
+          display.print("Round ");
+          display.print(round + 1);
+          display.print("/");
+          display.print(maxRounds);
+          display.print(" [");
+          display.print(attempts);
+          display.print("/");
+          display.print(attemptsPerRound);
+          display.println("]");
+          display.display();
+        }
+      }
+      Serial.println();
+
+      if (WiFi.status() == WL_CONNECTED) {
+        Serial.println("WiFi Connected using stored credentials!");
+        Serial.print("IP Address: ");
+        Serial.println(WiFi.localIP());
+
+        WiFi.setTxPower(WIFI_POWER_19_5dBm);
+        udp.begin(UDP_PORT);
+        Serial.print("UDP listening on port ");
+        Serial.println(UDP_PORT);
+        return;
+      }
+
+      Serial.printf("Round %d failed", round + 1);
+      if (round < maxRounds - 1) {
+        Serial.println(", retrying after delay...");
+        delay(3000);
+      } else {
+        Serial.println(", all rounds exhausted.");
+      }
+    }
+
+    Serial.println("All connection attempts failed, starting WiFiManager portal...");
+  } else {
+    Serial.println("No stored WiFi credentials found.");
+  }
 
   if (!wifiManager.autoConnect(AP_NAME, AP_PASSWORD)) {
     Serial.println("Failed to connect and hit timeout");
