@@ -88,28 +88,12 @@ void displayClockWithMario() {
     return;
   }
 
-  if (mario_state == MARIO_IDLE) {
+  // Always use NTP time unless actively animating
+  bool isAnimating = (mario_state != MARIO_IDLE);
+  if (!isAnimating || !time_overridden) {
     displayed_hour = timeinfo.tm_hour;
     displayed_min = timeinfo.tm_min;
     time_overridden = false;
-  } else if (!time_overridden) {
-    displayed_hour = timeinfo.tm_hour;
-    displayed_min = timeinfo.tm_min;
-  }
-
-  // Check if time override should be cleared
-  if (time_overridden) {
-    bool ntp_matches = (timeinfo.tm_hour == displayed_hour && timeinfo.tm_min == displayed_min);
-    bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
-
-    if (ntp_matches || timeout_expired) {
-      time_overridden = false;
-      // If timeout expired but NTP doesn't match, force sync to real time
-      if (timeout_expired && !ntp_matches) {
-        displayed_hour = timeinfo.tm_hour;
-        displayed_min = timeinfo.tm_min;
-      }
-    }
   }
 
   // Date at top
