@@ -3,8 +3,11 @@
 [![Youtube Video](https://github.com/user-attachments/assets/d5232fde-a2ae-46ae-b4b4-74f2164f222e)](https://www.youtube.com/watch?v=D6zZIyOvWjY)
 
 3D Printable case:
-For 0.96": https://makerworld.com/en/models/2051935
-For 1.3": https://makerworld.com/en/models/2185211
+0.96": https://makerworld.com/en/models/2051935
+
+1.3": https://makerworld.com/en/models/2185211
+
+2.42" https://makerworld.com/en/models/2341351
 
 Be aware that there are different sizes of the same SSD1306 (0.96") OLED screen on aliexpress.
 Im using this one "Original" version (do not purchase dual color, it won't work):
@@ -115,7 +118,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 
 #### Option A: Pre-built Binary (Easy - No Compilation Needed)
 
-**Download the latest release**: [v1.4.1](release/v1.4.1/)
+**Download the latest release**: [v1.4.1](release/v1.4.2/)
 
 **Easiest Method - Web Flasher (No Installation Required!):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
