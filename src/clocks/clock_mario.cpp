@@ -88,6 +88,10 @@ void displayClockWithMario() {
     return;
   }
 
+  if (mario_state == MARIO_IDLE) {
+    time_overridden = false;
+  }
+
   if (!time_overridden) {
     displayed_hour = timeinfo.tm_hour;
     displayed_min = timeinfo.tm_min;

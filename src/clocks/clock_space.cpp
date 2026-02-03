@@ -393,6 +393,10 @@ void displayClockWithSpaceInvader() {
   updateSpaceAnimation(&timeinfo);
 
   // Time management
+  if (space_state == SPACE_PATROL) {
+    time_overridden = false;
+  }
+
   if (!time_overridden) {
     displayed_hour = timeinfo.tm_hour;
     displayed_min = timeinfo.tm_min;

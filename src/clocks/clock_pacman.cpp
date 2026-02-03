@@ -178,6 +178,10 @@ void displayClockWithPacman() {
   updatePacmanAnimation(&timeinfo);
 
   // Time management
+  if (pacman_state == PACMAN_PATROL) {
+    time_overridden = false;
+  }
+
   if (!time_overridden) {
     displayed_hour = timeinfo.tm_hour;
     displayed_min = timeinfo.tm_min;
