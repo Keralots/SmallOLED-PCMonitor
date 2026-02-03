@@ -85,6 +85,8 @@ For detailed instructions, keep reading below.
 
 ![Wiring](img/wiring.JPG)
 
+<img width="627" height="673" alt="image" src="https://github.com/user-attachments/assets/0e2648a0-4bda-490e-96d2-fc54aebfc409" />
+
 ### Touch Button (Optional)
 ##### Wiring for optional filament led and TTP223 sensor
 
