@@ -177,12 +177,12 @@ void displayClockWithPacman() {
   // Update animation first
   updatePacmanAnimation(&timeinfo);
 
-  // Time management
+  // Time management - always use NTP time when patrolling (idle)
   if (pacman_state == PACMAN_PATROL) {
+    displayed_hour = timeinfo.tm_hour;
+    displayed_min = timeinfo.tm_min;
     time_overridden = false;
-  }
-
-  if (!time_overridden) {
+  } else if (!time_overridden) {
     displayed_hour = timeinfo.tm_hour;
     displayed_min = timeinfo.tm_min;
   }

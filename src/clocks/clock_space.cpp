@@ -392,12 +392,12 @@ void displayClockWithSpaceInvader() {
   // Update animation FIRST so time advances before drawing
   updateSpaceAnimation(&timeinfo);
 
-  // Time management
+  // Time management - always use NTP time when patrolling (idle)
   if (space_state == SPACE_PATROL) {
+    displayed_hour = timeinfo.tm_hour;
+    displayed_min = timeinfo.tm_min;
     time_overridden = false;
-  }
-
-  if (!time_overridden) {
+  } else if (!time_overridden) {
     displayed_hour = timeinfo.tm_hour;
     displayed_min = timeinfo.tm_min;
   }
