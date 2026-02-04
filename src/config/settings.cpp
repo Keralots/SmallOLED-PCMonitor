@@ -27,7 +27,7 @@ void loadSettings() {
     settings.showClock = true;
     settings.displayRowMode = 0;         // Default: 5 rows with more spacing
     settings.useRpmKFormat = false;      // Default: Full RPM format (1800RPM)
-    settings.useNetworkMBFormat = false; // Default: Full KB/s format
+    settings.useNetworkMBFormat = true;  // Default: MB format
     settings.colonBlinkMode = 1;         // Default: Blink
     settings.colonBlinkRate = 10; // Default: 1.0 Hz (10 = 1.0Hz in tenths)
     settings.refreshRateMode = 0; // Default: Auto
@@ -137,8 +137,8 @@ void loadSettings() {
   settings.displayRowMode = preferences.getInt("rowMode", 0); // Default: 5 rows
   settings.useRpmKFormat =
       preferences.getBool("rpmKFormat", false); // Default: Full RPM format
-  settings.useNetworkMBFormat =
-      preferences.getBool("netMBFormat", false); // Default: Full KB/s format
+  settings.useNetworkMBFormat = true;
+  preferences.putBool("netMBFormat", true);
   settings.colonBlinkMode =
       preferences.getUChar("colonBlink", 1); // Default: Blink
   settings.colonBlinkRate =
