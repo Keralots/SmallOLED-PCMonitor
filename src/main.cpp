@@ -35,6 +35,7 @@
 
 #include "config/config.h"
 #include "utils/utils.h"
+#include "timezones.h"
 
 // ========== External Objects ==========
 extern WiFiUDP udp;              // Defined in network.cpp

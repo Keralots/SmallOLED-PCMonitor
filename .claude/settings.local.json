@@ -24,7 +24,8 @@
       "Bash(~/.platformio/penv/bin/platformio run:*)",
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(/home/rafal/.platformio/penv/bin/platformio run:*)"
     ],
     "deny": [],
     "ask": []

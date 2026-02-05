@@ -11,6 +11,7 @@
 #include "../utils/utils.h"
 #include "../clocks/clocks.h"
 #include "../display/display.h"
+#include "../timezones.h"
 #include <WebServer.h>
 #include <Update.h>
 #include <ArduinoJson.h>
@@ -222,29 +223,25 @@ void handleRoot() {
  • Idle Animations: 20 Hz (character movement)<br>
  • Active Animations: 40 Hz (with boost enabled, during bounces/explosions)<br>
  • PC Metrics: 10 Hz (balanced)<br><br><strong>Benefits:</strong> Blinking colon extends OLED life 2×. Dynamic refresh rates balance smoothness with power efficiency.
- </p></div></div></div><!-- Timezone Section --><div class="section-header" onclick="toggleSection('timezoneSection')"><h3>&#127760; Timezone</h3><span class="section-arrow">&#9660;</span></div><div id="timezoneSection" class="section-content collapsed"><div class="card"><label for="gmtOffset">GMT Offset</label><select name="gmtOffset" id="gmtOffset">
+ </p></div></div></div><!-- Timezone Section --><div class="section-header" onclick="toggleSection('timezoneSection')"><h3>&#127760; Timezone</h3><span class="section-arrow">&#9660;</span></div><div id="timezoneSection" class="section-content collapsed"><div class="card"><label for="timezoneRegion">Timezone Region</label><select name="timezoneRegion" id="timezoneRegion" style="width: 100%; padding: 8px; background: #16213e; border: 1px solid #334155; color: #eee; border-radius: 3px;">
 )rawliteral";
 
- // Generate timezone options (30-minute increments)
- for (int minutes = -720; minutes <= 840; minutes += 30) {
- String selected = (settings.gmtOffset == minutes) ? "selected" : "";
+ // Generate timezone options from timezone database
+ size_t tzCount;
+ const TimezoneRegion* regions = getSupportedTimezones(&tzCount);
 
- // Format: GMT+5:30, GMT-5:00, etc.
- int hours = minutes / 60;
- int mins = abs(minutes % 60);
- String label = "GMT" + String(hours >= 0 ? "+" : "") + String(hours);
- if (mins > 0) {
- String minStr = (mins < 10) ? "0" + String(mins) : String(mins);
- label += ":" + minStr;
- } else {
- label += ":00";
- }
+ // Group timezones by region
+ html += "<option value=\"\">-- Select Region --</option>\n";
 
- html += "<option value=\"" + String(minutes) + "\" " + selected + ">" + label + "</option>\n";
+ for (size_t i = 0; i < tzCount; i++) {
+   bool isSelected = (strcmp(settings.timezoneString, regions[i].posixString) == 0);
+   html += "<option value=\"" + String(regions[i].posixString) + "\"" + (isSelected ? " selected" : "") + ">" + String(regions[i].name) + "</option>\n";
  }
 
  html += R"rawliteral(
- </select><label for="dst">Daylight Saving Time</label><select name="dst" id="dst"><option value="1" )rawliteral" + String(settings.daylightSaving ? "selected" : "") + R"rawliteral(>Enabled (+1 hour)</option><option value="0" )rawliteral" + String(!settings.daylightSaving ? "selected" : "") + R"rawliteral(>Disabled</option></select></div></div><!-- Network Configuration Section --><div class="section-header" onclick="toggleSection('networkSection')"><h3>&#127760; Network Configuration</h3><span class="section-arrow">&#9660;</span></div><div id="networkSection" class="section-content collapsed"><div class="card"><label for="useStaticIP">IP Address Mode</label><select name="useStaticIP" id="useStaticIP" onchange="toggleStaticIPFields()"><option value="0" )rawliteral" + String(!settings.useStaticIP ? "selected" : "") + R"rawliteral(>DHCP (Automatic)</option><option value="1" )rawliteral" + String(settings.useStaticIP ? "selected" : "") + R"rawliteral(>Static IP</option></select><div id="staticIPFields" style="display: )rawliteral" + String(settings.useStaticIP ? "block" : "none") + R"rawliteral(;"><label for="staticIP" style="margin-top: 15px;">Static IP Address</label><input type="text" name="staticIP" id="staticIP" value=")rawliteral" + String(settings.staticIP) + R"rawliteral(" placeholder="192.168.1.100" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="gateway">Gateway</label><input type="text" name="gateway" id="gateway" value=")rawliteral" + String(settings.gateway) + R"rawliteral(" placeholder="192.168.1.1" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="subnet">Subnet Mask</label><input type="text" name="subnet" id="subnet" value=")rawliteral" + String(settings.subnet) + R"rawliteral(" placeholder="255.255.255.0" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns1">Primary DNS</label><input type="text" name="dns1" id="dns1" value=")rawliteral" + String(settings.dns1) + R"rawliteral(" placeholder="8.8.8.8" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns2">Secondary DNS</label><input type="text" name="dns2" id="dns2" value=")rawliteral" + String(settings.dns2) + R"rawliteral(" placeholder="8.8.4.4" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"></div><p style="color: #888; font-size: 12px; margin-top: 15px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #fbbf24;"><strong>&#9888; Warning:</strong> Changing to Static IP will require a device restart. Make sure the IP address does not conflict with other devices on your network.
+ </select><p style="color: #888; font-size: 12px; margin-top: 10px;">
+ Select your timezone region for automatic DST adjustment. The system will automatically switch between standard and daylight saving time.
+ </p></div></div><!-- Network Configuration Section --><div class="section-header" onclick="toggleSection('networkSection')"><h3>&#127760; Network Configuration</h3><span class="section-arrow">&#9660;</span></div><div id="networkSection" class="section-content collapsed"><div class="card"><label for="useStaticIP">IP Address Mode</label><select name="useStaticIP" id="useStaticIP" onchange="toggleStaticIPFields()"><option value="0" )rawliteral" + String(!settings.useStaticIP ? "selected" : "") + R"rawliteral(>DHCP (Automatic)</option><option value="1" )rawliteral" + String(settings.useStaticIP ? "selected" : "") + R"rawliteral(>Static IP</option></select><div id="staticIPFields" style="display: )rawliteral" + String(settings.useStaticIP ? "block" : "none") + R"rawliteral(;"><label for="staticIP" style="margin-top: 15px;">Static IP Address</label><input type="text" name="staticIP" id="staticIP" value=")rawliteral" + String(settings.staticIP) + R"rawliteral(" placeholder="192.168.1.100" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="gateway">Gateway</label><input type="text" name="gateway" id="gateway" value=")rawliteral" + String(settings.gateway) + R"rawliteral(" placeholder="192.168.1.1" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="subnet">Subnet Mask</label><input type="text" name="subnet" id="subnet" value=")rawliteral" + String(settings.subnet) + R"rawliteral(" placeholder="255.255.255.0" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns1">Primary DNS</label><input type="text" name="dns1" id="dns1" value=")rawliteral" + String(settings.dns1) + R"rawliteral(" placeholder="8.8.8.8" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns2">Secondary DNS</label><input type="text" name="dns2" id="dns2" value=")rawliteral" + String(settings.dns2) + R"rawliteral(" placeholder="8.8.4.4" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"></div><p style="color: #888; font-size: 12px; margin-top: 15px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #fbbf24;"><strong>&#9888; Warning:</strong> Changing to Static IP will require a device restart. Make sure the IP address does not conflict with other devices on your network.
  </p></div></div><!-- Display Layout Section --><div class="section-header" onclick="toggleSection('layoutSection')"><h3>&#128202; Display Layout (PC Monitor only)</h3><span class="section-arrow">&#9660;</span></div><div id="layoutSection" class="section-content collapsed"><div class="card"><label for="clockPosition">Clock Position</label><select name="clockPosition" id="clockPosition"><option value="0" )rawliteral" + String(settings.clockPosition == 0 ? "selected" : "") + R"rawliteral(>Center (Top)</option><option value="1" )rawliteral" + String(settings.clockPosition == 1 ? "selected" : "") + R"rawliteral(>Left Column (Row 1)</option><option value="2" )rawliteral" + String(settings.clockPosition == 2 ? "selected" : "") + R"rawliteral(>Right Column (Row 1)</option></select><label for="clockOffset" style="margin-top: 15px; display: block;">Clock Offset (pixels)</label><input type="number" name="clockOffset" id="clockOffset" value=")rawliteral" + String(settings.clockOffset) + R"rawliteral(" min="-20" max="20" style="width: 100%; padding: 8px; box-sizing: border-box;"><p style="color: #888; font-size: 12px; margin-top: 10px;">
  Position clock to optimize space for metrics. Use offset to fine-tune horizontal position (-20 to +20 pixels).
  </p><div style="display: flex; align-items: center; margin-top: 15px;"><input type="checkbox" name="showClock" id="showClock" value="1" )rawliteral" + String(settings.showClock ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;"><label for="showClock" style="margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Show Clock/Time in metrics display</label></div><hr style="margin: 20px 0; border: none; border-top: 1px solid #333;"><label for="rowMode">Display Row Mode</label><select name="rowMode" id="rowMode" onchange="updateRowMode()"><option value="0" )rawliteral" + String(settings.displayRowMode == 0 ? "selected" : "") + R"rawliteral(>5 Rows (13px spacing - optimized)</option><option value="1" )rawliteral" + String(settings.displayRowMode == 1 ? "selected" : "") + R"rawliteral(>6 Rows (10px spacing - compact)</option></select><p style="color: #888; font-size: 12px; margin-top: 10px;">
@@ -299,12 +296,31 @@ void handleSave() {
  if (server.hasArg("clockStyle")) {
  settings.clockStyle = server.arg("clockStyle").toInt();
  }
- if (server.hasArg("gmtOffset")) {
+
+ // Handle new timezone region selector
+ if (server.hasArg("timezoneRegion")) {
+ String tz = server.arg("timezoneRegion");
+ if (tz.length() > 0 && tz.length() < 64) {
+ strncpy(settings.timezoneString, tz.c_str(), 63);
+ settings.timezoneString[63] = '\0';
+
+ // Update gmtOffset for backward compatibility
+ const TimezoneRegion* region = findTimezoneByPosixString(settings.timezoneString);
+ if (region != nullptr) {
+ settings.gmtOffset = region->gmtOffsetMinutes;
+ settings.daylightSaving = true; // POSIX strings include DST
+ }
+ }
+ }
+
+ // Legacy: handle old gmtOffset/dst fields if timezoneRegion is not set
+ if (server.hasArg("gmtOffset") && strlen(settings.timezoneString) == 0) {
  settings.gmtOffset = server.arg("gmtOffset").toInt();
  }
- if (server.hasArg("dst")) {
+ if (server.hasArg("dst") && strlen(settings.timezoneString) == 0) {
  settings.daylightSaving = server.arg("dst").toInt() == 1;
  }
+
  if (server.hasArg("use24Hour")) {
  settings.use24Hour = server.arg("use24Hour").toInt() == 1;
  }
@@ -706,6 +722,7 @@ void handleExportConfig() {
 
  // Clock settings
  json += "\"clockStyle\":" + String(settings.clockStyle) + ",";
+ json += "\"timezoneString\":\"" + String(settings.timezoneString) + "\",";
  json += "\"gmtOffset\":" + String(settings.gmtOffset) + ",";
  json += "\"daylightSaving\":" + String(settings.daylightSaving ? "true" : "false") + ",";
  json += "\"use24Hour\":" + String(settings.use24Hour ? "true" : "false") + ",";
@@ -813,6 +830,14 @@ void handleImportConfig() {
 
  // Import clock settings
  if (!doc["clockStyle"].isNull()) settings.clockStyle = doc["clockStyle"];
+ if (!doc["timezoneString"].isNull()) {
+ const char* tz = doc["timezoneString"];
+ if (tz && strlen(tz) < 64) {
+ strncpy(settings.timezoneString, tz, 63);
+ settings.timezoneString[63] = '\0';
+ }
+ }
+ // Legacy: import old gmtOffset/dst if timezoneString is not provided
  if (!doc["gmtOffset"].isNull()) settings.gmtOffset = doc["gmtOffset"];
  if (!doc["daylightSaving"].isNull()) settings.daylightSaving = doc["daylightSaving"];
  if (!doc["use24Hour"].isNull()) settings.use24Hour = doc["use24Hour"];

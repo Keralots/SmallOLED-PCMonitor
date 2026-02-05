@@ -7,6 +7,7 @@
 #include "network.h"
 #include "../display/display.h"
 #include "../utils/utils.h"
+#include "../timezones.h"
 #include <Preferences.h>
 
 #if TOUCH_BUTTON_ENABLED
@@ -168,10 +169,25 @@ void initNetwork() {
 
 // ========== NTP Functions ==========
 void applyTimezone() {
-  int gmtOffset_sec = settings.gmtOffset * 60;  // Convert minutes to seconds
-  int daylightOffset_sec = settings.daylightSaving ? 3600 : 0;
-
-  configTime(gmtOffset_sec, daylightOffset_sec, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+  // If timezone string is set, use automatic DST with configTzTime()
+  if (strlen(settings.timezoneString) > 0) {
+    configTzTime(settings.timezoneString, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+    Serial.printf("Timezone set (automatic DST): %s\n", settings.timezoneString);
+  }
+  else {
+    // Fallback: Try to map old GMT offset to default timezone
+    const char* defaultTz = getDefaultTimezoneForOffset(settings.gmtOffset);
+    if (defaultTz != nullptr) {
+      configTzTime(defaultTz, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+      Serial.printf("Auto-detected timezone: %s\n", defaultTz);
+    }
+    else {
+      // Ultimate fallback: Manual offset without DST
+      int gmtOffset_sec = settings.gmtOffset * 60;
+      configTime(gmtOffset_sec, 0, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+      Serial.printf("Manual offset (no DST): GMT%+d\n", settings.gmtOffset / 60);
+    }
+  }
 }
 
 void initNTP() {

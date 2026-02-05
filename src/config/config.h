@@ -49,12 +49,13 @@ struct MetricData {
   uint8_t status;     // Connection status code (see STATUS_* defines)
 };
 
-// ========== Settings Structure ==========
+// ========== Settings Structure ========== 
 struct Settings {
   // Clock settings
   uint8_t clockStyle;       // 0=Mario, 1=Standard, 2=Large, 3=Space Invader, 4=Space Ship, 5=Pong, 6=Pac-Man
-  int16_t gmtOffset;        // GMT offset in minutes
-  bool daylightSaving;      // DST enabled
+  int16_t gmtOffset;        // GMT offset in minutes (deprecated, kept for migration)
+  bool daylightSaving;      // DST enabled (deprecated, kept for migration)
+  char timezoneString[64];  // POSIX TZ string (e.g., "CET-1CEST,M3.5.0/02:00,M10.5.0/03:00")
   bool use24Hour;           // 24-hour format
   uint8_t dateFormat;       // 0=DD/MM/YYYY, 1=MM/DD/YYYY, 2=YYYY-MM-DD
   uint8_t clockPosition;    // 0=Center, 1=Left, 2=Right
