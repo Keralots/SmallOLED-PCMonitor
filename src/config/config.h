@@ -89,6 +89,7 @@ struct Settings {
   bool useNetworkMBFormat;  // Show network as MB/s instead of KB/s
 
   // Network settings
+  bool showIPAtBoot;          // Show IP address on OLED at startup (default: true)
   bool useStaticIP;
   char staticIP[16];
   char gateway[16];

@@ -203,7 +203,7 @@ void initNTP() {
   }
 
   struct tm timeinfo;
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 30; i++) {
     if (getLocalTime(&timeinfo, 100)) {
       if (timeinfo.tm_year > 120) {
         ntpSynced = true;

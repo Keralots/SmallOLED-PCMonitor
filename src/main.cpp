@@ -75,56 +75,6 @@ void displayStatsCompactGrid();
 void displayMetricCompact(Metric *m);
 void drawProgressBar(int x, int y, int width, Metric *m);
 int getOptimalRefreshRate();
-bool allSpaceFragmentsInactive(); // Required if not in clocks.h
-
-// Mario clock helpers
-void triggerDigitBounce(int digitIndex);
-void updateDigitBounce();
-void calculateTargetDigits(int current_hour, int current_min);
-void updateMarioAnimation(struct tm *timeinfo);
-void drawMario(int x, int y, bool facingRight, int frame, bool jumping);
-
-// Space clock helpers
-void updateSpaceAnimation(struct tm *timeinfo);
-void drawSpaceInvader();
-void drawSpaceship();
-void triggerSpaceExplosion(int digitIndex);
-void handleSpacePatrolState();
-void handleSpaceSlidingState();
-void handleSpaceShootingState();
-void handleSpaceExplodingState();
-void handleSpaceMovingNextState();
-void handleSpaceReturningState();
-
-// Pong clock helpers
-void initPongAnimation();
-void updatePongAnimation(struct tm *timeinfo);
-void drawPongBall();
-void drawPongDigits();
-void drawBreakoutPaddle();
-void drawPongFragments();
-void updatePongBall(int ballIndex);
-void checkPongCollisions(int ballIndex);
-void updateBreakoutPaddle();
-void updatePongFragments();
-void updateAssemblyFragments();
-void updateDigitTransitions();
-void updateDigitBouncePong();
-void spawnPongBall(int ballIndex);
-void triggerDigitTransition(int digitIndex, char oldChar, char newChar);
-
-// Pac-Man clock helpers
-void updatePacmanAnimation(struct tm *timeinfo);
-void updatePacmanPatrol();
-void updatePacmanEating();
-void startEatingDigit(uint8_t digitIndex, uint8_t digitValue);
-void finishEatingDigit();
-void generatePellets();
-void updatePellets();
-void drawPellets();
-void drawPacman(int x, int y, int direction, int mouthFrame);
-void updateSpecificDigit(uint8_t digitIndex, uint8_t newValue);
-
 // ========== Module Includes ==========
 #include "display/display.h"
 #include "clocks/clocks.h"
@@ -274,8 +224,8 @@ void setup() {
   initTouchButton();
 #endif
 
-  // Show IP address for 5 seconds
-  if (displayAvailable) {
+  // Show IP address for 5 seconds (configurable via web interface)
+  if (displayAvailable && settings.showIPAtBoot) {
     displayConnected();
     delay(5000);
   }

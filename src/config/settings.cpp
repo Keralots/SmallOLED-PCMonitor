@@ -239,6 +239,8 @@ void loadSettings() {
       preferences.getUChar("spaceExpGrv", 5); // Default: 0.5
 
   // Load network configuration
+  settings.showIPAtBoot =
+      preferences.getBool("showIPBoot", true); // Default: Show IP at startup
   settings.useStaticIP =
       preferences.getBool("useStaticIP", false); // Default: DHCP
   String loadedIP = preferences.getString("staticIP", "192.168.1.100");
@@ -411,6 +413,7 @@ void saveSettings() {
   preferences.putUChar("spaceExpGrv", settings.spaceExplosionGravity);
 
   // Save network configuration
+  preferences.putBool("showIPBoot", settings.showIPAtBoot);
   preferences.putBool("useStaticIP", settings.useStaticIP);
   preferences.putString("staticIP", settings.staticIP);
   preferences.putString("gateway", settings.gateway);
