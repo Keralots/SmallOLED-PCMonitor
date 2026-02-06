@@ -168,18 +168,9 @@ void initNetwork() {
     Serial.print("Stored WiFi credentials found for: ");
     Serial.println(savedSSID);
 
-    if (displayAvailable) {
-      display.clearDisplay();
-      display.setTextSize(1);
-      display.setCursor(10, 20);
-      display.println("Connecting to");
-      display.setCursor(10, 35);
-      display.println(savedSSID.c_str());
-      display.display();
-    }
-
     const int maxRounds = 3;
     const int attemptsPerRound = 40;
+    const int totalAttempts = maxRounds * attemptsPerRound;
 
     for (int round = 0; round < maxRounds; round++) {
       Serial.printf("Connection round %d/%d\n", round + 1, maxRounds);
@@ -197,21 +188,59 @@ void initNetwork() {
         attempts++;
         Serial.print(".");
 
-        if (displayAvailable && attempts % 10 == 0) {
+        if (displayAvailable) {
+          int globalAttempt = round * attemptsPerRound + attempts;
+          int progressPercent = globalAttempt * 100 / totalAttempts;
+
           display.clearDisplay();
+          display.setTextColor(DISPLAY_WHITE);
           display.setTextSize(1);
-          display.setCursor(10, 20);
-          display.println("Connecting...");
-          display.setCursor(10, 35);
-          display.print("Round ");
+
+          // SSID name at top
+          display.setCursor(4, 2);
+          display.print("WiFi: ");
+          // Truncate SSID if too long
+          if (savedSSID.length() > 14) {
+            display.print(savedSSID.substring(0, 12).c_str());
+            display.print("..");
+          } else {
+            display.print(savedSSID.c_str());
+          }
+
+          // Status message
+          display.setCursor(4, 16);
+          display.print("Connecting");
+          // Animated dots
+          for (int d = 0; d < (attempts % 4); d++) display.print(".");
+
+          // Round info
+          display.setCursor(4, 28);
+          display.print("Attempt ");
           display.print(round + 1);
           display.print("/");
           display.print(maxRounds);
-          display.print(" [");
-          display.print(attempts);
-          display.print("/");
-          display.print(attemptsPerRound);
-          display.println("]");
+
+          // Progress bar
+          int barWidth = 104;
+          int barHeight = 10;
+          int barX = (SCREEN_WIDTH - barWidth) / 2;
+          int barY = 42;
+
+          display.drawRoundRect(barX, barY, barWidth, barHeight, 3, DISPLAY_WHITE);
+          int fillWidth = (barWidth - 4) * progressPercent / 100;
+          if (fillWidth > 0) {
+            display.fillRoundRect(barX + 2, barY + 2, fillWidth, barHeight - 4, 2, DISPLAY_WHITE);
+          }
+
+          // Percentage
+          char pctBuf[8];
+          snprintf(pctBuf, sizeof(pctBuf), "%d%%", progressPercent);
+          int16_t x1, y1;
+          uint16_t w, h;
+          display.getTextBounds(pctBuf, 0, 0, &x1, &y1, &w, &h);
+          display.setCursor((SCREEN_WIDTH - w) / 2, 55);
+          display.print(pctBuf);
+
           display.display();
         }
       }

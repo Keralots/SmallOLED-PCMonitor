@@ -199,36 +199,53 @@ int getOptimalRefreshRate() {
 }
 
 // ========== Startup Progress Display ==========
-void showStartupProgress(int percent, const char* status) {
+static int currentProgressPercent = 0;
+
+void showStartupProgress(int targetPercent, const char* status) {
   if (!displayAvailable) return;
 
-  display.clearDisplay();
-  display.setTextColor(DISPLAY_WHITE);
-  display.setTextSize(1);
+  // Animate progress bar smoothly from current to target
+  int step = (targetPercent > currentProgressPercent) ? 1 : -1;
+  while (currentProgressPercent != targetPercent) {
+    currentProgressPercent += step;
 
-  display.setCursor(20, 8);
-  display.println("PC Monitor");
+    display.clearDisplay();
+    display.setTextColor(DISPLAY_WHITE);
+    display.setTextSize(1);
 
-  display.setCursor(10, 24);
-  display.println(status);
+    // Title centered
+    display.setCursor(20, 4);
+    display.print("PC Monitor");
 
-  int barWidth = 100;
-  int barHeight = 10;
-  int barX = (SCREEN_WIDTH - barWidth) / 2;
-  int barY = 40;
+    // Status text
+    display.setCursor(4, 18);
+    display.print(status);
 
-  display.drawRect(barX, barY, barWidth, barHeight, DISPLAY_WHITE);
+    // Progress bar
+    int barWidth = 104;
+    int barHeight = 12;
+    int barX = (SCREEN_WIDTH - barWidth) / 2;
+    int barY = 32;
 
-  int fillWidth = (barWidth - 4) * percent / 100;
-  if (fillWidth > 0) {
-    display.fillRect(barX + 2, barY + 2, fillWidth, barHeight - 4, DISPLAY_WHITE);
+    display.drawRoundRect(barX, barY, barWidth, barHeight, 3, DISPLAY_WHITE);
+
+    int fillWidth = (barWidth - 4) * currentProgressPercent / 100;
+    if (fillWidth > 0) {
+      display.fillRoundRect(barX + 2, barY + 2, fillWidth, barHeight - 4, 2, DISPLAY_WHITE);
+    }
+
+    // Percentage centered below bar
+    char pctBuf[8];
+    snprintf(pctBuf, sizeof(pctBuf), "%d%%", currentProgressPercent);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(pctBuf, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor((SCREEN_WIDTH - w) / 2, 48);
+    display.print(pctBuf);
+
+    display.display();
+    delay(12);
   }
-
-  display.setCursor(55, 54);
-  display.print(percent);
-  display.println("%");
-
-  display.display();
 }
 
 // ========== setup() ==========
@@ -247,7 +264,7 @@ void setup() {
     applyDisplayBrightness();
   }
 
-  showStartupProgress(10, "Display ready");
+  showStartupProgress(10, "Display initialized");
 
 #if LED_PWM_ENABLED
   // Initialize LED PWM night light
@@ -259,7 +276,9 @@ void setup() {
     Serial.println("WARNING: Display not available, continuing without display");
   }
 
-  showStartupProgress(20, "Connecting WiFi...");
+  showStartupProgress(15, "Settings loaded");
+
+  showStartupProgress(20, "Searching for WiFi...");
 
   // Check if hardcoded WiFi credentials are provided
   bool useManualWiFi = (strlen(HARDCODED_WIFI_SSID) > 0);
@@ -277,16 +296,14 @@ void setup() {
     initNetwork();
   }
 
-  showStartupProgress(60, "WiFi connected");
-  delay(300);
+  showStartupProgress(60, "WiFi connected!");
 
-  showStartupProgress(70, "Syncing time...");
+  showStartupProgress(70, "Syncing clock (NTP)...");
 
   // Initialize NTP
   initNTP();
 
-  showStartupProgress(80, "Time synced");
-  delay(300);
+  showStartupProgress(80, "Clock synchronized");
 
   // Initialize WiFi connection status flag
   wifiConnected = (WiFi.status() == WL_CONNECTED);
@@ -301,7 +318,7 @@ void setup() {
   metricData.status = 0;  // No status received yet
   Serial.println("Waiting for PC stats data...");
 
-  showStartupProgress(90, "Starting server...");
+  showStartupProgress(90, "Starting web server...");
 
   // Setup web server
   setupWebServer();
@@ -311,7 +328,7 @@ void setup() {
   initTouchButton();
 #endif
 
-  showStartupProgress(100, "Ready!");
+  showStartupProgress(100, "System ready!");
   delay(500);
 
   // Show IP address for 5 seconds
