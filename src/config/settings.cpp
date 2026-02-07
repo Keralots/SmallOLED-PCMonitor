@@ -6,6 +6,7 @@
 
 #include "settings.h"
 #include "../config/config.h"
+#include "../timezones.h"
 #include <Preferences.h>
 
 
@@ -18,8 +19,9 @@ void loadSettings() {
     Serial.println("WARNING: Failed to open preferences, using defaults");
     // Initialize with defaults
     settings.clockStyle = 0;
-    settings.gmtOffset = 1;
+    settings.gmtOffset = 60;  // GMT+1 (Central European)
     settings.daylightSaving = true;
+    strcpy(settings.timezoneString, "CET-1CEST,M3.5.0/02:00,M10.5.0/03:00"); // Default: Central European
     settings.use24Hour = true;
     settings.dateFormat = 0;
     settings.clockPosition = 0; // Center by default
@@ -73,8 +75,9 @@ void loadSettings() {
         "Fresh preferences namespace detected, initializing with defaults...");
     // Write defaults to NVS
     preferences.putInt("clockStyle", 0);
-    preferences.putInt("gmtOffset", 1);
+    preferences.putInt("gmtOffset", 60); // GMT+1 (Central European)
     preferences.putBool("dst", true);
+    preferences.putString("tz", "CET-1CEST,M3.5.0/02:00,M10.5.0/03:00"); // Default: Central European
     preferences.putBool("use24Hour", true);
     preferences.putInt("dateFormat", 0);
     preferences.putInt("clockPos", 0);    // Center
@@ -127,6 +130,37 @@ void loadSettings() {
   }
 
   settings.daylightSaving = preferences.getBool("dst", true);  // Default: true
+
+  // Timezone migration: migrate from old gmtOffset + dst to new timezoneString
+  if (preferences.isKey("tz")) {
+    // New format exists, load it
+    String loadedTz = preferences.getString("tz", "");
+    if (loadedTz.length() > 0) {
+      strncpy(settings.timezoneString, loadedTz.c_str(), 63);
+      settings.timezoneString[63] = '\0';
+      Serial.printf("Loaded timezone string: %s\n", settings.timezoneString);
+    } else {
+      // Key exists but empty, set default
+      strcpy(settings.timezoneString, "CET-1CEST,M3.5.0/02:00,M10.5.0/03:00");
+    }
+  } else {
+    // Old format: migrate to default timezone based on gmtOffset
+    const char* defaultTz = getDefaultTimezoneForOffset(settings.gmtOffset);
+    if (defaultTz != nullptr) {
+      strncpy(settings.timezoneString, defaultTz, 63);
+      settings.timezoneString[63] = '\0';
+      // Save new format
+      preferences.putString("tz", settings.timezoneString);
+      Serial.printf("Migrated gmtOffset %d + DST %d to timezone: %s\n",
+                    settings.gmtOffset, settings.daylightSaving, settings.timezoneString);
+    } else {
+      // No automatic mapping available, use manual fallback
+      strcpy(settings.timezoneString, "");
+      Serial.printf("Warning: No automatic timezone for gmtOffset %d, manual configuration needed\n",
+                    settings.gmtOffset);
+    }
+  }
+
   settings.use24Hour = preferences.getBool("use24Hour", true); // Default: 24h
   settings.dateFormat =
       preferences.getInt("dateFormat", 0); // Default: DD/MM/YYYY
@@ -205,6 +239,8 @@ void loadSettings() {
       preferences.getUChar("spaceExpGrv", 5); // Default: 0.5
 
   // Load network configuration
+  settings.showIPAtBoot =
+      preferences.getBool("showIPBoot", true); // Default: Show IP at startup
   settings.useStaticIP =
       preferences.getBool("useStaticIP", false); // Default: DHCP
   String loadedIP = preferences.getString("staticIP", "192.168.1.100");
@@ -330,8 +366,9 @@ void loadSettings() {
 void saveSettings() {
   preferences.begin("pcmonitor", false); // Read-write
   preferences.putInt("clockStyle", settings.clockStyle);
-  preferences.putInt("gmtOffset", settings.gmtOffset);
-  preferences.putBool("dst", settings.daylightSaving);
+  preferences.putInt("gmtOffset", settings.gmtOffset); // Keep for backward compatibility
+  preferences.putBool("dst", settings.daylightSaving);  // Keep for backward compatibility
+  preferences.putString("tz", settings.timezoneString); // New timezone string
   preferences.putBool("use24Hour", settings.use24Hour);
   preferences.putInt("dateFormat", settings.dateFormat);
   preferences.putInt("clockPos", settings.clockPosition);
@@ -376,6 +413,7 @@ void saveSettings() {
   preferences.putUChar("spaceExpGrv", settings.spaceExplosionGravity);
 
   // Save network configuration
+  preferences.putBool("showIPBoot", settings.showIPAtBoot);
   preferences.putBool("useStaticIP", settings.useStaticIP);
   preferences.putString("staticIP", settings.staticIP);
   preferences.putString("gateway", settings.gateway);

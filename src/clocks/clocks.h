@@ -41,9 +41,6 @@ void drawMario(int x, int y, bool facingRight, int frame, bool jumping);
 // ========== Space Invaders Clock ==========
 void displayClockWithSpaceInvader();
 void updateSpaceAnimation(struct tm* timeinfo);
-void drawSpaceInvader();
-void drawSpaceship();
-void triggerSpaceExplosion(int digitIndex);
 void handleSpacePatrolState();
 void handleSpaceSlidingState();
 void handleSpaceShootingState();

@@ -2,7 +2,7 @@
  * SmallOLED-PCMonitor - Space Invaders Clock
  *
  * Clock style 3: Space character (Invader or Ship) patrols and shoots
- * laser at digits when minute changes.
+ * laser at digits when minute changes. 
  */
 
 #include "../config/config.h"
@@ -337,8 +337,8 @@ void updateSpaceAnimation(struct tm* timeinfo) {
     last_space_sprite_toggle = currentMillis;
   }
 
-  // Trigger at 55 seconds - transition from PATROL to SLIDING
-  if (seconds >= 55 && !animation_triggered && space_state == SPACE_PATROL) {
+  // Trigger at 56 seconds - transition from PATROL to SLIDING
+  if (seconds >= 56 && !animation_triggered && space_state == SPACE_PATROL) {
     animation_triggered = true;
     time_overridden = true;
     time_override_start = millis();
