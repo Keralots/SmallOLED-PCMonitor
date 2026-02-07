@@ -11,6 +11,9 @@
 #include <Arduino.h>
 #include "user_config.h"
 
+// ========== Version ==========
+#define FIRMWARE_VERSION "1.4.3"
+
 // ========== Constants ==========
 #define MAX_METRICS 20
 #define METRIC_NAME_LEN 11
