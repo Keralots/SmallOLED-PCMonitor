@@ -10,6 +10,10 @@
 #include "../timezones.h"
 #include <Preferences.h>
 
+#if QR_SETUP_ENABLED
+#include "qrcode.h"
+#endif
+
 #if TOUCH_BUTTON_ENABLED
 extern bool manualClockMode;  // Defined in main.cpp
 #endif
@@ -25,7 +29,11 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   Serial.println(WiFi.softAPIP());
 
   if (displayAvailable) {
+#if QR_SETUP_ENABLED
+    displayQRCodeSetup();
+#else
     displaySetupInstructions();
+#endif
   }
 }
 
@@ -462,6 +470,55 @@ void displaySetupInstructions() {
 
   display.display();
 }
+
+#if QR_SETUP_ENABLED
+void displayQRCodeSetup() {
+  // WiFi QR format: WIFI:T:WPA;S:<ssid>;P:<password>;;
+  char qrData[80];
+  snprintf(qrData, sizeof(qrData), "WIFI:T:WPA;S:%s;P:%s;;", AP_NAME, AP_PASSWORD);
+
+  // QR Version 3 = 29x29 modules, fits 53 alphanumeric chars with ECC_LOW
+  QRCode qrcode;
+  uint8_t qrcodeBytes[qrcode_getBufferSize(3)];
+  qrcode_initText(&qrcode, qrcodeBytes, 3, ECC_LOW, qrData);
+
+  display.clearDisplay();
+
+  // Layout: text on left, QR code on right
+  // QR: 29x29 modules * 2px = 58x58 pixels, right-aligned, vertically centered
+  const uint8_t qrSize = qrcode.size;       // 29 for Version 3
+  const uint8_t pixelSize = 2;              // 2x2 pixels per module
+  const uint8_t qrDisplaySize = qrSize * pixelSize;  // 58 pixels
+  const uint8_t qrX = SCREEN_WIDTH - qrDisplaySize - 1;  // right side with 1px margin
+  const uint8_t qrY = (SCREEN_HEIGHT - qrDisplaySize) / 2;  // vertically centered
+
+  // Draw QR code
+  for (uint8_t y = 0; y < qrSize; y++) {
+    for (uint8_t x = 0; x < qrSize; x++) {
+      if (qrcode_getModule(&qrcode, x, y)) {
+        display.fillRect(qrX + (x * pixelSize), qrY + (y * pixelSize),
+                         pixelSize, pixelSize, DISPLAY_WHITE);
+      }
+    }
+  }
+
+  // Text labels on the left side (68px available, ~11 chars at 6px each)
+  display.setTextSize(1);
+  display.setCursor(0, 4);
+  display.println("Scan QR");
+  display.setCursor(0, 14);
+  display.println("to join");
+  display.setCursor(0, 24);
+  display.println("WiFi");
+
+  display.setCursor(0, 42);
+  display.println("Open:");
+  display.setCursor(0, 52);
+  display.println("192.168.4.1");
+
+  display.display();
+}
+#endif
 
 void displayConnecting() {
   display.clearDisplay();

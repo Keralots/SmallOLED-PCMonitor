@@ -19,7 +19,7 @@
 //   2 = SSD1309 (2.42" OLED, uses SSD1306 driver - 128x64 RAM, no offset)
 //
 // CHANGE THIS VALUE to match your OLED display type!
-#define DEFAULT_DISPLAY_TYPE 1
+#define DEFAULT_DISPLAY_TYPE 0
 
 // I2C pins for ESP32-C3
 #define I2C_SDA_PIN 8
@@ -89,5 +89,11 @@
 #define LED_PWM_CHANNEL 0                // PWM channel (0-15)
 #define LED_PWM_FREQ 5000                // PWM frequency in Hz
 #define LED_PWM_RESOLUTION 8             // 8-bit resolution (0-255 brightness levels)
+
+// ========== QR Code Setup Configuration ==========
+// Display QR code during WiFi AP setup for easy mobile connection
+// When enabled: OLED shows scannable QR code instead of text instructions
+// When disabled: Traditional text instructions (original behavior)
+#define QR_SETUP_ENABLED 0               // 1 = QR code, 0 = text instructions
 
 #endif // USER_CONFIG_H
