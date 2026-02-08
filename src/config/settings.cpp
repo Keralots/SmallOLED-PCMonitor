@@ -154,9 +154,9 @@ void loadSettings() {
       Serial.printf("Migrated gmtOffset %d + DST %d to timezone: %s\n",
                     settings.gmtOffset, settings.daylightSaving, settings.timezoneString);
     } else {
-      // No automatic mapping available, use manual fallback
-      strcpy(settings.timezoneString, "");
-      Serial.printf("Warning: No automatic timezone for gmtOffset %d, manual configuration needed\n",
+      // No automatic mapping available, default to UTC
+      strcpy(settings.timezoneString, "UTC0");
+      Serial.printf("Warning: No automatic timezone for gmtOffset %d, defaulting to UTC\n",
                     settings.gmtOffset);
     }
   }

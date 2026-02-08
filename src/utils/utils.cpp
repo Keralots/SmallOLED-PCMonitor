@@ -65,7 +65,8 @@ bool safeCopyString(char* dest, const char* src, size_t maxLen) {
     return false;  // Indicate truncation occurred
   }
 
-  strcpy(dest, src);
+  strncpy(dest, src, maxLen - 1);
+  dest[maxLen - 1] = '\0';
   return true;  // Success, no truncation
 }
 

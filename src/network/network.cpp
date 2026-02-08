@@ -238,6 +238,7 @@ void handleWiFiReconnection() {
   if (WiFi.status() != WL_CONNECTED) {
     // Update global flag for icon display
     wifiConnected = false;
+    metricData.online = false;
 
     if (wifiDisconnectTime == 0) {
       wifiDisconnectTime = millis();
@@ -273,6 +274,15 @@ void handleUDP() {
   int packetSize = udp.parsePacket();
   if (packetSize) {
     static char buffer[2048];
+
+    // Check size BEFORE reading to avoid processing truncated data
+    if (packetSize > (int)sizeof(buffer) - 1) {
+      Serial.printf("ERROR: Packet %d bytes exceeds buffer %d bytes, discarding.\n",
+                    packetSize, (int)sizeof(buffer));
+      udp.flush();
+      return;  // Don't update lastReceived for bad packets
+    }
+
     int len = udp.read(buffer, sizeof(buffer) - 1);
     if (len > 0) {
       buffer[len] = '\0';
@@ -282,14 +292,6 @@ void handleUDP() {
       Serial.print(" bytes, read: ");
       Serial.print(len);
       Serial.println(" bytes");
-
-      if (packetSize > (int)sizeof(buffer) - 1) {
-        Serial.printf("ERROR: Packet %d bytes exceeds buffer %d bytes! Data truncated.\n",
-                      packetSize, (int)sizeof(buffer));
-        udp.flush();
-        lastReceived = millis();
-        return;
-      }
 
       parseStats(buffer);
       lastReceived = millis();

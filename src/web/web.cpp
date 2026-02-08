@@ -58,30 +58,30 @@ void setupWebServer() {
  server.begin();
 }
 
-// API endpoint to return current metrics as JSON
+// API endpoint to return current metrics as JSON (uses ArduinoJson for proper string escaping)
 void handleMetricsAPI() {
- String json = "{\"metrics\":[";
+ JsonDocument doc;
+ JsonArray metricsArray = doc["metrics"].to<JsonArray>();
 
  for (int i = 0; i < metricData.count; i++) {
- Metric& m = metricData.metrics[i];
-
- if (i > 0) json += ",";
- json += "{\"id\":" + String(m.id) +
- ",\"name\":\"" + String(m.name) + "\"" +
- ",\"label\":\"" + String(m.label) + "\"" +
- ",\"unit\":\"" + String(m.unit) + "\"" +
- ",\"displayOrder\":" + String(m.displayOrder) +
- ",\"companionId\":" + String(m.companionId) +
- ",\"position\":" + String(m.position) +
- ",\"barPosition\":" + String(m.barPosition) +
- ",\"barMin\":" + String(m.barMin) +
- ",\"barMax\":" + String(m.barMax) +
- ",\"barWidth\":" + String(m.barWidth) +
- ",\"barOffsetX\":" + String(m.barOffsetX) + "}";
+   Metric& m = metricData.metrics[i];
+   JsonObject obj = metricsArray.add<JsonObject>();
+   obj["id"] = m.id;
+   obj["name"] = m.name;
+   obj["label"] = m.label;
+   obj["unit"] = m.unit;
+   obj["displayOrder"] = m.displayOrder;
+   obj["companionId"] = m.companionId;
+   obj["position"] = m.position;
+   obj["barPosition"] = m.barPosition;
+   obj["barMin"] = m.barMin;
+   obj["barMax"] = m.barMax;
+   obj["barWidth"] = m.barWidth;
+   obj["barOffsetX"] = m.barOffsetX;
  }
 
- json += "]}";
-
+ String json;
+ serializeJson(doc, json);
  server.send(200, "application/json", json);
 }
 

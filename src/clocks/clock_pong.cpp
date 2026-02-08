@@ -528,18 +528,36 @@ void updatePongBall(int ballIndex) {
     pong_balls[ballIndex].vx = -abs(pong_balls[ballIndex].vx);  // Force left
   }
 
-  // Clamp velocities to reasonable limits (prevent too shallow or steep angles)
+  // Clamp individual components to prevent too shallow or steep angles
   if (abs(pong_balls[ballIndex].vx) < 8) {
     pong_balls[ballIndex].vx = (pong_balls[ballIndex].vx > 0) ? 8 : -8;
-  }
-  if (abs(pong_balls[ballIndex].vx) > 40) {
-    pong_balls[ballIndex].vx = (pong_balls[ballIndex].vx > 0) ? 40 : -40;
   }
   if (abs(pong_balls[ballIndex].vy) < 8) {
     pong_balls[ballIndex].vy = (pong_balls[ballIndex].vy > 0) ? 8 : -8;
   }
-  if (abs(pong_balls[ballIndex].vy) > 40) {
-    pong_balls[ballIndex].vy = (pong_balls[ballIndex].vy > 0) ? 40 : -40;
+
+  // Clamp velocity magnitude to prevent diagonal speed boost
+  int vx = pong_balls[ballIndex].vx;
+  int vy = pong_balls[ballIndex].vy;
+  long magSq = (long)vx * vx + (long)vy * vy;
+  const long maxSpeed = 40;
+  const long maxMagSq = maxSpeed * maxSpeed;
+  if (magSq > maxMagSq) {
+    // Scale down proportionally using integer math (avoid float)
+    // Approximate: multiply by maxSpeed/mag using isqrt
+    // Simple approach: halve both until within limit
+    while ((long)pong_balls[ballIndex].vx * pong_balls[ballIndex].vx +
+           (long)pong_balls[ballIndex].vy * pong_balls[ballIndex].vy > maxMagSq) {
+      pong_balls[ballIndex].vx = (pong_balls[ballIndex].vx * 3) / 4;
+      pong_balls[ballIndex].vy = (pong_balls[ballIndex].vy * 3) / 4;
+    }
+    // Re-enforce minimum after scaling
+    if (abs(pong_balls[ballIndex].vx) < 8) {
+      pong_balls[ballIndex].vx = (pong_balls[ballIndex].vx >= 0) ? 8 : -8;
+    }
+    if (abs(pong_balls[ballIndex].vy) < 8) {
+      pong_balls[ballIndex].vy = (pong_balls[ballIndex].vy >= 0) ? 8 : -8;
+    }
   }
 }
 

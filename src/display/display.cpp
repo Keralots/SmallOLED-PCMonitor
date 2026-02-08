@@ -22,9 +22,10 @@ bool initDisplay() {
 #if DISPLAY_TYPE == 1
     // SH1106: Try 0x3C first (most common), then 0x3D
     byte addrToTry = (attempt == 0) ? DISPLAY_I2C_ADDRESS : 0x3D;
-    display.begin(addrToTry);
-    display.setContrast(255);
-    return true;
+    if (display.begin(addrToTry)) {
+      display.setContrast(255);
+      return true;
+    }
 #else
     if (display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDRESS)) {
       return true;
@@ -78,6 +79,14 @@ void checkScheduledBrightness() {
 
   // Check if current time is within dim period
   // Handle wrap-around case (e.g., 22:00 to 07:00)
+  if (settings.dimStartHour == settings.dimEndHour) {
+    // Same hour means no dim period — use normal brightness
+    if (lastAppliedBrightness != settings.displayBrightness) {
+      applyDisplayBrightness();
+      lastAppliedBrightness = settings.displayBrightness;
+    }
+    return;
+  }
   if (settings.dimStartHour < settings.dimEndHour) {
     // Normal case: start and end are in same day
     // e.g., 01:00 to 07:00

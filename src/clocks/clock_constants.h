@@ -18,8 +18,8 @@
 // Velocity after hitting a digit (bounce upward)
 #define MARIO_BOUNCE_VELOCITY 2.0f
 
-// Second trigger threshold for animation
-#define MARIO_ANIMATION_TRIGGER_SECOND 55
+// Second trigger threshold for animation (56 prevents digit revert during transition)
+#define MARIO_ANIMATION_TRIGGER_SECOND 56
 
 // ========== Space Clock Constants ==========
 // Laser offset from character top (where laser starts)

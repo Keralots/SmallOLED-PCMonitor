@@ -308,10 +308,12 @@ void drawProgressBar(int x, int y, int width, Metric* m) {
   int actualX = x + m->barOffsetX;
   int actualWidth = m->barWidth;
 
-  // Constrain to ensure bar doesn't exceed screen boundaries
+  // Guard against off-screen or invalid bar dimensions
+  if (actualX >= 128 || actualX < 0) return;
   if (actualX + actualWidth > 128) {
     actualWidth = 128 - actualX;
   }
+  if (actualWidth <= 0) return;
 
   // Calculate bar fill percentage based on min/max values
   int range = m->barMax - m->barMin;
