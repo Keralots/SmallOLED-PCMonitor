@@ -12,81 +12,69 @@
 // ========== Metrics Display Functions ==========
 
 void displayStatsCompactGrid() {
-  display.setTextSize(1);
+  bool isLargeTextMode = (settings.displayRowMode >= 2);
+  int textSize = isLargeTextMode ? 2 : 1;
+  int textHeight = isLargeTextMode ? 16 : 8;
 
-  const int COL1_X = 0;
-  const int COL2_X = 62;  // Moved 2px left to give right column more space
+  display.setTextSize(textSize);
 
-  // Dynamic row configuration based on user settings
-  int startY;
-  int ROW_HEIGHT;
-  const int MAX_ROWS = (settings.displayRowMode == 0) ? 5 : 6;
+  if (isLargeTextMode) {
+    // ===== Large text modes: single-column layout =====
+    const int MAX_ROWS = (settings.displayRowMode == 2) ? 2 : 3;
+    int startY;
 
-  if (settings.displayRowMode == 0) {  // 5-row mode - optimized spacing
-    startY = 0;  // Start at very top to maximize space
-    // Use 13px spacing for maximum readability, except with centered clock (11px to fit)
-    ROW_HEIGHT = (settings.showClock && settings.clockPosition == 0) ? 11 : 13;
-  } else {  // 6-row mode - compact layout
-    startY = 2;
-    ROW_HEIGHT = 10;
-  }
-
-  // Clock positioning: 0=Center, 1=Left, 2=Right
-  if (settings.showClock) {
-    if (settings.clockPosition == 0) {
-      // Center - Clock at top center, metrics below
-      display.setCursor(48 + settings.clockOffset, startY);
-      display.print(metricData.timestamp);
-      startY += 10;  // Clock height (8px) + 2px gap
-    } else if (settings.clockPosition == 1) {
-      // Clock in left column, first row
-      display.setCursor(COL1_X + settings.clockOffset, startY);
-      display.print(metricData.timestamp);
-    } else if (settings.clockPosition == 2) {
-      // Clock in right column, first row
-      display.setCursor(COL2_X + settings.clockOffset, startY);
-      display.print(metricData.timestamp);
+    if (settings.displayRowMode == 2) {
+      // 2-row: center vertically with generous spacing
+      startY = 8;  // Y=8, Y=40
+    } else {
+      // 3-row: start near top
+      startY = 4;  // Y=4, Y=24, Y=44
     }
-  }
 
-  // Render 6 rows using position-based system
-  int visibleCount = 0;
+    // Clock: always centered at size 1 in large modes (single column has no left/right)
+    if (settings.showClock) {
+      display.setTextSize(1);
+      display.setCursor(48 + settings.clockOffset, 0);
+      display.print(metricData.timestamp);
+      display.setTextSize(2);
 
-  for (int row = 0; row < MAX_ROWS; row++) {
-    int y = startY + (row * ROW_HEIGHT);
+      if (settings.displayRowMode == 2) {
+        startY = 12;  // Y=12, Y=36
+      } else {
+        startY = 10;  // Y=10, Y=28, Y=46
+      }
+    }
 
-    // Check for overflow
-    if (y + 8 > 64) break;
+    // 2-row: generous spacing. 3-row: tighter when clock is shown to fit all rows
+    int ROW_HEIGHT = (settings.displayRowMode == 2) ? 32 : (settings.showClock ? 18 : 20);
 
-    // Calculate position indices for this row
-    uint8_t leftPos = row * 2;      // 0, 2, 4, 6, 8, 10
-    uint8_t rightPos = row * 2 + 1; // 1, 3, 5, 7, 9, 11
+    int visibleCount = 0;
 
-    // Skip first row left if clock is positioned there
-    bool clockInLeft = (settings.showClock && settings.clockPosition == 1 && row == 0);
-    bool clockInRight = (settings.showClock && settings.clockPosition == 2 && row == 0);
+    for (int row = 0; row < MAX_ROWS; row++) {
+      int y = startY + (row * ROW_HEIGHT);
 
-    // Find and render left column (check for bar first, then text)
-    if (!clockInLeft) {
+      if (y + textHeight > 64) break;
+
+      uint8_t position = row;  // Sequential: 0, 1, 2
+
+      // Check for progress bar first
       bool rendered = false;
-
-      // First check if any metric wants to display a bar at this position
       for (int i = 0; i < metricData.count; i++) {
         Metric& m = metricData.metrics[i];
-        if (m.barPosition == leftPos) {
-          drawProgressBar(COL1_X, y, 60, &m);  // Full-size bar for left column
+        if (m.barPosition == position) {
+          drawProgressBar(0, y, 128, &m);  // Full width
           visibleCount++;
           rendered = true;
           break;
         }
       }
 
-      // If no bar, check for text metric at this position
+      // Then check for text metric
       if (!rendered) {
         for (int i = 0; i < metricData.count; i++) {
           Metric& m = metricData.metrics[i];
-          if (m.position == leftPos) {
-            display.setCursor(COL1_X, y);
+          if (m.position == position) {
+            display.setCursor(0, y);
             displayMetricCompact(&m);
             visibleCount++;
             break;
@@ -95,47 +83,143 @@ void displayStatsCompactGrid() {
       }
     }
 
-    // Find and render right column (check for bar first, then text)
-    if (!clockInRight) {
-      bool rendered = false;
+    // No metrics edge case
+    if (visibleCount == 0) {
+      display.setTextSize(1);
+      display.setCursor(0, 10);
+      display.print("Go to:");
+      display.setCursor(0, 22);
+      display.print(WiFi.localIP().toString().c_str());
+      display.setCursor(0, 34);
+      display.print("to configure");
+      display.setCursor(0, 46);
+      display.print("metrics");
+    }
 
-      // First check if any metric wants to display a bar at this position
-      for (int i = 0; i < metricData.count; i++) {
-        Metric& m = metricData.metrics[i];
-        if (m.barPosition == rightPos) {
-          drawProgressBar(COL2_X, y, 64, &m);  // Full-size bar for right column
-          visibleCount++;
-          rendered = true;
-          break;
+  } else {
+    // ===== Normal text modes: 2-column layout =====
+    const int COL1_X = 0;
+    const int COL2_X = 62;  // Moved 2px left to give right column more space
+
+    int startY;
+    int ROW_HEIGHT;
+    const int MAX_ROWS = (settings.displayRowMode == 0) ? 5 : 6;
+
+    if (settings.displayRowMode == 0) {  // 5-row mode - optimized spacing
+      startY = 0;  // Start at very top to maximize space
+      // Use 13px spacing for maximum readability, except with centered clock (11px to fit)
+      ROW_HEIGHT = (settings.showClock && settings.clockPosition == 0) ? 11 : 13;
+    } else {  // 6-row mode - compact layout
+      startY = 2;
+      ROW_HEIGHT = 10;
+    }
+
+    // Clock positioning: 0=Center, 1=Left, 2=Right
+    if (settings.showClock) {
+      if (settings.clockPosition == 0) {
+        // Center - Clock at top center, metrics below
+        display.setCursor(48 + settings.clockOffset, startY);
+        display.print(metricData.timestamp);
+        startY += 10;  // Clock height (8px) + 2px gap
+      } else if (settings.clockPosition == 1) {
+        // Clock in left column, first row
+        display.setCursor(COL1_X + settings.clockOffset, startY);
+        display.print(metricData.timestamp);
+      } else if (settings.clockPosition == 2) {
+        // Clock in right column, first row
+        display.setCursor(COL2_X + settings.clockOffset, startY);
+        display.print(metricData.timestamp);
+      }
+    }
+
+    // Render rows using position-based system
+    int visibleCount = 0;
+
+    for (int row = 0; row < MAX_ROWS; row++) {
+      int y = startY + (row * ROW_HEIGHT);
+
+      // Check for overflow
+      if (y + 8 > 64) break;
+
+      // Calculate position indices for this row
+      uint8_t leftPos = row * 2;      // 0, 2, 4, 6, 8, 10
+      uint8_t rightPos = row * 2 + 1; // 1, 3, 5, 7, 9, 11
+
+      // Skip first row left if clock is positioned there
+      bool clockInLeft = (settings.showClock && settings.clockPosition == 1 && row == 0);
+      bool clockInRight = (settings.showClock && settings.clockPosition == 2 && row == 0);
+
+      // Find and render left column (check for bar first, then text)
+      if (!clockInLeft) {
+        bool rendered = false;
+
+        // First check if any metric wants to display a bar at this position
+        for (int i = 0; i < metricData.count; i++) {
+          Metric& m = metricData.metrics[i];
+          if (m.barPosition == leftPos) {
+            drawProgressBar(COL1_X, y, 60, &m);  // Full-size bar for left column
+            visibleCount++;
+            rendered = true;
+            break;
+          }
+        }
+
+        // If no bar, check for text metric at this position
+        if (!rendered) {
+          for (int i = 0; i < metricData.count; i++) {
+            Metric& m = metricData.metrics[i];
+            if (m.position == leftPos) {
+              display.setCursor(COL1_X, y);
+              displayMetricCompact(&m);
+              visibleCount++;
+              break;
+            }
+          }
         }
       }
 
-      // If no bar, check for text metric at this position
-      if (!rendered) {
+      // Find and render right column (check for bar first, then text)
+      if (!clockInRight) {
+        bool rendered = false;
+
+        // First check if any metric wants to display a bar at this position
         for (int i = 0; i < metricData.count; i++) {
           Metric& m = metricData.metrics[i];
-          if (m.position == rightPos) {
-            display.setCursor(COL2_X, y);
-            displayMetricCompact(&m);
+          if (m.barPosition == rightPos) {
+            drawProgressBar(COL2_X, y, 64, &m);  // Full-size bar for right column
             visibleCount++;
+            rendered = true;
             break;
+          }
+        }
+
+        // If no bar, check for text metric at this position
+        if (!rendered) {
+          for (int i = 0; i < metricData.count; i++) {
+            Metric& m = metricData.metrics[i];
+            if (m.position == rightPos) {
+              display.setCursor(COL2_X, y);
+              displayMetricCompact(&m);
+              visibleCount++;
+              break;
+            }
           }
         }
       }
     }
-  }
 
-  // No metrics edge case
-  if (visibleCount == 0) {
-    display.setTextSize(1);
-    display.setCursor(0, 10);
-    display.print("Go to:");
-    display.setCursor(0, 22);
-    display.print(WiFi.localIP().toString().c_str());
-    display.setCursor(0, 34);
-    display.print("to configure");
-    display.setCursor(0, 46);
-    display.print("metrics");
+    // No metrics edge case
+    if (visibleCount == 0) {
+      display.setTextSize(1);
+      display.setCursor(0, 10);
+      display.print("Go to:");
+      display.setCursor(0, 22);
+      display.print(WiFi.localIP().toString().c_str());
+      display.setCursor(0, 34);
+      display.print("to configure");
+      display.setCursor(0, 46);
+      display.print("metrics");
+    }
   }
 }
 
@@ -243,12 +327,15 @@ void drawProgressBar(int x, int y, int width, Metric* m) {
   int valueInRange = constrain(displayValue, m->barMin, m->barMax) - m->barMin;
   int fillWidth = map(valueInRange, 0, range, 0, actualWidth - 2);
 
-  // Draw bar outline (8px tall, full row height)
-  display.drawRect(actualX, y, actualWidth, 8, DISPLAY_WHITE);
+  // Bar height scales with display mode (16px for large text, 8px for normal)
+  int barHeight = (settings.displayRowMode >= 2) ? 16 : 8;
+
+  // Draw bar outline
+  display.drawRect(actualX, y, actualWidth, barHeight, DISPLAY_WHITE);
 
   // Fill bar based on value
   if (fillWidth > 0) {
-    display.fillRect(actualX + 1, y + 1, fillWidth, 6, DISPLAY_WHITE);
+    display.fillRect(actualX + 1, y + 1, fillWidth, barHeight - 2, DISPLAY_WHITE);
   }
 }
 
