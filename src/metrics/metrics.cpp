@@ -20,6 +20,7 @@ void displayStatsCompactGrid() {
 
   if (isLargeTextMode) {
     // ===== Large text modes: single-column layout =====
+    display.setTextWrap(false);  // Clip at screen edge instead of wrapping to next line
     const int MAX_ROWS = (settings.displayRowMode == 2) ? 2 : 3;
     int startY;
 
@@ -98,6 +99,7 @@ void displayStatsCompactGrid() {
 
   } else {
     // ===== Normal text modes: 2-column layout =====
+    display.setTextWrap(true);  // Restore default wrapping
     const int COL1_X = 0;
     const int COL2_X = 62;  // Moved 2px left to give right column more space
 
@@ -275,17 +277,18 @@ void displayMetricCompact(Metric* m) {
   }
 
   // Check for companion metric (append to same line)
+  bool hasCompanionLarge = false;
+  char companionText[20] = "";
+
   if (m->companionId > 0) {
     // Find companion metric by ID
     for (int c = 0; c < metricData.count; c++) {
       if (metricData.metrics[c].id == m->companionId) {
         Metric& companion = metricData.metrics[c];
-        char companionText[20];
         // Handle KB/s throughput values (multiplied by 10 from Python)
         if (strcmp(companion.unit, "KB/s") == 0) {
           float compValue = companion.value / 10.0;
           if (settings.useNetworkMBFormat) {
-            // M suffix for companion too: " 1.2M"
             snprintf(companionText, 20, " %.1fM", compValue / 1000.0);
           } else {
             snprintf(companionText, 20, " %.1f%s", compValue, companion.unit);
@@ -293,13 +296,34 @@ void displayMetricCompact(Metric* m) {
         } else {
           snprintf(companionText, 20, " %d%s", companion.value, companion.unit);
         }
-        strncat(text, companionText, 40 - strlen(text) - 1);
+
+        if (settings.displayRowMode >= 2) {
+          // Large text mode: print separately with 4px gap instead of 12px space
+          hasCompanionLarge = true;
+        } else {
+          // Normal mode: append with space as before
+          strncat(text, companionText, 40 - strlen(text) - 1);
+        }
         break;
       }
     }
   }
 
   display.print(text);
+
+  if (hasCompanionLarge) {
+    // Right-align companion so it stays fixed regardless of primary value width
+    int compLen = strlen(companionText + 1);  // +1 to skip leading space
+    int compX = 128 - (compLen * 12);         // 12px per char at text size 2
+    int16_t curX = display.getCursorX();
+    int16_t curY = display.getCursorY();
+    // Ensure minimum 4px gap from primary text to avoid overlap
+    if (compX < curX + 4) {
+      compX = curX + 4;
+    }
+    display.setCursor(compX, curY);
+    display.print(companionText + 1);  // +1 to skip leading space
+  }
 }
 
 // Helper function to draw a full-size progress bar (occupies entire position slot)
