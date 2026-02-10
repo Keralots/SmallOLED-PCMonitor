@@ -262,17 +262,10 @@ void loop() {
 #if TOUCH_BUTTON_ENABLED
   // Handle touch button gestures
 #if LED_PWM_ENABLED
-  // Check for long press (LED on/off toggle - hold for 1 second)
-  if (checkTouchButtonLongPress()) {
-    enableLED(!settings.ledEnabled);  // Toggle LED
-    Serial.println(settings.ledEnabled ? "LED ON" : "LED OFF");
-  }
-  // Regular short press (mode toggle / clock style cycle)
-  else if (checkTouchButtonPressed()) {
-#else
-  // No LED PWM - just handle regular button press
-  if (checkTouchButtonPressed()) {
+  handleTouchLED(); // Hold > 1s: ramp LED brightness up/down
 #endif
+  // Regular short press (mode toggle / clock style cycle)
+  if (checkTouchButtonPressed()) {
     if (manualClockMode) {
       // Check if PC is currently online (UDP is always processed, so status is accurate)
       if (metricData.online) {

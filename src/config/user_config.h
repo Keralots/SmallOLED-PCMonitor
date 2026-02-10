@@ -19,7 +19,7 @@
 //   2 = SSD1309 (2.42" OLED, uses SSD1306 driver - 128x64 RAM, no offset)
 //
 // CHANGE THIS VALUE to match your OLED display type!
-#define DEFAULT_DISPLAY_TYPE 0
+#define DEFAULT_DISPLAY_TYPE 1
 
 // I2C pins for ESP32-C3
 #define I2C_SDA_PIN 8
@@ -93,7 +93,7 @@
 // Note: If TTP223 is not connected, GPIO 7 just floats harmlessly
 #define TOUCH_BUTTON_ENABLED 1           // 1 = enabled, 0 = disabled (always enabled now)
 #define TOUCH_BUTTON_PIN 7               // GPIO pin for TTP223 signal (default: GPIO 7)
-#define TOUCH_DEBOUNCE_MS 200            // Debounce delay in milliseconds (default: 200ms)
+#define TOUCH_DEBOUNCE_MS 50            // Debounce delay in milliseconds (default: 100ms)
 #define TOUCH_ACTIVE_LEVEL HIGH          // HIGH = active HIGH, LOW = active LOW (TTP223 default: HIGH)
 
 // ========== LED PWM Night Light Configuration ==========

@@ -4,7 +4,9 @@
 
 #include "utils.h"
 #include "../config/config.h"
+#include "../config/settings.h"
 #include <string.h>
+#include <math.h>
 
 // Helper function to trim trailing whitespace (only from Python names, not custom labels)
 void trimTrailingSpaces(char* str) {
@@ -122,10 +124,19 @@ bool checkTouchButtonPressed() {
     // Button just released (after debounce)
     else if (reading != TOUCH_ACTIVE_LEVEL && buttonIsPressed) {
       buttonIsPressed = false;
-      // Only trigger if not already handled by long press
       if (!buttonHandled) {
+        unsigned long pressDuration = millis() - buttonPressStartTime;
+#if LED_PWM_ENABLED
+        // Only fire short press for quick taps (< 500ms)
+        // Medium press (500-1000ms) is handled by handleTouchLED()
+        if (pressDuration < 500) {
+          pressed = true;
+          Serial.println("Touch button PRESSED (short press)");
+        }
+#else
         pressed = true;
         Serial.println("Touch button PRESSED (short press)");
+#endif
       }
       buttonHandled = false;  // Reset for next press
     }
@@ -173,31 +184,96 @@ void enableLED(bool enable) {
   }
 }
 
-// ========== Long Press Gesture Detection ==========
-// Shares state with checkTouchButtonPressed() to avoid conflicts
-
-static const unsigned long LONG_PRESS_THRESHOLD = 1000; // 1000ms = 1 second
+// ========== LED Gesture Control ==========
+// Quick tap (< 500ms): clock action (handled by checkTouchButtonPressed)
+// Medium press (500ms-1s, release): toggle LED on/off
+// Long hold (> 1s, keep holding): ramp brightness up/down
+// Gamma-corrected ramp for natural feel.
 
 extern bool buttonIsPressed;  // Referenced from touch button code above
 extern unsigned long buttonPressStartTime;
 extern bool buttonHandled;
 
-bool checkTouchButtonLongPress() {
-  int reading = digitalRead(TOUCH_BUTTON_PIN);
+// Gamma correction: maps linear position (0-255) to perceived brightness
+// Quadratic approximation of gamma ~2.0 — no floats in hot path
+static uint8_t gammaCorrect(uint8_t pos) {
+  return (uint16_t(pos) * pos + pos) >> 8;
+}
 
-  // Only check if button is currently pressed and not yet handled
-  if (buttonIsPressed && !buttonHandled) {
-    unsigned long pressDuration = millis() - buttonPressStartTime;
+static const unsigned long MEDIUM_PRESS_THRESHOLD = 500;
+static const unsigned long LONG_PRESS_THRESHOLD = 1000;
+static const unsigned long LED_RAMP_INTERVAL_MS = 10; // 10ms per step → ~2.5s full range
 
-    // Check if long press threshold reached
-    if (pressDuration >= LONG_PRESS_THRESHOLD) {
-      buttonHandled = true;  // Mark as handled so short press won't fire
-      Serial.println("Long press detected - toggling LED!");
-      return true;  // Long press detected!
+void handleTouchLED() {
+  static bool rampActive = false;
+  static bool rampUp = true;
+  static uint8_t rampPosition = 0;
+  static unsigned long lastRampUpdate = 0;
+  static bool prevPressed = false;
+
+  bool held = buttonIsPressed && !buttonHandled;
+  unsigned long pressDuration = millis() - buttonPressStartTime;
+
+  // Detect long press threshold crossing → start ramp
+  if (held && pressDuration >= LONG_PRESS_THRESHOLD) {
+    buttonHandled = true; // Block short press
+
+    if (!rampActive) {
+      // First frame: determine direction
+      if (!settings.ledEnabled || settings.ledBrightness == 0) {
+        rampUp = true;
+        rampPosition = 0;
+        settings.ledEnabled = true;
+      } else {
+        rampUp = false;
+        // Inverse gamma to find ramp position from current brightness
+        rampPosition = (uint8_t)sqrtf(float(settings.ledBrightness) * 255.0f);
+        if (rampPosition > 255) rampPosition = 255;
+      }
+      rampActive = true;
+      lastRampUpdate = millis();
     }
   }
 
-  return false;
+  // Continuous ramp while held
+  if (rampActive && buttonIsPressed) {
+    if (millis() - lastRampUpdate >= LED_RAMP_INTERVAL_MS) {
+      lastRampUpdate = millis();
+      if (rampUp) {
+        if (rampPosition < 255) rampPosition++;
+      } else {
+        if (rampPosition > 0) rampPosition--;
+      }
+
+      settings.ledBrightness = gammaCorrect(rampPosition);
+      if (settings.ledBrightness == 0 && !rampUp) {
+        settings.ledEnabled = false;
+        ledcWrite(LED_PWM_CHANNEL, 0);
+      } else {
+        ledcWrite(LED_PWM_CHANNEL, settings.ledBrightness);
+      }
+    }
+    prevPressed = buttonIsPressed;
+    return;
+  }
+
+  // Detect release moment
+  if (prevPressed && !buttonIsPressed) {
+    if (rampActive) {
+      // Was ramping → save brightness
+      rampActive = false;
+      saveSettings();
+    } else {
+      // Check for medium press (500ms-1000ms) → toggle LED
+      if (pressDuration >= MEDIUM_PRESS_THRESHOLD && pressDuration < LONG_PRESS_THRESHOLD) {
+        enableLED(!settings.ledEnabled);
+        saveSettings();
+        Serial.println(settings.ledEnabled ? "Medium press: LED ON" : "Medium press: LED OFF");
+      }
+    }
+  }
+
+  prevPressed = buttonIsPressed;
 }
 
 #endif // TOUCH_BUTTON_ENABLED

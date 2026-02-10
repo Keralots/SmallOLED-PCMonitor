@@ -31,7 +31,7 @@ void resetTouchButtonState();
 void initLEDPWM();
 void setLEDBrightness(uint8_t brightness);
 void enableLED(bool enable);
-bool checkTouchButtonLongPress();
+void handleTouchLED();
 #endif
 
 #endif // UTILS_H
