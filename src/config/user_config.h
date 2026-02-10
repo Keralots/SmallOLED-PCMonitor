@@ -87,9 +87,10 @@
 #define WATCHDOG_TIMEOUT_SECONDS 30
 
 // ========== Touch Button Configuration ==========
-// TTP223 capacitive touch sensor support (now always enabled for LED night light)
-// - Short press (< 1 second): Toggle between PC metrics and clock mode
-// - Long press (> 1 second): Toggle LED night light on/off
+// TTP223 capacitive touch sensor support
+// - Quick tap (< 500ms): Toggle metrics/clock mode or cycle clock styles
+// - Medium press (500ms-1s, release): Toggle LED night light on/off
+// - Long hold (> 1s): Ramp LED brightness up/down (gamma-corrected)
 // Note: If TTP223 is not connected, GPIO 7 just floats harmlessly
 #define TOUCH_BUTTON_ENABLED 1           // 1 = enabled, 0 = disabled (always enabled now)
 #define TOUCH_BUTTON_PIN 7               // GPIO pin for TTP223 signal (default: GPIO 7)
