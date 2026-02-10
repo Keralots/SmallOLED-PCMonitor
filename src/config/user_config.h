@@ -32,6 +32,21 @@
 // I2C Address (typically 0x3C, some displays use 0x3D)
 #define DISPLAY_I2C_ADDRESS 0x3C
 
+// ========== Display Interface ==========
+// Interface type:
+//   0 = I2C (default, uses SDA/SCL pins above)
+//   1 = SPI (uses SPI pins below, faster refresh for animations)
+//
+// CHANGE THIS VALUE to use SPI instead of I2C
+#define DISPLAY_INTERFACE 0
+
+// SPI pins for ESP32-C3 (only used when DISPLAY_INTERFACE = 1)
+#define SPI_MOSI_PIN 6 //SDA
+#define SPI_SCK_PIN  4 //SCK SPI Clock
+#define SPI_CS_PIN   5 //CS (Chip Select)
+#define SPI_DC_PIN   3 //DC (Data/Command)
+#define SPI_RST_PIN  10   //RES Set to -1 if RST is not connected
+
 // ========== WiFi Configuration ==========
 // Access Point name and password for initial setup
 #define AP_NAME "PCMonitor-Setup"

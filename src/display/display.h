@@ -8,7 +8,11 @@
 #ifndef DISPLAY_H
 #define DISPLAY_H
 
-#include <Wire.h>
+#if DISPLAY_INTERFACE == 1
+  #include <SPI.h>
+#else
+  #include <Wire.h>
+#endif
 #include <Adafruit_GFX.h>
 #include "../config/user_config.h"
 
