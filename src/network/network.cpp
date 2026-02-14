@@ -265,6 +265,7 @@ void handleWiFiReconnection() {
       Serial.println(WiFi.localIP());
       wifiDisconnectTime = 0;
       ntpSynced = false;  // Force NTP resync after reconnection
+      applyTimezone();    // Restart SNTP client and reapply timezone
     }
   }
 }

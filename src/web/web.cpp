@@ -233,8 +233,10 @@ void handleRoot() {
  // Group timezones by region
  html += "<option value=\"\">-- Select Region --</option>\n";
 
+ bool tzSelected = false;
  for (size_t i = 0; i < tzCount; i++) {
-   bool isSelected = (strcmp(settings.timezoneString, regions[i].posixString) == 0);
+   bool isSelected = !tzSelected && (strcmp(settings.timezoneString, regions[i].posixString) == 0);
+   if (isSelected) tzSelected = true;
    html += "<option value=\"" + String(regions[i].posixString) + "\"" + (isSelected ? " selected" : "") + ">" + String(regions[i].name) + "</option>\n";
  }
 

@@ -314,8 +314,19 @@ void loop() {
         lastNtpSyncTime = millis();
         Serial.println("NTP sync successful (retry)");
       }
+    } else {
+      applyTimezone();  // SNTP client might be dead - restart it
+      Serial.println("NTP retry: restarted SNTP client");
     }
     lastNtpSyncTime = millis();
+  }
+
+  // Periodic NTP re-sync even when already synced (safety net)
+  if (ntpSynced && millis() - lastNtpSyncTime > NTP_RESYNC_INTERVAL) {
+    applyTimezone();
+    ntpSynced = false;
+    lastNtpSyncTime = millis();
+    Serial.println("Periodic NTP re-sync triggered");
   }
 
   // Display update with adaptive refresh rate
