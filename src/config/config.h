@@ -12,7 +12,7 @@
 #include "user_config.h"
 
 // ========== Version ==========
-#define FIRMWARE_VERSION "1.4.3"
+#define FIRMWARE_VERSION "1.5.0"
 
 // ========== Constants ==========
 #define MAX_METRICS 20
@@ -59,6 +59,7 @@ struct Settings {
   int16_t gmtOffset;        // GMT offset in minutes (deprecated, kept for migration)
   bool daylightSaving;      // DST enabled (deprecated, kept for migration)
   char timezoneString[64];  // POSIX TZ string (e.g., "CET-1CEST,M3.5.0/02:00,M10.5.0/03:00")
+  uint8_t timezoneIndex;    // Index into timezone database (for UI display)
   bool use24Hour;           // 24-hour format
   uint8_t dateFormat;       // 0=DD/MM/YYYY, 1=MM/DD/YYYY, 2=YYYY-MM-DD
   uint8_t clockPosition;    // 0=Center, 1=Left, 2=Right

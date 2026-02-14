@@ -233,11 +233,9 @@ void handleRoot() {
  // Group timezones by region
  html += "<option value=\"\">-- Select Region --</option>\n";
 
- bool tzSelected = false;
  for (size_t i = 0; i < tzCount; i++) {
-   bool isSelected = !tzSelected && (strcmp(settings.timezoneString, regions[i].posixString) == 0);
-   if (isSelected) tzSelected = true;
-   html += "<option value=\"" + String(regions[i].posixString) + "\"" + (isSelected ? " selected" : "") + ">" + String(regions[i].name) + "</option>\n";
+   bool isSelected = (settings.timezoneIndex < 255) ? (i == settings.timezoneIndex) : (strcmp(settings.timezoneString, regions[i].posixString) == 0);
+   html += "<option value=\"" + String(i) + "\"" + (isSelected ? " selected" : "") + ">" + String(regions[i].name) + "</option>\n";
  }
 
  html += R"rawliteral(
@@ -296,18 +294,19 @@ void handleSave() {
  settings.clockStyle = server.arg("clockStyle").toInt();
  }
 
- // Handle new timezone region selector
+ // Handle new timezone region selector (value is now an index into timezone database)
  if (server.hasArg("timezoneRegion")) {
- String tz = server.arg("timezoneRegion");
- if (tz.length() > 0 && tz.length() < 64) {
- strncpy(settings.timezoneString, tz.c_str(), 63);
+ String tzVal = server.arg("timezoneRegion");
+ if (tzVal.length() > 0) {
+ int idx = tzVal.toInt();
+ size_t tzCount;
+ const TimezoneRegion* regions = getSupportedTimezones(&tzCount);
+ if (idx >= 0 && idx < (int)tzCount) {
+ settings.timezoneIndex = (uint8_t)idx;
+ strncpy(settings.timezoneString, regions[idx].posixString, 63);
  settings.timezoneString[63] = '\0';
-
- // Update gmtOffset for backward compatibility
- const TimezoneRegion* region = findTimezoneByPosixString(settings.timezoneString);
- if (region != nullptr) {
- settings.gmtOffset = region->gmtOffsetMinutes;
- settings.daylightSaving = true; // POSIX strings include DST
+ settings.gmtOffset = regions[idx].gmtOffsetMinutes;
+ settings.daylightSaving = true;
  }
  }
  }
