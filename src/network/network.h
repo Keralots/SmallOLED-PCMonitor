@@ -54,4 +54,8 @@ void saveConfigCallback();
 // Manual WiFi connection (for hardcoded credentials)
 bool connectManualWiFi(const char* ssid, const char* password);
 
+#if QR_SETUP_ENABLED
+void displayQRCodeSetup();
+#endif
+
 #endif // NETWORK_H

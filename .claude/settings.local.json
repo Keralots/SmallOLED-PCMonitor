@@ -29,7 +29,8 @@
       "Bash(gh pr view:*)",
       "WebFetch(domain:github.com)",
       "Bash(ls:*)",
-      "Bash(\"C:\\\\Users\\\\rafal\\\\.platformio\\\\penv\\\\Scripts\\\\platformio.exe\" run -d \"c:\\\\Users\\\\rafal\\\\Documents\\\\PlatformIO\\\\Projects\\\\SmallOLED-PCMonitor\")"
+      "Bash(\"C:\\\\Users\\\\rafal\\\\.platformio\\\\penv\\\\Scripts\\\\platformio.exe\" run -d \"c:\\\\Users\\\\rafal\\\\Documents\\\\PlatformIO\\\\Projects\\\\SmallOLED-PCMonitor\")",
+      "Bash(\"C:\\\\Users\\\\rafal\\\\.platformio\\\\penv\\\\Scripts\\\\platformio.exe\" run --project-dir \"c:\\\\Users\\\\rafal\\\\Documents\\\\PlatformIO\\\\Projects\\\\SmallOLED-PCMonitor\")"
     ],
     "deny": [],
     "ask": []

@@ -20,7 +20,11 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiManager.h>
+#if DISPLAY_INTERFACE == 1
+#include <SPI.h>
+#else
 #include <Wire.h>
+#endif
 
 #if DISPLAY_TYPE == 1
 #include <Adafruit_SH110X.h> // For 1.3" SH1106
@@ -44,13 +48,23 @@ extern Preferences preferences;  // Defined in settings.cpp
 
 // ========== Display Object ==========
 #if DISPLAY_TYPE == 1
-Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-#define DISPLAY_WHITE SH110X_WHITE
-#define DISPLAY_BLACK SH110X_BLACK
+  // SH1106 display
+  #if DISPLAY_INTERFACE == 1
+    Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, SPI_DC_PIN, SPI_RST_PIN, SPI_CS_PIN);
+  #else
+    Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+  #endif
+  #define DISPLAY_WHITE SH110X_WHITE
+  #define DISPLAY_BLACK SH110X_BLACK
 #else
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-#define DISPLAY_WHITE SSD1306_WHITE
-#define DISPLAY_BLACK SSD1306_BLACK
+  // SSD1306 / SSD1309 display
+  #if DISPLAY_INTERFACE == 1
+    Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, SPI_DC_PIN, SPI_RST_PIN, SPI_CS_PIN);
+  #else
+    Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+  #endif
+  #define DISPLAY_WHITE SSD1306_WHITE
+  #define DISPLAY_BLACK SSD1306_BLACK
 #endif
 
 // ========== Global State ==========
@@ -124,14 +138,14 @@ int getOptimalRefreshRate() {
         (settings.clockStyle == 0 || settings.clockStyle == 3 ||
          settings.clockStyle == 4 || settings.clockStyle == 5 ||
          settings.clockStyle == 6)) {
-      return 40; // Instant boost for smooth manual clock mode
+      return 60; // Instant boost for smooth manual clock mode
     }
 #endif
 
     // Check for animation boost (smooth animations during active motion)
     if (settings.boostAnimationRefresh && isAnimationActive()) {
       // Animation is happening - boost to 40 Hz for silky smooth motion!
-      return 40;
+      return 60;
     }
 
     if (settings.clockStyle == 0 || settings.clockStyle == 3 ||
@@ -248,17 +262,10 @@ void loop() {
 #if TOUCH_BUTTON_ENABLED
   // Handle touch button gestures
 #if LED_PWM_ENABLED
-  // Check for long press (LED on/off toggle - hold for 1 second)
-  if (checkTouchButtonLongPress()) {
-    enableLED(!settings.ledEnabled);  // Toggle LED
-    Serial.println(settings.ledEnabled ? "LED ON" : "LED OFF");
-  }
-  // Regular short press (mode toggle / clock style cycle)
-  else if (checkTouchButtonPressed()) {
-#else
-  // No LED PWM - just handle regular button press
-  if (checkTouchButtonPressed()) {
+  handleTouchLED(); // Hold > 1s: ramp LED brightness up/down
 #endif
+  // Regular short press (mode toggle / clock style cycle)
+  if (checkTouchButtonPressed()) {
     if (manualClockMode) {
       // Check if PC is currently online (UDP is always processed, so status is accurate)
       if (metricData.online) {
@@ -307,8 +314,19 @@ void loop() {
         lastNtpSyncTime = millis();
         Serial.println("NTP sync successful (retry)");
       }
+    } else {
+      applyTimezone();  // SNTP client might be dead - restart it
+      Serial.println("NTP retry: restarted SNTP client");
     }
     lastNtpSyncTime = millis();
+  }
+
+  // Periodic NTP re-sync even when already synced (safety net)
+  if (ntpSynced && millis() - lastNtpSyncTime > NTP_RESYNC_INTERVAL) {
+    applyTimezone();
+    ntpSynced = false;
+    lastNtpSyncTime = millis();
+    Serial.println("Periodic NTP re-sync triggered");
   }
 
   // Display update with adaptive refresh rate

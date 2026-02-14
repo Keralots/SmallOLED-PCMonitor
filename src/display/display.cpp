@@ -16,22 +16,42 @@ const unsigned long BRIGHTNESS_CHECK_INTERVAL = 60000; // Check every minute
 
 // Initialize display - returns true on success
 bool initDisplay() {
+#if DISPLAY_INTERFACE == 1
+  // SPI mode - remap ESP32-C3 SPI bus to our chosen pins
+  SPI.begin(SPI_SCK_PIN, -1, SPI_MOSI_PIN, SPI_CS_PIN);
+
+  for (int attempt = 0; attempt < 3; attempt++) {
+  #if DISPLAY_TYPE == 1
+    if (display.begin(0, true)) {  // SH1106 SPI: address ignored, reset=true
+      display.setContrast(255);
+      return true;
+    }
+  #else
+    if (display.begin(SSD1306_SWITCHCAPVCC)) {  // SSD1306 SPI: no address needed
+      return true;
+    }
+  #endif
+    delay(500);
+  }
+#else
+  // I2C mode (default)
   Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
 
   for (int attempt = 0; attempt < 3; attempt++) {
-#if DISPLAY_TYPE == 1
-    // SH1106: Try 0x3C first (most common), then 0x3D
+  #if DISPLAY_TYPE == 1
     byte addrToTry = (attempt == 0) ? DISPLAY_I2C_ADDRESS : 0x3D;
-    display.begin(addrToTry);
-    display.setContrast(255);
-    return true;
-#else
+    if (display.begin(addrToTry)) {
+      display.setContrast(255);
+      return true;
+    }
+  #else
     if (display.begin(SSD1306_SWITCHCAPVCC, DISPLAY_I2C_ADDRESS)) {
       return true;
     }
-#endif
+  #endif
     delay(500);
   }
+#endif
 
   return false;
 }
@@ -78,6 +98,14 @@ void checkScheduledBrightness() {
 
   // Check if current time is within dim period
   // Handle wrap-around case (e.g., 22:00 to 07:00)
+  if (settings.dimStartHour == settings.dimEndHour) {
+    // Same hour means no dim period — use normal brightness
+    if (lastAppliedBrightness != settings.displayBrightness) {
+      applyDisplayBrightness();
+      lastAppliedBrightness = settings.displayBrightness;
+    }
+    return;
+  }
   if (settings.dimStartHour < settings.dimEndHour) {
     // Normal case: start and end are in same day
     // e.g., 01:00 to 07:00

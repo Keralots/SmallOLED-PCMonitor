@@ -32,6 +32,21 @@
 // I2C Address (typically 0x3C, some displays use 0x3D)
 #define DISPLAY_I2C_ADDRESS 0x3C
 
+// ========== Display Interface ==========
+// Interface type:
+//   0 = I2C (default, uses SDA/SCL pins above)
+//   1 = SPI (uses SPI pins below, faster refresh for animations)
+//
+// CHANGE THIS VALUE to use SPI instead of I2C
+#define DISPLAY_INTERFACE 0
+
+// SPI pins for ESP32-C3 (only used when DISPLAY_INTERFACE = 1)
+#define SPI_MOSI_PIN 6 //SDA
+#define SPI_SCK_PIN  4 //SCK SPI Clock
+#define SPI_CS_PIN   5 //CS (Chip Select)
+#define SPI_DC_PIN   3 //DC (Data/Command)
+#define SPI_RST_PIN  10   //RES Set to -1 if RST is not connected
+
 // ========== WiFi Configuration ==========
 // Access Point name and password for initial setup
 #define AP_NAME "PCMonitor-Setup"
@@ -72,13 +87,14 @@
 #define WATCHDOG_TIMEOUT_SECONDS 30
 
 // ========== Touch Button Configuration ==========
-// TTP223 capacitive touch sensor support (now always enabled for LED night light)
-// - Short press (< 1 second): Toggle between PC metrics and clock mode
-// - Long press (> 1 second): Toggle LED night light on/off
+// TTP223 capacitive touch sensor support
+// - Quick tap (< 500ms): Toggle metrics/clock mode or cycle clock styles
+// - Medium press (500ms-1s, release): Toggle LED night light on/off
+// - Long hold (> 1s): Ramp LED brightness up/down (gamma-corrected)
 // Note: If TTP223 is not connected, GPIO 7 just floats harmlessly
 #define TOUCH_BUTTON_ENABLED 1           // 1 = enabled, 0 = disabled (always enabled now)
 #define TOUCH_BUTTON_PIN 7               // GPIO pin for TTP223 signal (default: GPIO 7)
-#define TOUCH_DEBOUNCE_MS 200            // Debounce delay in milliseconds (default: 200ms)
+#define TOUCH_DEBOUNCE_MS 50            // Debounce delay in milliseconds (default: 100ms)
 #define TOUCH_ACTIVE_LEVEL HIGH          // HIGH = active HIGH, LOW = active LOW (TTP223 default: HIGH)
 
 // ========== LED PWM Night Light Configuration ==========
@@ -89,5 +105,11 @@
 #define LED_PWM_CHANNEL 0                // PWM channel (0-15)
 #define LED_PWM_FREQ 5000                // PWM frequency in Hz
 #define LED_PWM_RESOLUTION 8             // 8-bit resolution (0-255 brightness levels)
+
+// ========== QR Code Setup Configuration ==========
+// Display QR code during WiFi AP setup for easy mobile connection
+// When enabled: OLED shows scannable QR code instead of text instructions
+// When disabled: Traditional text instructions (original behavior)
+#define QR_SETUP_ENABLED 0               // 1 = QR code, 0 = text instructions
 
 #endif // USER_CONFIG_H

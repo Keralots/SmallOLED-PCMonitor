@@ -158,6 +158,7 @@ void displayClockWithPacman() {
   // Initialize Pac-Man on first call
   static bool pacman_initialized = false;
   if (!pacman_initialized) {
+    memset(digitEatenPellets, 0, sizeof(digitEatenPellets));
     generatePellets();
     pacman_initialized = true;
   }
@@ -307,8 +308,8 @@ void updatePacmanAnimation(struct tm* timeinfo) {
     pacman_animation_triggered = false;
   }
 
-  // Trigger animation at 55 seconds
-  if (seconds >= 55 && !pacman_animation_triggered && pacman_state == PACMAN_PATROL) {
+  // Trigger animation at 56 seconds (prevents digit revert during transition)
+  if (seconds >= 56 && !pacman_animation_triggered && pacman_state == PACMAN_PATROL) {
     pacman_animation_triggered = true;
     time_overridden = true;
     time_override_start = millis();

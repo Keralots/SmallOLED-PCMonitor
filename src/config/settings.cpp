@@ -138,7 +138,8 @@ void loadSettings() {
     if (loadedTz.length() > 0) {
       strncpy(settings.timezoneString, loadedTz.c_str(), 63);
       settings.timezoneString[63] = '\0';
-      Serial.printf("Loaded timezone string: %s\n", settings.timezoneString);
+      settings.timezoneIndex = preferences.getUChar("tzIdx", 255);
+      Serial.printf("Loaded timezone string: %s (index: %d)\n", settings.timezoneString, settings.timezoneIndex);
     } else {
       // Key exists but empty, set default
       strcpy(settings.timezoneString, "CET-1CEST,M3.5.0/02:00,M10.5.0/03:00");
@@ -154,9 +155,9 @@ void loadSettings() {
       Serial.printf("Migrated gmtOffset %d + DST %d to timezone: %s\n",
                     settings.gmtOffset, settings.daylightSaving, settings.timezoneString);
     } else {
-      // No automatic mapping available, use manual fallback
-      strcpy(settings.timezoneString, "");
-      Serial.printf("Warning: No automatic timezone for gmtOffset %d, manual configuration needed\n",
+      // No automatic mapping available, default to UTC
+      strcpy(settings.timezoneString, "UTC0");
+      Serial.printf("Warning: No automatic timezone for gmtOffset %d, defaulting to UTC\n",
                     settings.gmtOffset);
     }
   }
@@ -369,6 +370,7 @@ void saveSettings() {
   preferences.putInt("gmtOffset", settings.gmtOffset); // Keep for backward compatibility
   preferences.putBool("dst", settings.daylightSaving);  // Keep for backward compatibility
   preferences.putString("tz", settings.timezoneString); // New timezone string
+  preferences.putUChar("tzIdx", settings.timezoneIndex); // Timezone region index
   preferences.putBool("use24Hour", settings.use24Hour);
   preferences.putInt("dateFormat", settings.dateFormat);
   preferences.putInt("clockPos", settings.clockPosition);

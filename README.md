@@ -96,11 +96,15 @@ No need to change firmware, TTP223 and LED will work.
 ![Wiring with optional TTP223 and LED](img/circuit_image.png)
 
 
-The firmware supports an optional **TTP223 capacitive touch sensor** for physical control of the display:
+The firmware supports an optional **TTP223 capacitive touch sensor** for physical control of the display and LED night light:
 
-**Functionality:**
-- **When PC is online:** Touch toggles between PC metrics view and clock display
-- **When PC is offline:** Touch cycles through different clock animations (Mario, Standard, Large, Space Invaders, Arkanoid, Pac-Man)
+**Button Gestures:**
+
+| Gesture | Duration | Action |
+|---------|----------|--------|
+| Quick tap | < 500ms | **PC online:** Toggle metrics/clock. **PC offline:** Cycle clock styles |
+| Medium press | 500ms–1s, release | Toggle LED night light on/off |
+| Long hold | > 1s, keep holding | Ramp LED brightness up (if off) or down (if on). Release to keep. |
 
 **Hardware Setup:**
 - Connect TTP223 signal pin to GPIO 7
@@ -110,7 +114,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 ```cpp
 #define TOUCH_BUTTON_ENABLED 1      // 1 = enabled, 0 = disabled
 #define TOUCH_BUTTON_PIN 7          // GPIO pin (default: 7)
-#define TOUCH_DEBOUNCE_MS 200       // Debounce delay (default: 200ms)
+#define TOUCH_DEBOUNCE_MS 50       // Debounce delay (default: 100ms)
 #define TOUCH_ACTIVE_LEVEL HIGH     // HIGH for TTP223 (active HIGH)
 ```
 
