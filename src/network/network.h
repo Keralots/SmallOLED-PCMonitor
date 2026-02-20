@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WiFiManager.h>
+#include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include "../config/config.h"
 
@@ -21,6 +22,9 @@ extern WiFiManager wifiManager;
 
 // Initialize WiFi and UDP
 void initNetwork();
+
+// Initialize mDNS service discovery
+void initMDNS();
 
 // Apply static IP settings if configured
 void applyStaticIP();

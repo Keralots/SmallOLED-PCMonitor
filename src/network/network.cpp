@@ -173,6 +173,23 @@ void initNetwork() {
   udp.begin(UDP_PORT);
   Serial.print("UDP listening on port ");
   Serial.println(UDP_PORT);
+
+  // Start mDNS for app discovery
+  initMDNS();
+}
+
+// ========== mDNS Service Discovery ==========
+void initMDNS() {
+  MDNS.end();  // Stop any previous mDNS instance
+  if (MDNS.begin(settings.deviceName)) {
+    MDNS.addService("http", "tcp", 80);
+    MDNS.addServiceTxt("http", "tcp", "version", FIRMWARE_VERSION);
+    MDNS.addServiceTxt("http", "tcp", "model", "SmallOLED");
+    MDNS.addServiceTxt("http", "tcp", "mac", WiFi.macAddress().c_str());
+    Serial.printf("mDNS started: %s.local\n", settings.deviceName);
+  } else {
+    Serial.println("mDNS failed to start");
+  }
 }
 
 // ========== NTP Functions ==========
@@ -266,6 +283,7 @@ void handleWiFiReconnection() {
       wifiDisconnectTime = 0;
       ntpSynced = false;  // Force NTP resync after reconnection
       applyTimezone();    // Restart SNTP client and reapply timezone
+      initMDNS();         // Re-register mDNS after reconnection
     }
   }
 }

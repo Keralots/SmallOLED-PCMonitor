@@ -30,6 +30,7 @@ void loadSettings() {
     settings.displayRowMode = 0;         // Default: 5 rows with more spacing
     settings.useRpmKFormat = false;      // Default: Full RPM format (1800RPM)
     settings.useNetworkMBFormat = false; // Default: Full KB/s format
+    strcpy(settings.deviceName, "smalloled");
     settings.colonBlinkMode = 1;         // Default: Blink
     settings.colonBlinkRate = 10; // Default: 1.0 Hz (10 = 1.0Hz in tenths)
     settings.refreshRateMode = 0; // Default: Auto
@@ -240,6 +241,9 @@ void loadSettings() {
       preferences.getUChar("spaceExpGrv", 5); // Default: 0.5
 
   // Load network configuration
+  String loadedDeviceName = preferences.getString("deviceName", "smalloled");
+  strncpy(settings.deviceName, loadedDeviceName.c_str(), 31);
+  settings.deviceName[31] = '\0';
   settings.showIPAtBoot =
       preferences.getBool("showIPBoot", true); // Default: Show IP at startup
   settings.useStaticIP =
@@ -415,6 +419,7 @@ void saveSettings() {
   preferences.putUChar("spaceExpGrv", settings.spaceExplosionGravity);
 
   // Save network configuration
+  preferences.putString("deviceName", settings.deviceName);
   preferences.putBool("showIPBoot", settings.showIPAtBoot);
   preferences.putBool("useStaticIP", settings.useStaticIP);
   preferences.putString("staticIP", settings.staticIP);

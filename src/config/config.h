@@ -93,6 +93,7 @@ struct Settings {
   bool useNetworkMBFormat;  // Show network as MB/s instead of KB/s
 
   // Network settings
+  char deviceName[32];          // Device name for mDNS and app (default: "smalloled")
   bool showIPAtBoot;          // Show IP address on OLED at startup (default: true)
   bool useStaticIP;
   char staticIP[16];
