@@ -7,6 +7,9 @@
 # ESP32 Configurator - excluded from repository
 esp32-configurator/
 
+#Android APP - excluded from repository
+android-app/
+
 # PC Stats Monitor Script - excluded from repository
 pc_stats_monitor_hwinfo-script/
 
