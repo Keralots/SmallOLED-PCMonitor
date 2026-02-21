@@ -175,6 +175,9 @@ void setLEDBrightness(uint8_t brightness) {
 void enableLED(bool enable) {
   settings.ledEnabled = enable;
   if (enable) {
+    if (settings.ledBrightness == 0) {
+      settings.ledBrightness = 128;  // Restore to 50% if dimmed to zero
+    }
     setLEDBrightness(settings.ledBrightness);
     Serial.print("LED enabled, brightness: ");
     Serial.println(settings.ledBrightness);

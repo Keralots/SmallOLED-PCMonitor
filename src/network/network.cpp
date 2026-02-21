@@ -283,6 +283,8 @@ void handleWiFiReconnection() {
       wifiDisconnectTime = 0;
       ntpSynced = false;  // Force NTP resync after reconnection
       applyTimezone();    // Restart SNTP client and reapply timezone
+      udp.stop();         // Re-initialize UDP socket (old fd is stale)
+      udp.begin(UDP_PORT);
       initMDNS();         // Re-register mDNS after reconnection
     }
   }
