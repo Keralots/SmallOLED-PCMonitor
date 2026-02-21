@@ -48,9 +48,11 @@
 #define SPI_RST_PIN  10   //RES Set to -1 if RST is not connected
 
 // ========== WiFi Configuration ==========
-// Access Point name and password for initial setup
+// Access Point name for initial setup.
+// AP_PASSWORD: leave as "" for an open (passwordless) AP — easiest for users.
+//              Set a password string to require one (e.g. "monitor123").
 #define AP_NAME "PCMonitor-Setup"
-#define AP_PASSWORD "monitor123"
+#define AP_PASSWORD ""
 
 // ========== Optional Hardcoded WiFi Credentials ==========
 // Use this if your ESP32 module has a faulty WiFi AP mode

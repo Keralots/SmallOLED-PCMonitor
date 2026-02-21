@@ -148,7 +148,10 @@ void initNetwork() {
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   wifiManager.setDebugOutput(false);
 
-  if (!wifiManager.autoConnect(AP_NAME, AP_PASSWORD)) {
+  bool connected = (strlen(AP_PASSWORD) > 0)
+    ? wifiManager.autoConnect(AP_NAME, AP_PASSWORD)
+    : wifiManager.autoConnect(AP_NAME);
+  if (!connected) {
     Serial.println("Failed to connect and hit timeout");
     if (displayAvailable) {
       display.clearDisplay();
@@ -485,8 +488,12 @@ void displaySetupInstructions() {
   display.println(AP_NAME);
 
   display.setCursor(0, 38);
-  display.print("  Pass: ");
-  display.println(AP_PASSWORD);
+  if (strlen(AP_PASSWORD) > 0) {
+    display.print("  Pass: ");
+    display.println(AP_PASSWORD);
+  } else {
+    display.println("  (no password)");
+  }
 
   display.setCursor(0, 50);
   display.println("2.Open 192.168.4.1");
@@ -496,9 +503,13 @@ void displaySetupInstructions() {
 
 #if QR_SETUP_ENABLED
 void displayQRCodeSetup() {
-  // WiFi QR format: WIFI:T:WPA;S:<ssid>;P:<password>;;
+  // WiFi QR format: open AP uses T:nopass, secured uses T:WPA
   char qrData[80];
-  snprintf(qrData, sizeof(qrData), "WIFI:T:WPA;S:%s;P:%s;;", AP_NAME, AP_PASSWORD);
+  if (strlen(AP_PASSWORD) > 0) {
+    snprintf(qrData, sizeof(qrData), "WIFI:T:WPA;S:%s;P:%s;;", AP_NAME, AP_PASSWORD);
+  } else {
+    snprintf(qrData, sizeof(qrData), "WIFI:T:nopass;S:%s;;", AP_NAME);
+  }
 
   // QR Version 3 = 29x29 modules, fits 53 alphanumeric chars with ECC_LOW
   QRCode qrcode;
