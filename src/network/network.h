@@ -62,4 +62,7 @@ bool connectManualWiFi(const char* ssid, const char* password);
 void displayQRCodeSetup();
 #endif
 
+// BLE provisioning (optional — see user_config.h BLE_SETUP_ENABLED)
+#include "ble_setup.h"
+
 #endif // NETWORK_H
