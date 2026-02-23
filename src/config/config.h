@@ -12,7 +12,7 @@
 #include "user_config.h"
 
 // ========== Version ==========
-#define FIRMWARE_VERSION "1.5.0"
+#define FIRMWARE_VERSION "1.5.1"
 
 // ========== Constants ==========
 #define MAX_METRICS 20
@@ -93,6 +93,7 @@ struct Settings {
   bool useNetworkMBFormat;  // Show network as MB/s instead of KB/s
 
   // Network settings
+  char deviceName[32];          // Device name for mDNS and app (default: "smalloled")
   bool showIPAtBoot;          // Show IP address on OLED at startup (default: true)
   bool useStaticIP;
   char staticIP[16];

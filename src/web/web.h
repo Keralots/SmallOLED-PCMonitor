@@ -27,6 +27,8 @@ void handleRoot();
 void handleSave();
 void handleReset();
 void handleMetricsAPI();
+void handleDeviceInfo();
+void handleRename();
 void handleExportConfig();
 void handleImportConfig();
 

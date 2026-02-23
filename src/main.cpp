@@ -210,9 +210,33 @@ void setup() {
     }
   }
 
+#if BLE_SETUP_ENABLED
+  // BLE provisioning path: fast-connect with saved creds, or BLE, or AP mode fallback
+  bool bleHandled = false;
+  if (!useManualWiFi) {
+    if (tryConnectSavedWiFi()) {
+      // Saved credentials worked — set up UDP + mDNS directly (skip WiFiManager)
+      WiFi.setTxPower(WIFI_POWER_19_5dBm);
+      udp.begin(UDP_PORT);
+      initMDNS();
+      bleHandled = true;
+    } else if (runBleProvisioning()) {
+      // BLE provisioning succeeded — WiFi already connected inside runBleProvisioning()
+      WiFi.setTxPower(WIFI_POWER_19_5dBm);
+      udp.begin(UDP_PORT);
+      initMDNS();
+      bleHandled = true;
+    }
+    // If neither worked: bleHandled = false → initNetwork() below (AP mode fallback)
+  }
+  if (!bleHandled && !useManualWiFi) {
+    initNetwork();
+  }
+#else
   if (!useManualWiFi) {
     initNetwork();
   }
+#endif
 
   // Initialize NTP
   initNTP();

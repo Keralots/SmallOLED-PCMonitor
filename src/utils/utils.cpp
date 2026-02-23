@@ -175,6 +175,9 @@ void setLEDBrightness(uint8_t brightness) {
 void enableLED(bool enable) {
   settings.ledEnabled = enable;
   if (enable) {
+    if (settings.ledBrightness == 0) {
+      settings.ledBrightness = 128;  // Restore to 50% if dimmed to zero
+    }
     setLEDBrightness(settings.ledBrightness);
     Serial.print("LED enabled, brightness: ");
     Serial.println(settings.ledBrightness);
@@ -196,8 +199,10 @@ extern bool buttonHandled;
 
 // Gamma correction: maps linear position (0-255) to perceived brightness
 // Quadratic approximation of gamma ~2.0 — no floats in hot path
+// Capped at 254 to avoid PWM→DC transition jump at 100% duty cycle
 static uint8_t gammaCorrect(uint8_t pos) {
-  return (uint16_t(pos) * pos + pos) >> 8;
+  uint8_t val = (uint16_t(pos) * pos + pos) >> 8;
+  return val >= 255 ? 254 : val;
 }
 
 static const unsigned long MEDIUM_PRESS_THRESHOLD = 500;

@@ -25,9 +25,11 @@ void setupWebServer() {
  server.on("/", handleRoot);
  server.on("/save", HTTP_POST, handleSave);
  server.on("/reset", handleReset);
- server.on("/metrics", handleMetricsAPI); // New API endpoint
+ server.on("/metrics", handleMetricsAPI);
+ server.on("/api/info", HTTP_GET, handleDeviceInfo);
  server.on("/api/export", HTTP_GET, handleExportConfig);
  server.on("/api/import", HTTP_POST, handleImportConfig);
+ server.on("/api/rename", HTTP_POST, handleRename);
 
  // OTA Firmware Update handlers
  server.on("/update", HTTP_POST, []() {
@@ -82,7 +84,65 @@ void handleMetricsAPI() {
 
  String json;
  serializeJson(doc, json);
+ server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", json);
+}
+
+// API endpoint to return device info for app discovery
+void handleDeviceInfo() {
+ JsonDocument doc;
+ doc["version"] = FIRMWARE_VERSION;
+ doc["mac"] = WiFi.macAddress();
+ doc["ip"] = WiFi.localIP().toString();
+ doc["hostname"] = String(settings.deviceName) + ".local";
+ doc["deviceName"] = settings.deviceName;
+ doc["displayType"] = settings.displayType;
+ doc["rssi"] = WiFi.RSSI();
+ doc["uptime"] = millis() / 1000;
+ doc["model"] = "SmallOLED";
+
+ String json;
+ serializeJson(doc, json);
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", json);
+}
+
+void handleRename() {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+
+ if (!server.hasArg("plain")) {
+   server.send(400, "application/json", "{\"error\":\"Missing body\"}");
+   return;
+ }
+
+ JsonDocument doc;
+ DeserializationError error = deserializeJson(doc, server.arg("plain"));
+ if (error) {
+   server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+   return;
+ }
+
+ const char* name = doc["name"];
+ if (!name || strlen(name) == 0 || strlen(name) > 31) {
+   server.send(400, "application/json", "{\"error\":\"Name must be 1-31 characters\"}");
+   return;
+ }
+
+ // Validate: letters, numbers, hyphens only, must start with letter
+ bool valid = isalpha(name[0]);
+ for (unsigned int i = 0; valid && i < strlen(name); i++) {
+   if (!isalnum(name[i]) && name[i] != '-') valid = false;
+ }
+ if (!valid) {
+   server.send(400, "application/json", "{\"error\":\"Invalid name. Use letters, numbers, hyphens. Must start with a letter.\"}");
+   return;
+ }
+
+ safeCopyString(settings.deviceName, name, sizeof(settings.deviceName));
+ saveSettings();
+ initMDNS();
+
+ server.send(200, "application/json", "{\"success\":true,\"name\":\"" + String(settings.deviceName) + "\"}");
 }
 
 void handleRoot() {
@@ -241,7 +301,7 @@ void handleRoot() {
  html += R"rawliteral(
  </select><p style="color: #888; font-size: 12px; margin-top: 10px;">
  Select your timezone region for automatic DST adjustment. The system will automatically switch between standard and daylight saving time.
- </p></div></div><!-- Network Configuration Section --><div class="section-header" onclick="toggleSection('networkSection')"><h3>&#127760; Network Configuration</h3><span class="section-arrow">&#9660;</span></div><div id="networkSection" class="section-content collapsed"><div class="card"><label for="useStaticIP">IP Address Mode</label><select name="useStaticIP" id="useStaticIP" onchange="toggleStaticIPFields()"><option value="0" )rawliteral" + String(!settings.useStaticIP ? "selected" : "") + R"rawliteral(>DHCP (Automatic)</option><option value="1" )rawliteral" + String(settings.useStaticIP ? "selected" : "") + R"rawliteral(>Static IP</option></select><div id="staticIPFields" style="display: )rawliteral" + String(settings.useStaticIP ? "block" : "none") + R"rawliteral(;"><label for="staticIP" style="margin-top: 15px;">Static IP Address</label><input type="text" name="staticIP" id="staticIP" value=")rawliteral" + String(settings.staticIP) + R"rawliteral(" placeholder="192.168.1.100" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="gateway">Gateway</label><input type="text" name="gateway" id="gateway" value=")rawliteral" + String(settings.gateway) + R"rawliteral(" placeholder="192.168.1.1" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="subnet">Subnet Mask</label><input type="text" name="subnet" id="subnet" value=")rawliteral" + String(settings.subnet) + R"rawliteral(" placeholder="255.255.255.0" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns1">Primary DNS</label><input type="text" name="dns1" id="dns1" value=")rawliteral" + String(settings.dns1) + R"rawliteral(" placeholder="8.8.8.8" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns2">Secondary DNS</label><input type="text" name="dns2" id="dns2" value=")rawliteral" + String(settings.dns2) + R"rawliteral(" placeholder="8.8.4.4" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"></div><p style="color: #888; font-size: 12px; margin-top: 15px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #fbbf24;"><strong>&#9888; Warning:</strong> Changing to Static IP will require a device restart. Make sure the IP address does not conflict with other devices on your network.
+ </p></div></div><!-- Network Configuration Section --><div class="section-header" onclick="toggleSection('networkSection')"><h3>&#127760; Network Configuration</h3><span class="section-arrow">&#9660;</span></div><div id="networkSection" class="section-content collapsed"><div class="card"><label for="deviceName">Device Name</label><input type="text" name="deviceName" id="deviceName" value=")rawliteral" + String(settings.deviceName) + R"rawliteral(" maxlength="31" pattern="^[a-zA-Z][a-zA-Z0-9-]*$" placeholder="smalloled" oninput="document.getElementById('deviceNamePreview').textContent=this.value.toLowerCase()"><p style="color: #888; font-size: 12px; margin-top: 5px;">Used for network discovery (<span id="deviceNamePreview">)rawliteral" + String(settings.deviceName) + R"rawliteral(</span>.local). Letters, numbers, and hyphens only.</p><hr style="margin: 20px 0; border: none; border-top: 1px solid #333;"><label for="useStaticIP">IP Address Mode</label><select name="useStaticIP" id="useStaticIP" onchange="toggleStaticIPFields()"><option value="0" )rawliteral" + String(!settings.useStaticIP ? "selected" : "") + R"rawliteral(>DHCP (Automatic)</option><option value="1" )rawliteral" + String(settings.useStaticIP ? "selected" : "") + R"rawliteral(>Static IP</option></select><div id="staticIPFields" style="display: )rawliteral" + String(settings.useStaticIP ? "block" : "none") + R"rawliteral(;"><label for="staticIP" style="margin-top: 15px;">Static IP Address</label><input type="text" name="staticIP" id="staticIP" value=")rawliteral" + String(settings.staticIP) + R"rawliteral(" placeholder="192.168.1.100" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="gateway">Gateway</label><input type="text" name="gateway" id="gateway" value=")rawliteral" + String(settings.gateway) + R"rawliteral(" placeholder="192.168.1.1" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="subnet">Subnet Mask</label><input type="text" name="subnet" id="subnet" value=")rawliteral" + String(settings.subnet) + R"rawliteral(" placeholder="255.255.255.0" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns1">Primary DNS</label><input type="text" name="dns1" id="dns1" value=")rawliteral" + String(settings.dns1) + R"rawliteral(" placeholder="8.8.8.8" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"><label for="dns2">Secondary DNS</label><input type="text" name="dns2" id="dns2" value=")rawliteral" + String(settings.dns2) + R"rawliteral(" placeholder="8.8.4.4" pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"></div><p style="color: #888; font-size: 12px; margin-top: 15px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #fbbf24;"><strong>&#9888; Warning:</strong> Changing to Static IP will require a device restart. Make sure the IP address does not conflict with other devices on your network.
  </p><hr style="margin: 20px 0; border: none; border-top: 1px solid #333;"><div style="display: flex; align-items: center; margin-top: 15px;"><input type="checkbox" name="showIPAtBoot" id="showIPAtBoot" value="1" )rawliteral" + String(settings.showIPAtBoot ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;"><label for="showIPAtBoot" style="margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Show IP address on display at startup (5 seconds)</label></div></div></div><!-- Display Layout Section --><div class="section-header" onclick="toggleSection('layoutSection')"><h3>&#128202; Display Layout (PC Monitor only)</h3><span class="section-arrow">&#9660;</span></div><div id="layoutSection" class="section-content collapsed"><div class="card"><label for="clockPosition">Clock Position</label><select name="clockPosition" id="clockPosition"><option value="0" )rawliteral" + String(settings.clockPosition == 0 ? "selected" : "") + R"rawliteral(>Center (Top)</option><option value="1" )rawliteral" + String(settings.clockPosition == 1 ? "selected" : "") + R"rawliteral(>Left Column (Row 1)</option><option value="2" )rawliteral" + String(settings.clockPosition == 2 ? "selected" : "") + R"rawliteral(>Right Column (Row 1)</option></select><label for="clockOffset" style="margin-top: 15px; display: block;">Clock Offset (pixels)</label><input type="number" name="clockOffset" id="clockOffset" value=")rawliteral" + String(settings.clockOffset) + R"rawliteral(" min="-20" max="20" style="width: 100%; padding: 8px; box-sizing: border-box;"><p style="color: #888; font-size: 12px; margin-top: 10px;">
  Position clock to optimize space for metrics. Use offset to fine-tune horizontal position (-20 to +20 pixels).
  </p><div style="display: flex; align-items: center; margin-top: 15px;"><input type="checkbox" name="showClock" id="showClock" value="1" )rawliteral" + String(settings.showClock ? "checked" : "") + R"rawliteral( style="width: 20px; margin: 0;"><label for="showClock" style="margin: 0 0 0 10px; text-align: left; color: #00d4ff;">Show Clock/Time in metrics display</label></div><hr style="margin: 20px 0; border: none; border-top: 1px solid #333;"><label for="rowMode">Display Row Mode</label><select name="rowMode" id="rowMode" onchange="updateRowMode()"><option value="0" )rawliteral" + String(settings.displayRowMode == 0 ? "selected" : "") + R"rawliteral(>5 Rows (13px spacing - optimized)</option><option value="1" )rawliteral" + String(settings.displayRowMode == 1 ? "selected" : "") + R"rawliteral(>6 Rows (10px spacing - compact)</option><option value="2" )rawliteral" + String(settings.displayRowMode == 2 ? "selected" : "") + R"rawliteral(>Large 2-Row (double size text)</option><option value="3" )rawliteral" + String(settings.displayRowMode == 3 ? "selected" : "") + R"rawliteral(>Large 3-Row (double size text)</option></select><p style="color: #888; font-size: 12px; margin-top: 10px;">
@@ -267,7 +327,7 @@ void handleRoot() {
  </button></form><div id="uploadProgress" style="display: none; margin-top: 15px;"><div style="background: #1e293b; border-radius: 8px; overflow: hidden; height: 30px; margin-bottom: 10px;"><div id="progressBar" style="background: linear-gradient(135deg, #00d4ff 0%, #0096ff 100%); height: 100%; width: 0%; transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: #0f0c29; font-weight: bold; font-size: 14px;">
  0%
  </div></div><p id="uploadStatus" style="text-align: center; color: #00d4ff; font-size: 14px;">Uploading...</p></div><p style="color: #888; font-size: 12px; margin-top: 15px; background: #0f172a; padding: 10px; border-radius: 5px; border-left: 3px solid #ef4444;"><strong>&#9888; Warning:</strong> Do not disconnect power during firmware update! Device will restart automatically after update completes.
- </p></div></div><form action="/reset" method="GET" onsubmit="return confirm('Reset WiFi settings? Device will restart in AP mode.');"><button type="submit" class="reset-btn">&#128260; Reset WiFi Settings</button></form></div><!-- Sticky Save Button --><div class="sticky-save"><div class="container"><button type="button" class="save-btn" onclick="saveSettings()">&#128190; Save Settings</button><span id="saveMessage" style="margin-left: 15px; color: #4CAF50; font-weight: bold; display: none;">&#10004; Settings Saved!</span></div></div><script> function toggleSection(sectionId){const content=document.getElementById(sectionId);const arrow=event.currentTarget.querySelector('.section-arrow');content.classList.toggle('collapsed');arrow.classList.toggle('collapsed');const isCollapsed=content.classList.contains('collapsed');if(!isCollapsed){localStorage.setItem('lastExpandedSection',sectionId);}}function toggleStaticIPFields(){const useStaticIP=document.getElementById('useStaticIP').value==='1';const staticIPFields=document.getElementById('staticIPFields');staticIPFields.style.display=useStaticIP ? 'block':'none';}function toggleRefreshRateFields(){const refreshRateMode=document.getElementById('refreshRateMode').value==='1';const refreshRateFields=document.getElementById('refreshRateFields');refreshRateFields.style.display=refreshRateMode ? 'block':'none';}function toggleMarioSettings(){const clockStyle=document.getElementById('clockStyle').value;const marioSettings=document.getElementById('marioSettings');const pongSettings=document.getElementById('pongSettings');const pacmanSettings=document.getElementById('pacmanSettings');const spaceSettings=document.getElementById('spaceSettings');marioSettings.style.display=(clockStyle==='0')? 'block':'none';pongSettings.style.display=(clockStyle==='5')? 'block':'none';pacmanSettings.style.display=(clockStyle==='6')? 'block':'none';spaceSettings.style.display=(clockStyle==='3' || clockStyle==='4')? 'block':'none';}function exportConfig(){fetch('/api/export').then(response=>response.json()).then(data=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='pc-monitor-config.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);alert('Configuration exported successfully!');}).catch(err=>alert('Error exporting configuration:'+err));}function importConfig(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(e){try{const config=JSON.parse(e.target.result);fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)}).then(response=>response.json()).then(data=>{if(data.success){alert('Configuration imported successfully! Reloading page...');location.reload();}else{alert('Error importing configuration:'+data.message);}}).catch(err=>alert('Error importing configuration:'+err));}catch(err){alert('Invalid configuration file:'+err);}};reader.readAsText(file);}function saveSettings(){const form=document.querySelector('form[action="/save"]');const formData=new FormData(form);const saveMessage=document.getElementById('saveMessage');const saveBtn=document.querySelector('.save-btn');const urlEncoded=new URLSearchParams(formData);saveBtn.disabled=true;saveBtn.textContent='💾 Saving...';fetch('/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:urlEncoded}).then(response=>response.json()).then(data=>{if(data.success){saveMessage.style.display='inline';setTimeout(()=>{saveMessage.style.display='none';},3000);saveBtn.disabled=false;saveBtn.textContent='💾 Save Settings';if(data.networkChanged){alert('Network settings changed! Device is restarting. You may need to reconnect to the new IP address.');setTimeout(()=>{window.location.href='/';},3000);}}else{alert('Error saving settings');saveBtn.disabled=false;saveBtn.textContent='💾 Save Settings';}}).catch(err=>{alert('Error saving settings:'+err);saveBtn.disabled=false;saveBtn.textContent='💾 Save Settings';});}document.getElementById('uploadForm').addEventListener('submit',function(e){e.preventDefault();const fileInput=document.getElementById('firmwareFile');const file=fileInput.files[0];if(!file){alert('Please select a firmware file(.bin)');return;}if(!file.name.endsWith('.bin')){alert('Please select a valid .bin firmware file');return;}document.getElementById('uploadProgress').style.display='block';document.querySelector('#uploadForm button').disabled=true;const xhr=new XMLHttpRequest();xhr.upload.addEventListener('progress',function(e){if(e.lengthComputable){const percent=Math.round((e.loaded/e.total)*100);document.getElementById('progressBar').style.width=percent+'%';document.getElementById('progressBar').textContent=percent+'%';document.getElementById('uploadStatus').textContent='Uploading:'+percent+'%';}});xhr.addEventListener('load',function(){if(xhr.status===200){document.getElementById('progressBar').style.width='100%';document.getElementById('progressBar').textContent='100%';document.getElementById('uploadStatus').textContent='Update successful! Device is rebooting...';document.getElementById('uploadStatus').style.color='#10b981';setTimeout(function(){window.location.href='/';},8000);}else{document.getElementById('uploadStatus').textContent='Upload failed! Please try again.';document.getElementById('uploadStatus').style.color='#ef4444';document.querySelector('#uploadForm button').disabled=false;}});xhr.addEventListener('error',function(){document.getElementById('uploadStatus').textContent='Upload error! Please try again.';document.getElementById('uploadStatus').style.color='#ef4444';document.querySelector('#uploadForm button').disabled=false;});const formData=new FormData();formData.append('firmware',file);xhr.open('POST','/update');xhr.send(formData);});window.addEventListener('DOMContentLoaded',function(){toggleStaticIPFields();toggleRefreshRateFields();const lastExpandedSection=localStorage.getItem('lastExpandedSection');if(lastExpandedSection){const content=document.getElementById(lastExpandedSection);const headers=document.querySelectorAll('.section-header');if(content){for(let header of headers){if(header.getAttribute('onclick')&& header.getAttribute('onclick').includes(lastExpandedSection)){const arrow=header.querySelector('.section-arrow');content.classList.remove('collapsed');if(arrow)arrow.classList.remove('collapsed');break;}}}}});</script></body></html>
+ </p></div></div><form action="/reset" method="GET" onsubmit="return confirmFactoryReset();"><button type="submit" class="reset-btn">&#128260; Factory Reset</button></form></div><!-- Sticky Save Button --><div class="sticky-save"><div class="container"><button type="button" class="save-btn" onclick="saveSettings()">&#128190; Save Settings</button><span id="saveMessage" style="margin-left: 15px; color: #4CAF50; font-weight: bold; display: none;">&#10004; Settings Saved!</span></div></div><script> function confirmFactoryReset(){if(!confirm('Have you exported a backup of your settings?\n\nUse the \"Export Config\" button to save your configuration before proceeding.\n\nPress OK to continue with factory reset, or Cancel to go back.')){return false;}return confirm('ARE YOU SURE?\n\nThis will permanently erase ALL settings:\n- WiFi credentials\n- Display & clock configuration\n- Metric labels & layout\n- Animation settings\n- Network settings\n\nThe device will restart in AP setup mode.\nThis cannot be undone.');}function toggleSection(sectionId){const content=document.getElementById(sectionId);const arrow=event.currentTarget.querySelector('.section-arrow');content.classList.toggle('collapsed');arrow.classList.toggle('collapsed');const isCollapsed=content.classList.contains('collapsed');if(!isCollapsed){localStorage.setItem('lastExpandedSection',sectionId);}}function toggleStaticIPFields(){const useStaticIP=document.getElementById('useStaticIP').value==='1';const staticIPFields=document.getElementById('staticIPFields');staticIPFields.style.display=useStaticIP ? 'block':'none';}function toggleRefreshRateFields(){const refreshRateMode=document.getElementById('refreshRateMode').value==='1';const refreshRateFields=document.getElementById('refreshRateFields');refreshRateFields.style.display=refreshRateMode ? 'block':'none';}function toggleMarioSettings(){const clockStyle=document.getElementById('clockStyle').value;const marioSettings=document.getElementById('marioSettings');const pongSettings=document.getElementById('pongSettings');const pacmanSettings=document.getElementById('pacmanSettings');const spaceSettings=document.getElementById('spaceSettings');marioSettings.style.display=(clockStyle==='0')? 'block':'none';pongSettings.style.display=(clockStyle==='5')? 'block':'none';pacmanSettings.style.display=(clockStyle==='6')? 'block':'none';spaceSettings.style.display=(clockStyle==='3' || clockStyle==='4')? 'block':'none';}function exportConfig(){fetch('/api/export').then(response=>response.json()).then(data=>{const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='pc-monitor-config.json';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);alert('Configuration exported successfully!');}).catch(err=>alert('Error exporting configuration:'+err));}function importConfig(event){const file=event.target.files[0];if(!file)return;const reader=new FileReader();reader.onload=function(e){try{const config=JSON.parse(e.target.result);fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)}).then(response=>response.json()).then(data=>{if(data.success){alert('Configuration imported successfully! Reloading page...');location.reload();}else{alert('Error importing configuration:'+data.message);}}).catch(err=>alert('Error importing configuration:'+err));}catch(err){alert('Invalid configuration file:'+err);}};reader.readAsText(file);}function saveSettings(){const form=document.querySelector('form[action="/save"]');const formData=new FormData(form);const saveMessage=document.getElementById('saveMessage');const saveBtn=document.querySelector('.save-btn');const urlEncoded=new URLSearchParams(formData);saveBtn.disabled=true;saveBtn.textContent='💾 Saving...';fetch('/save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:urlEncoded}).then(response=>response.json()).then(data=>{if(data.success){saveMessage.style.display='inline';setTimeout(()=>{saveMessage.style.display='none';},3000);saveBtn.disabled=false;saveBtn.textContent='💾 Save Settings';if(data.networkChanged){alert('Network settings changed! Device is restarting. You may need to reconnect to the new IP address.');setTimeout(()=>{window.location.href='/';},3000);}}else{alert('Error saving settings');saveBtn.disabled=false;saveBtn.textContent='💾 Save Settings';}}).catch(err=>{alert('Error saving settings:'+err);saveBtn.disabled=false;saveBtn.textContent='💾 Save Settings';});}document.getElementById('uploadForm').addEventListener('submit',function(e){e.preventDefault();const fileInput=document.getElementById('firmwareFile');const file=fileInput.files[0];if(!file){alert('Please select a firmware file(.bin)');return;}if(!file.name.endsWith('.bin')){alert('Please select a valid .bin firmware file');return;}document.getElementById('uploadProgress').style.display='block';document.querySelector('#uploadForm button').disabled=true;const xhr=new XMLHttpRequest();xhr.upload.addEventListener('progress',function(e){if(e.lengthComputable){const percent=Math.round((e.loaded/e.total)*100);document.getElementById('progressBar').style.width=percent+'%';document.getElementById('progressBar').textContent=percent+'%';document.getElementById('uploadStatus').textContent='Uploading:'+percent+'%';}});xhr.addEventListener('load',function(){if(xhr.status===200){document.getElementById('progressBar').style.width='100%';document.getElementById('progressBar').textContent='100%';document.getElementById('uploadStatus').textContent='Update successful! Device is rebooting...';document.getElementById('uploadStatus').style.color='#10b981';setTimeout(function(){window.location.href='/';},8000);}else{document.getElementById('uploadStatus').textContent='Upload failed! Please try again.';document.getElementById('uploadStatus').style.color='#ef4444';document.querySelector('#uploadForm button').disabled=false;}});xhr.addEventListener('error',function(){document.getElementById('uploadStatus').textContent='Upload error! Please try again.';document.getElementById('uploadStatus').style.color='#ef4444';document.querySelector('#uploadForm button').disabled=false;});const formData=new FormData();formData.append('firmware',file);xhr.open('POST','/update');xhr.send(formData);});window.addEventListener('DOMContentLoaded',function(){toggleStaticIPFields();toggleRefreshRateFields();const lastExpandedSection=localStorage.getItem('lastExpandedSection');if(lastExpandedSection){const content=document.getElementById(lastExpandedSection);const headers=document.querySelectorAll('.section-header');if(content){for(let header of headers){if(header.getAttribute('onclick')&& header.getAttribute('onclick').includes(lastExpandedSection)){const arrow=header.querySelector('.section-arrow');content.classList.remove('collapsed');if(arrow)arrow.classList.remove('collapsed');break;}}}}});</script></body></html>
 )rawliteral";
 
  // Send HTML in chunks to avoid buffer overflow
@@ -461,6 +521,25 @@ void handleSave() {
  }
 
  // Save network configuration
+ if (server.hasArg("deviceName")) {
+   String name = server.arg("deviceName");
+   name.trim();
+   if (name.length() > 0 && name.length() <= 31) {
+     // Sanitize: only allow letters, numbers, hyphens
+     bool valid = true;
+     for (unsigned int i = 0; i < name.length(); i++) {
+       char c = name.charAt(i);
+       if (!isalnum(c) && c != '-') { valid = false; break; }
+     }
+     if (valid && isalpha(name.charAt(0))) {
+       bool nameChanged = (strcmp(settings.deviceName, name.c_str()) != 0);
+       safeCopyString(settings.deviceName, name.c_str(), sizeof(settings.deviceName));
+       if (nameChanged) {
+         initMDNS();  // Re-register mDNS with new name
+       }
+     }
+   }
+ }
  settings.showIPAtBoot = server.hasArg("showIPAtBoot");
  bool previousStaticIPSetting = settings.useStaticIP;
  if (server.hasArg("useStaticIP")) {
@@ -708,14 +787,21 @@ void handleSave() {
 
 void handleReset() {
  String html = R"rawliteral(
-<!DOCTYPE html><html><head><title>Resetting...</title><style> body{font-family:Arial;background:#1a1a2e;color:#e94560;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.msg{text-align:center}</style></head><body><div class="msg"><h1>&#128260;</h1><p>Resetting WiFi settings...<br>Connect to "PCMonitor-Setup" to reconfigure.</p></div></body></html>
+<!DOCTYPE html><html><head><title>Factory Reset</title><style> body{font-family:Arial;background:#1a1a2e;color:#e94560;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.msg{text-align:center}</style></head><body><div class="msg"><h1>&#128260;</h1><p>Factory reset in progress...<br>All settings erased.<br>Connect to "PCMonitor-Setup" to reconfigure.</p></div></body></html>
 )rawliteral";
 
  // Send HTML (small page)
  server.send(200, "text/html", html);
  delay(1000);
 
+ // Erase all application settings from NVS
+ preferences.begin("pcmonitor", false);
+ preferences.clear();
+ preferences.end();
+
+ // Erase WiFi credentials
  wifiManager.resetSettings();
+
  ESP.restart();
 }
 
@@ -736,6 +822,7 @@ void handleExportConfig() {
  json += "\"displayRowMode\":" + String(settings.displayRowMode) + ",";
  json += "\"useRpmKFormat\":" + String(settings.useRpmKFormat ? "true" : "false") + ",";
  json += "\"useNetworkMBFormat\":" + String(settings.useNetworkMBFormat ? "true" : "false") + ",";
+ json += "\"deviceName\":\"" + String(settings.deviceName) + "\",";
  json += "\"showIPAtBoot\":" + String(settings.showIPAtBoot ? "true" : "false") + ",";
 
  // Metric labels
@@ -816,6 +903,7 @@ void handleExportConfig() {
 
  json += "}";
 
+ server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", json);
 }
 
@@ -853,6 +941,13 @@ void handleImportConfig() {
  if (!doc["useRpmKFormat"].isNull()) settings.useRpmKFormat = doc["useRpmKFormat"];
  if (!doc["useNetworkMBFormat"].isNull()) settings.useNetworkMBFormat = doc["useNetworkMBFormat"];
  if (!doc["showIPAtBoot"].isNull()) settings.showIPAtBoot = doc["showIPAtBoot"];
+ if (!doc["deviceName"].isNull()) {
+   const char* name = doc["deviceName"];
+   if (name && strlen(name) > 0 && strlen(name) <= 31) {
+     strncpy(settings.deviceName, name, 31);
+     settings.deviceName[31] = '\0';
+   }
+ }
 
  // Import metric labels
  if (!doc["metricLabels"].isNull()) {
@@ -960,8 +1055,10 @@ void handleImportConfig() {
  applyTimezone();
  ntpSynced = false; // Force NTP resync after config import
 
+ server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", "{\"success\":true,\"message\":\"Configuration imported successfully\"}");
  } else {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(400, "application/json", "{\"success\":false,\"message\":\"No data received\"}");
  }
 }

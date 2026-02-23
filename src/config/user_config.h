@@ -48,9 +48,11 @@
 #define SPI_RST_PIN  10   //RES Set to -1 if RST is not connected
 
 // ========== WiFi Configuration ==========
-// Access Point name and password for initial setup
+// Access Point name for initial setup.
+// AP_PASSWORD: leave as "" for an open (passwordless) AP — easiest for users.
+//              Set a password string to require one (e.g. "monitor123").
 #define AP_NAME "PCMonitor-Setup"
-#define AP_PASSWORD "monitor123"
+#define AP_PASSWORD ""
 
 // ========== Optional Hardcoded WiFi Credentials ==========
 // Use this if your ESP32 module has a faulty WiFi AP mode
@@ -111,5 +113,17 @@
 // When enabled: OLED shows scannable QR code instead of text instructions
 // When disabled: Traditional text instructions (original behavior)
 #define QR_SETUP_ENABLED 0               // 1 = QR code, 0 = text instructions
+
+// ========== BLE WiFi Setup Configuration ==========
+// Bluetooth Low Energy provisioning for the SmallOLED Android app.
+// When enabled: on first boot (no saved WiFi), the device advertises as a BLE
+//   GATT server. The Android app connects, sends home WiFi SSID + password,
+//   device connects and saves credentials. Subsequent boots connect silently.
+//   If BLE times out (2 min) or fails, falls back to AP mode automatically.
+// When disabled: original WiFiManager AP portal (PCMonitor-Setup) is used.
+//
+// IMPORTANT: Requires min_spiffs.csv partition table (set in platformio.ini).
+#define BLE_SETUP_ENABLED 0              // 1 = BLE provisioning, 0 = AP mode (default)
+#define BLE_DEVICE_NAME "SmallOLED"      // BLE advertised name (shown in Android app scan)
 
 #endif // USER_CONFIG_H

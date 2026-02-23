@@ -10,6 +10,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <WiFiManager.h>
+#include <ESPmDNS.h>
 #include <ArduinoJson.h>
 #include "../config/config.h"
 
@@ -21,6 +22,9 @@ extern WiFiManager wifiManager;
 
 // Initialize WiFi and UDP
 void initNetwork();
+
+// Initialize mDNS service discovery
+void initMDNS();
 
 // Apply static IP settings if configured
 void applyStaticIP();
@@ -57,5 +61,8 @@ bool connectManualWiFi(const char* ssid, const char* password);
 #if QR_SETUP_ENABLED
 void displayQRCodeSetup();
 #endif
+
+// BLE provisioning (optional — see user_config.h BLE_SETUP_ENABLED)
+#include "ble_setup.h"
 
 #endif // NETWORK_H
