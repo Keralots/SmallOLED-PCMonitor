@@ -90,10 +90,11 @@ For detailed instructions, keep reading below.
   - VCC → 3.3V
   - GND → GND
   - TTP223 Signal → GPIO 7 (optional)
+  - LED Transistor Base or LDO6AJSA PWM → GPIO 1 (optional)
 
 ![Wiring](img/wiring.JPG)
 
-<img width="627" height="673" alt="image" src="https://github.com/user-attachments/assets/0e2648a0-4bda-490e-96d2-fc54aebfc409" />
+<img width="1129" height="726" alt="image" src="https://github.com/user-attachments/assets/f5283d18-aadc-475a-bbcf-92fd39dc40cc" />
 
 ### Touch Button (Optional)
 ##### Wiring for optional filament led and TTP223 sensor
@@ -101,7 +102,12 @@ For detailed instructions, keep reading below.
 This wiring is for 2.42" OLED. Use the same firmware as for 0.96" OLED for flashing.
 No need to change firmware, TTP223 and LED will work.
 
-![Wiring with optional TTP223 and LED](img/circuit_image.png)
+If you are using 2N2222 and resistors for led here is the wiring:
+<img width="1297" height="905" alt="image" src="https://github.com/user-attachments/assets/35afc555-9f64-4d54-864b-816c04abfd04" />
+
+If you are using LDO6AJSA here is the wiring:
+<img width="941" height="660" alt="image" src="https://github.com/user-attachments/assets/1ff209f1-0437-42a3-b4c9-3db65d4d3e1e" />
+
 
 
 The firmware supports an optional **TTP223 capacitive touch sensor** for physical control of the display and LED night light:
