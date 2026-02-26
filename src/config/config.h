@@ -107,6 +107,9 @@ struct Settings {
   uint8_t marioBounceSpeed;   // Tenths (6 = 0.6)
   bool marioSmoothAnimation;  // Enable 4-frame walk cycle (default: false = 2-frame)
   uint8_t marioWalkSpeed;     // Tenths (20 = 2.0, 25 = 2.5 old/fast)
+  bool marioIdleEncounters;   // Enable idle enemy encounters (default: false)
+  uint8_t marioEncounterFreq; // 0=Rare(25-35s), 1=Normal(15-25s), 2=Frequent(8-15s)
+  uint8_t marioEncounterSpeed; // 0=Slow, 1=Normal, 2=Fast (default: 1)
 
   // Space clock settings
   uint8_t spaceCharacterType;   // 0=Invader, 1=Ship
@@ -148,11 +151,38 @@ enum MarioState {
   MARIO_IDLE,
   MARIO_WALKING,
   MARIO_JUMPING,
-  MARIO_WALKING_OFF
+  MARIO_WALKING_OFF,
+  // Idle encounter states
+  MARIO_ENCOUNTER_WALKING,
+  MARIO_ENCOUNTER_JUMPING,
+  MARIO_ENCOUNTER_SHOOTING,
+  MARIO_ENCOUNTER_SQUASH,
+  MARIO_ENCOUNTER_RETURNING
+};
+
+// Enemy types for idle encounters
+enum EnemyType { ENEMY_NONE, ENEMY_GOOMBA, ENEMY_SPINY, ENEMY_KOOPA };
+enum EnemyState { ENEMY_WALKING, ENEMY_SQUASHING, ENEMY_HIT, ENEMY_DEAD, ENEMY_SHELL_SLIDING };
+
+struct MarioEnemy {
+  EnemyType type;
+  EnemyState state;
+  float x;
+  int walkFrame;
+  uint8_t animTimer;
+  bool fromRight;
+};
+
+struct MarioFireball {
+  float x, y;
+  float vy;
+  bool active;
 };
 
 // Mario animation constants
 #define MARIO_ANIM_SPEED 35
+#define ENCOUNTER_ANIM_SPEED 16  // ~60fps for smooth encounter animations
+#define ENCOUNTER_TIME_SCALE (ENCOUNTER_ANIM_SPEED / (float)MARIO_ANIM_SPEED)  // ~0.46
 #define JUMP_POWER -4.5
 #define GRAVITY 0.6
 #define TIME_Y 26
@@ -326,6 +356,12 @@ extern float digit_offset_y[5];
 extern float digit_velocity[5];
 extern float digit_offset_x[5];
 extern float digit_velocity_x[5];
+
+// Mario idle encounter globals
+extern MarioEnemy currentEnemy;
+extern MarioFireball marioFireball;
+extern unsigned long lastEncounterEnd;
+extern unsigned long nextEncounterDelay;
 
 // Space clock globals
 extern SpaceState space_state;

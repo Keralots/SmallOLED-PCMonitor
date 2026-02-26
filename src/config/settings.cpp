@@ -95,6 +95,9 @@ void loadSettings() {
     preferences.putUChar("marioBnceS", 6);    // Default: 0.6
     preferences.putBool("marioSmooth", false); // Default: 2-frame animation
     preferences.putUChar("marioWalkSpd", 20); // Default: 2.0
+    preferences.putBool("marioEnctr", false); // Default: no idle encounters
+    preferences.putUChar("marioEncFrq", 1);   // Default: Normal frequency
+    preferences.putUChar("marioEncSpd", 1);   // Default: Normal speed
     preferences.putUChar("pongBallSpd", 18);  // Default: 18
     preferences.putUChar("pongBncStr", 3);    // Default: 0.3
     preferences.putUChar("pongBncDmp", 85);   // Default: 0.85
@@ -207,6 +210,12 @@ void loadSettings() {
       preferences.getBool("marioSmooth", false); // Default: 2-frame
   settings.marioWalkSpeed =
       preferences.getUChar("marioWalkSpd", 20); // Default: 2.0
+  settings.marioIdleEncounters =
+      preferences.getBool("marioEnctr", false); // Default: disabled
+  settings.marioEncounterFreq =
+      preferences.getUChar("marioEncFrq", 1); // Default: Normal
+  settings.marioEncounterSpeed =
+      preferences.getUChar("marioEncSpd", 1); // Default: Normal
   settings.pongBallSpeed =
       preferences.getUChar("pongBallSpd", 18); // Default: 18
   settings.pongBounceStrength =
@@ -401,6 +410,9 @@ void saveSettings() {
   preferences.putUChar("marioBnceS", settings.marioBounceSpeed);
   preferences.putBool("marioSmooth", settings.marioSmoothAnimation);
   preferences.putUChar("marioWalkSpd", settings.marioWalkSpeed);
+  preferences.putBool("marioEnctr", settings.marioIdleEncounters);
+  preferences.putUChar("marioEncFrq", settings.marioEncounterFreq);
+  preferences.putUChar("marioEncSpd", settings.marioEncounterSpeed);
   preferences.putUChar("pongBallSpd", settings.pongBallSpeed);
   preferences.putUChar("pongBncStr", settings.pongBounceStrength);
   preferences.putUChar("pongBncDmp", settings.pongBounceDamping);

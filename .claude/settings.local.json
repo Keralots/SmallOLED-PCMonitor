@@ -49,7 +49,8 @@
       "Bash(cmd.exe //c \"set JAVA_HOME=C:\\\\Program Files\\\\Android\\\\Android Studio\\\\jbr&& C:\\\\Users\\\\rafal\\\\Documents\\\\PlatformIO\\\\Projects\\\\SmallOLED-PCMonitor\\\\android-app\\\\gradlew.bat -p C:\\\\Users\\\\rafal\\\\Documents\\\\PlatformIO\\\\Projects\\\\SmallOLED-PCMonitor\\\\android-app assembleDebug --no-daemon --console=plain\")",
       "Bash(cmd /c \"cd /d C:\\\\Users\\\\rafal\\\\Documents\\\\PlatformIO\\\\Projects\\\\SmallOLED-PCMonitor\\\\android-app && gradlew.bat assembleDebug 2>&1\")",
       "Bash(cmd /c:*)",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(\"C:\\\\Users\\\\rafal\\\\.platformio\\\\penv\\\\Scripts\\\\platformio.exe\" run --target clean)"
     ],
     "deny": [],
     "ask": []
