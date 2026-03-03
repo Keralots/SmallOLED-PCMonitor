@@ -77,6 +77,8 @@ unsigned long lastReceived = 0;
 unsigned long wifiDisconnectTime = 0;
 unsigned long nextDisplayUpdate = 0;
 bool wifiConnected = false;  // WiFi connection status for icon display
+bool isTemporaryWake = false;         
+unsigned long displayWakeExpiry = 0; 
 
 #if TOUCH_BUTTON_ENABLED
 bool manualClockMode = false;  // Manual override to force clock mode when PC is online
@@ -163,6 +165,26 @@ int getOptimalRefreshRate() {
   }
 }
 
+/* True dim fuinction */
+
+void applyDeepDim(bool enable) {
+    if (enable) {
+        display.setContrast(0);     
+        display.oled_command(0xD9); // Set Pre-charge Period
+        display.oled_command(0x22); // Minimum charge
+        display.oled_command(0xDB); // Set VCOM Deselect
+        display.oled_command(0x30); // Lowest voltage
+    } else {
+        display.setContrast(0x8F); // Normal brightness
+        display.oled_command(0xD9);
+        display.oled_command(0x22); // Default charge
+        display.oled_command(0xDB);
+        display.oled_command(0x35); // Default VCOM
+        display.oled_command(0xAF); // Force Display ON command just in case
+    }
+}
+
+
 // ========== setup() ==========
 void setup() {
   Serial.begin(115200);
@@ -176,7 +198,10 @@ void setup() {
 
   // Apply saved brightness setting
   if (displayAvailable) {
-    applyDisplayBrightness();
+//      applyDeepDim(true); // Start the project in "Deep Dim" mode
+//      delay(1000);
+//      applyDeepDim(false); // Back to normal      
+      applyDisplayBrightness();
   }
 
 #if LED_PWM_ENABLED
@@ -290,6 +315,19 @@ void loop() {
 #endif
   // Regular short press (mode toggle / clock style cycle)
   if (checkTouchButtonPressed()) {
+   // --- NEW: Wake Logic ---
+    if (settings.displayBrightness == 0) {
+      isTemporaryWake = true;
+      displayWakeExpiry = millis() + 10000; // Set timer for 5 seconds
+      
+      // Wake hardware and set to dim (10)
+      display.oled_command(0xAF); 
+      display.setContrast(10); 
+      Serial.println("Touch: Waking display for 5 seconds...");
+    } else if (isTemporaryWake) {
+      // If already temporarily awake, refresh the 5-second timer on every tap
+      displayWakeExpiry = millis() + 10000;
+    }
     if (manualClockMode) {
       // Check if PC is currently online (UDP is always processed, so status is accurate)
       if (metricData.online) {
@@ -401,8 +439,16 @@ void loop() {
     }
 
     display.display();
+    // --- NEW: Timeout Logic (Run this every loop) ---
+    if (isTemporaryWake && millis() > displayWakeExpiry) {
+      isTemporaryWake = false;
+      applyDisplayBrightness(); // Set the brightness back to what it was which should be 0 
+      Serial.println("Touch: Timeout reached, display OFF");
+    } 
   }
 
   // WiFi reconnection handling
   handleWiFiReconnection();
 }
+
+
