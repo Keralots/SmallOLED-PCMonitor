@@ -56,6 +56,8 @@ static const TimezoneRegion timezoneDatabase[] = {
   {"Philippines (Manila - no DST)", "PST-8", 480},
   {"Indonesia (Jakarta - no DST)", "WIB-7", 420},
   {"Thailand (Bangkok - no DST)", "ICT-7", 420},
+  {"Pakistan (Karachi, Islamabad - no DST)", "PKT-5", 300},
+  {"Central Asia (Tashkent, Uzbekistan - no DST)", "UZT-5", 300},
   {"India (Mumbai, Delhi - no DST)", "IST-5:30", 330},
 
   // Middle East & Africa
@@ -123,6 +125,7 @@ const char* getDefaultTimezoneForOffset(int gmtOffsetMinutes) {
 
     // Middle East
     case 240:   return "GST-4";                                  // UAE (default for GMT+4)
+    case 300:   return "PKT-5";                                  // Pakistan (default for GMT+5)
 
     default:
       // No automatic timezone for this offset
