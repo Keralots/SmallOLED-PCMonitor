@@ -18,7 +18,8 @@ bool isAnimationActive() {
   // Check Mario clock animations (clockStyle == 0)
   if (settings.clockStyle == 0) {
     // Check if Mario is in any active state (walking, jumping, walking off)
-    if (mario_state == MARIO_WALKING || mario_state == MARIO_JUMPING || mario_state == MARIO_WALKING_OFF) {
+    if (mario_state == MARIO_WALKING || mario_state == MARIO_JUMPING || mario_state == MARIO_WALKING_OFF ||
+        (mario_state >= MARIO_ENCOUNTER_WALKING && mario_state <= MARIO_ENCOUNTER_RETURNING)) {
       return true;
     }
     // Check if any digit is bouncing (digit_offset_y != 0)

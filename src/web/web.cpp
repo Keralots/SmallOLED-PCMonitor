@@ -178,7 +178,10 @@ void handleRoot() {
  </p><div style="margin-top: 15px;"><label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" name="marioSmoothAnimation" id="marioSmoothAnimation"
  )rawliteral" + String(settings.marioSmoothAnimation ? "checked" : "") + R"rawliteral(
  style="margin-right: 10px; width: 18px; height: 18px;"><span>Smooth Animation (4-frame walk cycle)</span></label><p style="color: #888; font-size: 11px;">
- Enable smoother 4-frame walking animation.</p></div></div><!-- Arkanoid Clock Settings (only visible when Arkanoid is selected) --><div id="pongSettings" style="display: )rawliteral" + String(settings.clockStyle == 5 ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #3b82f6;"><h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">🎮 Arkanoid Animation Settings</h4><label for="pongBallSpeed">Ball Speed</label><input type="range" name="pongBallSpeed" id="pongBallSpeed"
+ Enable smoother 4-frame walking animation.</p></div><div style="margin-top: 15px; border-top: 1px solid rgba(59,130,246,0.3); padding-top: 15px;"><label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" name="marioIdleEncounters" id="marioIdleEncounters"
+ )rawliteral" + String(settings.marioIdleEncounters ? "checked" : "") + R"rawliteral(
+ style="margin-right: 10px; width: 18px; height: 18px;" onchange="document.getElementById('encounterFreqDiv').style.display=this.checked?'block':'none'"><span>Idle Encounters</span></label><p style="color: #888; font-size: 11px;">
+ Goombas and Spinies appear between minute changes for Mario to defeat.</p><div id="encounterFreqDiv" style="display: )rawliteral" + String(settings.marioIdleEncounters ? "block" : "none") + R"rawliteral(; margin-top: 10px;"><label for="marioEncounterFreq">Encounter Frequency</label><select name="marioEncounterFreq" id="marioEncounterFreq" style="width: 100%; padding: 8px; background: #16213e; border: 1px solid #334155; color: #eee; border-radius: 5px; margin-top: 5px;"><option value="0" )rawliteral" + String(settings.marioEncounterFreq == 0 ? "selected" : "") + R"rawliteral(>Rare (25-35s)</option><option value="1" )rawliteral" + String(settings.marioEncounterFreq == 1 ? "selected" : "") + R"rawliteral(>Normal (15-25s)</option><option value="2" )rawliteral" + String(settings.marioEncounterFreq == 2 ? "selected" : "") + R"rawliteral(>Frequent (8-15s)</option><option value="3" )rawliteral" + String(settings.marioEncounterFreq == 3 ? "selected" : "") + R"rawliteral(>Chaotic (2-5s)</option></select><label for="marioEncounterSpeed" style="margin-top: 10px; display: block;">Encounter Speed</label><select name="marioEncounterSpeed" id="marioEncounterSpeed" style="width: 100%; padding: 8px; background: #16213e; border: 1px solid #334155; color: #eee; border-radius: 5px; margin-top: 5px;"><option value="0" )rawliteral" + String(settings.marioEncounterSpeed == 0 ? "selected" : "") + R"rawliteral(>Slow</option><option value="1" )rawliteral" + String(settings.marioEncounterSpeed == 1 ? "selected" : "") + R"rawliteral(>Normal</option><option value="2" )rawliteral" + String(settings.marioEncounterSpeed == 2 ? "selected" : "") + R"rawliteral(>Fast</option></select></div></div></div><!-- Arkanoid Clock Settings (only visible when Arkanoid is selected) --><div id="pongSettings" style="display: )rawliteral" + String(settings.clockStyle == 5 ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #3b82f6;"><h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">🎮 Arkanoid Animation Settings</h4><label for="pongBallSpeed">Ball Speed</label><input type="range" name="pongBallSpeed" id="pongBallSpeed"
  min="16" max="30" step="1"
  value=")rawliteral" + String(settings.pongBallSpeed) + R"rawliteral("
  oninput="document.getElementById('ballSpeedValue').textContent = this.value"><span style="color: #3b82f6; font-size: 14px; margin-left: 10px;"><span id="ballSpeedValue">)rawliteral" + String(settings.pongBallSpeed) + R"rawliteral(</span></span><p style="color: #888; font-size: 11px;">
@@ -470,6 +473,14 @@ void handleSave() {
  // Save Mario walk speed
  if (server.hasArg("marioWalkSpeed")) {
  settings.marioWalkSpeed = server.arg("marioWalkSpeed").toInt();
+ }
+ // Save Mario idle encounters
+ settings.marioIdleEncounters = server.hasArg("marioIdleEncounters");
+ if (server.hasArg("marioEncounterFreq")) {
+ settings.marioEncounterFreq = constrain(server.arg("marioEncounterFreq").toInt(), 0, 3);
+ }
+ if (server.hasArg("marioEncounterSpeed")) {
+ settings.marioEncounterSpeed = constrain(server.arg("marioEncounterSpeed").toInt(), 0, 2);
  }
 
  // Save Pong settings

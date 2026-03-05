@@ -50,6 +50,12 @@ float digit_velocity[5] = {0};
 float digit_offset_x[5] = {0};  // Horizontal offset for Pong side hits
 float digit_velocity_x[5] = {0};  // Horizontal velocity for Pong side hits
 
+// ========== Mario Idle Encounter Globals ==========
+MarioEnemy currentEnemy = {ENEMY_NONE, ENEMY_DEAD, 0, 0, 0, true};
+MarioFireball marioFireball = {0, 0, 0, false};
+unsigned long lastEncounterEnd = 0;
+unsigned long nextEncounterDelay = 15000;
+
 // ========== Space Clock Globals ==========
 SpaceState space_state = SPACE_PATROL;
 float space_x = SCREEN_CENTER_X;

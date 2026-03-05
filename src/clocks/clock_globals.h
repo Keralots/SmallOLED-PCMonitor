@@ -51,6 +51,12 @@ extern float digit_velocity[5];
 extern float digit_offset_x[5];  // Horizontal offset for Pong side hits
 extern float digit_velocity_x[5];  // Horizontal velocity for Pong side hits
 
+// ========== Mario Idle Encounter Globals ==========
+extern MarioEnemy currentEnemy;
+extern MarioFireball marioFireball;
+extern unsigned long lastEncounterEnd;
+extern unsigned long nextEncounterDelay;
+
 // ========== Space Clock Globals ==========
 extern SpaceState space_state;
 extern float space_x;
