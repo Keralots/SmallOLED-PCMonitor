@@ -45,6 +45,10 @@
 extern WiFiUDP udp;              // Defined in network.cpp
 extern WebServer server;         // Defined in web.cpp
 extern Preferences preferences;  // Defined in settings.cpp
+extern unsigned long lastBrightnessCheck; // Link to the timer in display.cpp
+extern uint8_t lastAppliedBrightness;    // Link to the tracker in display.cpp
+
+
 
 // ========== Display Object ==========
 #if DISPLAY_TYPE == 1
@@ -299,8 +303,10 @@ void loop() {
   // Feed watchdog
   esp_task_wdt_reset();
 
-  // Check and apply scheduled brightness (time-based dimming)
-  checkScheduledBrightness();
+// ONLY run scheduler if we aren't in a temporary touch-wake state
+  if (!isTemporaryWake) {
+    checkScheduledBrightness();
+  }
 
   // Handle web server requests
   server.handleClient();
@@ -316,16 +322,17 @@ void loop() {
   // Regular short press (mode toggle / clock style cycle)
   if (checkTouchButtonPressed()) {
    // --- NEW: Wake Logic ---
-    if (settings.displayBrightness == 0) {
+    if (settings.dimBrightness == 0 || settings.displayBrightness == 0) {
       isTemporaryWake = true;
       displayWakeExpiry = millis() + 10000; // Set timer for 5 seconds
       
-      // Wake hardware and set to dim (10)
+      // Wake hardware and set to dim (20)
       display.oled_command(0xAF); 
-      display.setContrast(10); 
-      Serial.println("Touch: Waking display for 5 seconds...");
+      display.setContrast(20); 
+      lastAppliedBrightness = 20; // Update tracker so scheduler knows we are ON     
+      Serial.println("Touch: Waking display for 10 seconds...");
     } else if (isTemporaryWake) {
-      // If already temporarily awake, refresh the 5-second timer on every tap
+      // If already temporarily awake, refresh the 10-second timer on every tap
       displayWakeExpiry = millis() + 10000;
     }
     if (manualClockMode) {
@@ -439,11 +446,20 @@ void loop() {
     }
 
     display.display();
-    // --- NEW: Timeout Logic (Run this every loop) ---
+    // --- 10 Second Timeout Logic ---
     if (isTemporaryWake && millis() > displayWakeExpiry) {
       isTemporaryWake = false;
-      applyDisplayBrightness(); // Set the brightness back to what it was which should be 0 
-      Serial.println("Touch: Timeout reached, display OFF");
+      
+      // 1. Force the tracker to a "wrong" value so it triggers a change
+      lastAppliedBrightness = 99; 
+      
+      // 2. RESET the scheduler's 60-second timer to 0 so it runs NOW
+      lastBrightnessCheck = 0; 
+      
+      // 3. This will now see target is 0 and turn it OFF immediately
+      checkScheduledBrightness(); 
+      
+      Serial.println("Touch: 10s timeout - Safety timer reset - Display OFF.");
     } 
   }
 

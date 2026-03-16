@@ -10,8 +10,8 @@
 #include <time.h>
 
 // Track last applied brightness to avoid unnecessary updates
-static uint8_t lastAppliedBrightness = 255;
-static unsigned long lastBrightnessCheck = 0;
+uint8_t lastAppliedBrightness = 255;
+unsigned long lastBrightnessCheck = 0;
 const unsigned long BRIGHTNESS_CHECK_INTERVAL = 60000; // Check every minute
 extern bool isTemporaryWake; // Tells the compiler this exists in the main file
 
@@ -89,6 +89,7 @@ void applyDisplayBrightness() {
 // Check and apply time-based brightness (scheduled dimming)
 void checkScheduledBrightness() {
   // Only check every minute to avoid unnecessary updates
+  if (isTemporaryWake) return; // Don't let the schedule fight the touch button
   unsigned long currentTime = millis();
   if (currentTime - lastBrightnessCheck < BRIGHTNESS_CHECK_INTERVAL) {
     return;
@@ -141,14 +142,23 @@ void checkScheduledBrightness() {
     }
   }
 
-  // Apply brightness only if it changed
+// Apply brightness only if it changed
   if (lastAppliedBrightness != targetBrightness) {
-#if DISPLAY_TYPE == 1
-    display.setContrast(targetBrightness);
-#else
-    display.ssd1306_command(0x81);
-    display.ssd1306_command(targetBrightness);
-#endif
+    // 1. Backup the user's permanent setting
+    uint8_t userSettingBackup = settings.displayBrightness;
+    
+    // 2. Temporarily swap the setting to the scheduled target (0-255)
+    settings.displayBrightness = targetBrightness;
+    
+    // 3. This function handles the #if DISPLAY_TYPE, 0xAE/0xAF, and Mapping 20-255
+    applyDisplayBrightness();
+    
+    // 4. Restore the user's setting so the Web UI doesn't break
+    settings.displayBrightness = userSettingBackup;
+    
+    // 5. Track the change to prevent looping
     lastAppliedBrightness = targetBrightness;
+    
+    Serial.printf("Scheduled Dimming: %d applied\n", targetBrightness);
   }
 }
