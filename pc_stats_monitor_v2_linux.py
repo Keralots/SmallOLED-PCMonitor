@@ -3,7 +3,8 @@ PC Stats Monitor v2.0 - Linux Edition
 Dynamic Sensor Selection with GUI Configuration
 Uses psutil for hardware sensor discovery
 """
-
+import tkinter as tk
+from tkinter import messagebox
 import psutil
 import socket
 import time
@@ -732,7 +733,7 @@ class MetricSelectorGUI:
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
         canvas = tk.Canvas(main_frame, bg="#ffffff")
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollbar = tk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas, bg="#ffffff")
 
         scrollable_frame.bind(

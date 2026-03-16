@@ -10,9 +10,10 @@
 #include <time.h>
 
 // Track last applied brightness to avoid unnecessary updates
-static uint8_t lastAppliedBrightness = 255;
-static unsigned long lastBrightnessCheck = 0;
+uint8_t lastAppliedBrightness = 255;
+unsigned long lastBrightnessCheck = 0;
 const unsigned long BRIGHTNESS_CHECK_INTERVAL = 60000; // Check every minute
+extern bool isTemporaryWake; // Tells the compiler this exists in the main file
 
 // Initialize display - returns true on success
 bool initDisplay() {
@@ -58,9 +59,25 @@ bool initDisplay() {
 
 // Apply display brightness from settings
 void applyDisplayBrightness() {
+  if (!displayAvailable) return;
+  
+  // If the screen is currently in its 5-second "Temporary Wake" state, 
+  // don't let the background settings override it.
+  if (isTemporaryWake) return; 
+
+  uint8_t val = settings.displayBrightness;
 #if DISPLAY_TYPE == 1
-  // SH1106 has built-in setContrast method
-  display.setContrast(settings.displayBrightness);
+  // --- SH1106 Logic ---
+  if (val == 0) {
+    display.oled_command(0xAE); // [SH110X_DISPLAYOFF](https://adafruit.github.io)
+    Serial.println("SH1106: Display Power OFF");
+  } else {
+    display.oled_command(0xAF); // [SH110X_DISPLAYON](https://adafruit.github.io)
+    // Map user 1-255 to your hardware visible floor 20-255
+    uint8_t hardwareContrast = map(val, 1, 255, 20, 255);
+    display.setContrast(hardwareContrast);
+    Serial.printf("SH1106: Contrast Set to %d\n", hardwareContrast);
+  }
 #else
   // SSD1306/SSD1309: Use library's internal command method
   // Send 0x81 (contrast command) followed by value
@@ -72,6 +89,7 @@ void applyDisplayBrightness() {
 // Check and apply time-based brightness (scheduled dimming)
 void checkScheduledBrightness() {
   // Only check every minute to avoid unnecessary updates
+  if (isTemporaryWake) return; // Don't let the schedule fight the touch button
   unsigned long currentTime = millis();
   if (currentTime - lastBrightnessCheck < BRIGHTNESS_CHECK_INTERVAL) {
     return;
@@ -124,14 +142,23 @@ void checkScheduledBrightness() {
     }
   }
 
-  // Apply brightness only if it changed
+// Apply brightness only if it changed
   if (lastAppliedBrightness != targetBrightness) {
-#if DISPLAY_TYPE == 1
-    display.setContrast(targetBrightness);
-#else
-    display.ssd1306_command(0x81);
-    display.ssd1306_command(targetBrightness);
-#endif
+    // 1. Backup the user's permanent setting
+    uint8_t userSettingBackup = settings.displayBrightness;
+    
+    // 2. Temporarily swap the setting to the scheduled target (0-255)
+    settings.displayBrightness = targetBrightness;
+    
+    // 3. This function handles the #if DISPLAY_TYPE, 0xAE/0xAF, and Mapping 20-255
+    applyDisplayBrightness();
+    
+    // 4. Restore the user's setting so the Web UI doesn't break
+    settings.displayBrightness = userSettingBackup;
+    
+    // 5. Track the change to prevent looping
     lastAppliedBrightness = targetBrightness;
+    
+    Serial.printf("Scheduled Dimming: %d applied\n", targetBrightness);
   }
 }
