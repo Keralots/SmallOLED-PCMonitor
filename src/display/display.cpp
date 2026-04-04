@@ -7,12 +7,85 @@
 
 #include "display.h"
 #include "../config/config.h"
+#include "../config/settings.h"
 #include <time.h>
 
 // Track last applied brightness to avoid unnecessary updates
 static uint8_t lastAppliedBrightness = 255;
 static unsigned long lastBrightnessCheck = 0;
 const unsigned long BRIGHTNESS_CHECK_INTERVAL = 60000; // Check every minute
+
+#if TOUCH_BUTTON_ENABLED
+static bool temporaryWakeActive = false;
+static unsigned long temporaryWakeExpiry = 0;
+static uint8_t brightnessBeforeTemporaryWake = 255;
+const unsigned long TEMPORARY_WAKE_DURATION_MS = 10000;
+const uint8_t TEMPORARY_WAKE_BRIGHTNESS = 20;
+#endif
+
+static void setDisplayPower(bool on) {
+#if DISPLAY_TYPE == 1
+  display.oled_command(on ? 0xAF : 0xAE);
+#else
+  display.ssd1306_command(on ? SSD1306_DISPLAYON : SSD1306_DISPLAYOFF);
+#endif
+}
+
+static void setDisplayContrast(uint8_t brightness) {
+#if DISPLAY_TYPE == 1
+  display.setContrast(brightness);
+#else
+  display.ssd1306_command(SSD1306_SETCONTRAST);
+  display.ssd1306_command(brightness);
+#endif
+}
+
+static void applyBrightnessLevel(uint8_t brightness) {
+  if (!displayAvailable) {
+    return;
+  }
+
+  brightness = sanitizeBrightnessValue(brightness);
+
+  if (brightness == 0) {
+    setDisplayPower(false);
+  } else {
+    setDisplayPower(true);
+    setDisplayContrast(brightness);
+  }
+
+  lastAppliedBrightness = brightness;
+}
+
+static bool resolveScheduledBrightnessTarget(uint8_t &targetBrightness) {
+  targetBrightness = sanitizeBrightnessValue(settings.displayBrightness);
+
+  if (!settings.enableScheduledDimming) {
+    return true;
+  }
+
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    return false;
+  }
+
+  const uint8_t currentHour = timeinfo.tm_hour;
+  bool isDimPeriod = false;
+
+  if (settings.dimStartHour == settings.dimEndHour) {
+    isDimPeriod = false;
+  } else if (settings.dimStartHour < settings.dimEndHour) {
+    isDimPeriod =
+        (currentHour >= settings.dimStartHour && currentHour < settings.dimEndHour);
+  } else {
+    isDimPeriod =
+        (currentHour >= settings.dimStartHour || currentHour < settings.dimEndHour);
+  }
+
+  targetBrightness = sanitizeBrightnessValue(
+      isDimPeriod ? settings.dimBrightness : settings.displayBrightness);
+  return true;
+}
 
 // Initialize display - returns true on success
 bool initDisplay() {
@@ -58,19 +131,41 @@ bool initDisplay() {
 
 // Apply display brightness from settings
 void applyDisplayBrightness() {
-#if DISPLAY_TYPE == 1
-  // SH1106 has built-in setContrast method
-  display.setContrast(settings.displayBrightness);
-#else
-  // SSD1306/SSD1309: Use library's internal command method
-  // Send 0x81 (contrast command) followed by value
-  display.ssd1306_command(0x81);
-  display.ssd1306_command(settings.displayBrightness);
+#if TOUCH_BUTTON_ENABLED
+  if (temporaryWakeActive) {
+    return;
+  }
 #endif
+
+  applyBrightnessLevel(settings.displayBrightness);
+}
+
+void refreshDisplayBrightnessNow() {
+#if TOUCH_BUTTON_ENABLED
+  if (temporaryWakeActive) {
+    return;
+  }
+#endif
+
+  uint8_t targetBrightness = settings.displayBrightness;
+  if (settings.enableScheduledDimming &&
+      !resolveScheduledBrightnessTarget(targetBrightness)) {
+    return;
+  }
+
+  if (lastAppliedBrightness != targetBrightness) {
+    applyBrightnessLevel(targetBrightness);
+  }
 }
 
 // Check and apply time-based brightness (scheduled dimming)
 void checkScheduledBrightness() {
+#if TOUCH_BUTTON_ENABLED
+  if (temporaryWakeActive) {
+    return;
+  }
+#endif
+
   // Only check every minute to avoid unnecessary updates
   unsigned long currentTime = millis();
   if (currentTime - lastBrightnessCheck < BRIGHTNESS_CHECK_INTERVAL) {
@@ -78,60 +173,55 @@ void checkScheduledBrightness() {
   }
   lastBrightnessCheck = currentTime;
 
-  // If scheduled dimming is disabled, ensure normal brightness is applied
-  if (!settings.enableScheduledDimming) {
-    if (lastAppliedBrightness != settings.displayBrightness) {
-      applyDisplayBrightness();
-      lastAppliedBrightness = settings.displayBrightness;
-    }
-    return;
-  }
-
-  // Get current time
-  struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
-    return; // Can't get time, skip this check
-  }
-
-  uint8_t currentHour = timeinfo.tm_hour;
-  uint8_t targetBrightness;
-
-  // Check if current time is within dim period
-  // Handle wrap-around case (e.g., 22:00 to 07:00)
-  if (settings.dimStartHour == settings.dimEndHour) {
-    // Same hour means no dim period — use normal brightness
-    if (lastAppliedBrightness != settings.displayBrightness) {
-      applyDisplayBrightness();
-      lastAppliedBrightness = settings.displayBrightness;
-    }
-    return;
-  }
-  if (settings.dimStartHour < settings.dimEndHour) {
-    // Normal case: start and end are in same day
-    // e.g., 01:00 to 07:00
-    if (currentHour >= settings.dimStartHour && currentHour < settings.dimEndHour) {
-      targetBrightness = settings.dimBrightness;
-    } else {
-      targetBrightness = settings.displayBrightness;
-    }
-  } else {
-    // Wrap-around case: spans midnight
-    // e.g., 22:00 to 07:00
-    if (currentHour >= settings.dimStartHour || currentHour < settings.dimEndHour) {
-      targetBrightness = settings.dimBrightness;
-    } else {
-      targetBrightness = settings.displayBrightness;
-    }
-  }
-
-  // Apply brightness only if it changed
-  if (lastAppliedBrightness != targetBrightness) {
-#if DISPLAY_TYPE == 1
-    display.setContrast(targetBrightness);
-#else
-    display.ssd1306_command(0x81);
-    display.ssd1306_command(targetBrightness);
-#endif
-    lastAppliedBrightness = targetBrightness;
-  }
+  refreshDisplayBrightnessNow();
 }
+
+#if TOUCH_BUTTON_ENABLED
+bool handleTemporaryDisplayWake() {
+  if (!displayAvailable) {
+    return false;
+  }
+
+  if (temporaryWakeActive) {
+    temporaryWakeExpiry = millis() + TEMPORARY_WAKE_DURATION_MS;
+    return true;
+  }
+
+  if (lastAppliedBrightness != 0) {
+    return false;
+  }
+
+  brightnessBeforeTemporaryWake = lastAppliedBrightness;
+  temporaryWakeActive = true;
+  temporaryWakeExpiry = millis() + TEMPORARY_WAKE_DURATION_MS;
+
+  uint8_t wakeBrightness = settings.displayBrightness;
+  if (wakeBrightness == 0) {
+    wakeBrightness = settings.dimBrightness;
+  }
+  if (wakeBrightness < TEMPORARY_WAKE_BRIGHTNESS) {
+    wakeBrightness = TEMPORARY_WAKE_BRIGHTNESS;
+  }
+
+  applyBrightnessLevel(wakeBrightness);
+  Serial.println("Touch button: temporary display wake active");
+  return true;
+}
+
+void updateTemporaryDisplayWake() {
+  if (!temporaryWakeActive || millis() < temporaryWakeExpiry) {
+    return;
+  }
+
+  temporaryWakeActive = false;
+
+  uint8_t targetBrightness = brightnessBeforeTemporaryWake;
+  if (resolveScheduledBrightnessTarget(targetBrightness)) {
+    applyBrightnessLevel(targetBrightness);
+  } else {
+    applyBrightnessLevel(brightnessBeforeTemporaryWake);
+  }
+
+  Serial.println("Touch button: temporary display wake expired");
+}
+#endif

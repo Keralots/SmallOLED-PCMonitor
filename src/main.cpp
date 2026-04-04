@@ -274,6 +274,10 @@ void loop() {
   // Feed watchdog
   esp_task_wdt_reset();
 
+#if TOUCH_BUTTON_ENABLED
+  updateTemporaryDisplayWake();
+#endif
+
   // Check and apply scheduled brightness (time-based dimming)
   checkScheduledBrightness();
 
@@ -290,31 +294,33 @@ void loop() {
 #endif
   // Regular short press (mode toggle / clock style cycle)
   if (checkTouchButtonPressed()) {
-    if (manualClockMode) {
-      // Check if PC is currently online (UDP is always processed, so status is accurate)
-      if (metricData.online) {
-        // PC is online - exit manual clock mode to show PC metrics
-        manualClockMode = false;
-        Serial.println("Touch button: Exiting manual clock mode (PC is online)");
+    if (!handleTemporaryDisplayWake()) {
+      if (manualClockMode) {
+        // Check if PC is currently online (UDP is always processed, so status is accurate)
+        if (metricData.online) {
+          // PC is online - exit manual clock mode to show PC metrics
+          manualClockMode = false;
+          Serial.println("Touch button: Exiting manual clock mode (PC is online)");
+        } else {
+          // PC is offline (timeout triggered) - cycle through clock styles
+          settings.clockStyle = (settings.clockStyle + 1) % 7;
+          // Skip reserved clock style 4
+          if (settings.clockStyle == 4) settings.clockStyle = 5;
+          Serial.print("Touch button: PC offline, cycling clock style -> ");
+          Serial.println(settings.clockStyle);
+        }
+      } else if (metricData.online) {
+        // PC is online - enter manual clock mode
+        manualClockMode = true;
+        Serial.println("Touch button: Entering manual clock mode (PC is online)");
       } else {
-        // PC is offline (timeout triggered) - cycle through clock styles
+        // PC is offline - cycle through clock styles
         settings.clockStyle = (settings.clockStyle + 1) % 7;
         // Skip reserved clock style 4
         if (settings.clockStyle == 4) settings.clockStyle = 5;
-        Serial.print("Touch button: PC offline, cycling clock style -> ");
+        Serial.print("Touch button: Clock style -> ");
         Serial.println(settings.clockStyle);
       }
-    } else if (metricData.online) {
-      // PC is online - enter manual clock mode
-      manualClockMode = true;
-      Serial.println("Touch button: Entering manual clock mode (PC is online)");
-    } else {
-      // PC is offline - cycle through clock styles
-      settings.clockStyle = (settings.clockStyle + 1) % 7;
-      // Skip reserved clock style 4
-      if (settings.clockStyle == 4) settings.clockStyle = 5;
-      Serial.print("Touch button: Clock style -> ");
-      Serial.println(settings.clockStyle);
     }
   }
 #endif

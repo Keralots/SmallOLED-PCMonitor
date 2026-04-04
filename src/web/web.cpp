@@ -7,6 +7,7 @@
 
 #include "web.h"
 #include "../config/config.h"
+#include "../config/settings.h"
 #include "../network/network.h"
 #include "../utils/utils.h"
 #include "../clocks/clocks.h"
@@ -159,6 +160,14 @@ void handleRoot() {
  hourStr + "</option>";
  }
 
+ const uint8_t minAllowedBrightness = isZeroBrightnessAllowed() ? 0 : 1;
+ const String displayBrightnessHelp = isZeroBrightnessAllowed()
+     ? "Brightness control (0-100%). Set to 0% to turn the OLED off, then tap the touch button to wake it for 10 seconds."
+     : "Brightness control (0-100%). This build has no touch button, so the minimum brightness is 1%.";
+ const String dimBrightnessHelp = isZeroBrightnessAllowed()
+     ? "Brightness level during scheduled dim period. Set to 0% for a fully dark screen, then tap the touch button to wake it for 10 seconds."
+     : "Brightness level during scheduled dim period. This build has no touch button, so the minimum brightness is 1%.";
+
  String html = R"rawliteral(
 <!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Mini OLED Configurator v)rawliteral" + String(FIRMWARE_VERSION) + R"rawliteral(</title><style> *{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;margin:0;padding:20px;background:linear-gradient(135deg,#0f0c29 0%,#1a1a2e 50%,#24243e 100%);background-attachment:fixed;color:#e0e7ff;min-height:100vh}.container{max-width:420px;margin:0 auto;padding-bottom:100px}h1{color:#fff;text-align:center;font-size:28px;font-weight:700;margin:0 0 8px;text-shadow:0 2px 10px rgba(0,212,255,.3)}.card{background:rgba(22,33,62,.6);backdrop-filter:blur(10px);padding:20px;border-radius:12px;margin-bottom:15px;border:1px solid rgba(0,212,255,.15);box-shadow:0 4px 15px rgba(0,0,0,.2)}label{display:block;margin:15px 0 8px;color:#00d4ff;font-size:14px;font-weight:500;letter-spacing:.3px}select,input[type="number"],input[type="text"]{width:100%;padding:12px 14px;border:2px solid rgba(0,212,255,.2);border-radius:8px;background:rgba(15,52,96,.5);color:#fff;font-size:15px;transition:all .3s ease;cursor:pointer}select:hover,input[type="number"]:hover,input[type="text"]:hover{border-color:rgba(0,212,255,.4);background:rgba(15,52,96,.7)}select:focus,input:focus{outline:none;border-color:#00d4ff;background:rgba(15,52,96,.8);box-shadow:0 0 0 3px rgba(0,212,255,.1)}input[type="checkbox"]{appearance:none;width:20px;height:20px;border:2px solid rgba(0,212,255,.4);border-radius:5px;background:rgba(15,52,96,.5);cursor:pointer;position:relative;transition:all .3s ease;flex-shrink:0}input[type="checkbox"]:hover{border-color:#00d4ff;transform:scale(1.05)}input[type="checkbox"]:checked{background:linear-gradient(135deg,#00d4ff 0%,#0096ff 100%);border-color:#00d4ff}input[type="checkbox"]:checked::after{content:'✓';position:absolute;color:#0f0c29;font-size:14px;font-weight:bold;top:50%;left:50%;transform:translate(-50%,-50%)}button{width:100%;padding:14px;margin-top:20px;border:none;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;transition:all .3s ease;text-transform:uppercase;letter-spacing:.5px}.save-btn{background:linear-gradient(135deg,#00d4ff 0%,#0096ff 100%);color:#0f0c29;box-shadow:0 4px 15px rgba(0,212,255,.3)}.save-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,212,255,.4)}.save-btn:active{transform:translateY(0)}.reset-btn{background:linear-gradient(135deg,#ff6b6b 0%,#ee5a52 100%);color:#fff;box-shadow:0 4px 15px rgba(255,107,107,.2)}.reset-btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(255,107,107,.3)}.reset-btn:active{transform:translateY(0)}.info{text-align:center;color:#94a3b8;font-size:12px;margin-top:20px}.status{background:rgba(15,52,96,.4);padding:12px;border-radius:10px;text-align:center;margin-bottom:20px;border:1px solid rgba(0,212,255,.2);font-size:14px}.section-header{background:linear-gradient(135deg,rgba(15,52,96,.6) 0%,rgba(26,77,122,.4) 100%);padding:16px 18px;border-radius:10px;cursor:pointer;margin-bottom:10px;user-select:none;display:flex;justify-content:space-between;align-items:center;border:1px solid rgba(0,212,255,.15);transition:all .3s ease}.section-header:hover{background:linear-gradient(135deg,rgba(15,52,96,.8) 0%,rgba(26,77,122,.6) 100%);transform:translateX(4px);border-color:rgba(0,212,255,.3)}.section-header h3{margin:0;color:#00d4ff;font-size:16px;font-weight:600}.section-arrow{font-size:14px;transition:transform .3s ease;color:#00d4ff}.section-arrow.collapsed{transform:rotate(-90deg)}.section-content{max-height:10000px;overflow:visible;transition:max-height .3s ease,opacity .3s ease;opacity:1}.section-content.collapsed{max-height:0;overflow:hidden;opacity:0}.config-buttons{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}.export-btn{background:linear-gradient(135deg,#10b981 0%,#059669 100%);color:#fff;padding:12px;font-size:14px;margin-top:0;border-radius:8px;font-weight:600;box-shadow:0 4px 12px rgba(16,185,129,.2);transition:all .3s ease}.export-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(16,185,129,.3)}.import-btn{background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);color:#fff;padding:12px;font-size:14px;margin-top:0;border-radius:8px;font-weight:600;box-shadow:0 4px 12px rgba(59,130,246,.2);transition:all .3s ease}.import-btn:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(59,130,246,.3)}.sticky-save{position:fixed;bottom:0;left:0;right:0;background:linear-gradient(to top,rgba(15,12,41,.98) 0%,rgba(15,12,41,.95) 100%);backdrop-filter:blur(10px);padding:12px 20px;box-shadow:0 -4px 20px rgba(0,0,0,.4);z-index:1000;border-top:1px solid rgba(0,212,255,.2)}.sticky-save .container{max-width:420px;margin:0 auto;padding-bottom:0}.sticky-save button{margin-top:0}#importFile{display:none}@media (max-width:480px){body{padding:12px}.container{padding-bottom:90px}h1{font-size:24px}.card{padding:16px}.section-header{padding:14px 16px}.section-header h3{font-size:15px}select,input[type="number"],input[type="text"]{font-size:16px;padding:11px 12px}button{padding:13px;font-size:15px}.sticky-save{padding:10px 12px}}@media (max-width:360px){h1{font-size:22px}.config-buttons{grid-template-columns:1fr;gap:8px}}</style></head><body><div class="container"><h1>&#128421; Mini OLED Configurator <span style="font-size: 0.5em; font-weight: normal;">v)rawliteral" + String(FIRMWARE_VERSION) + R"rawliteral(</span></h1><div class="status"><strong>IP:</strong> )rawliteral" + WiFi.localIP().toString() + R"rawliteral( | <strong>UDP Port:</strong> 4210
  </div><!-- Config Management --><div class="config-buttons"><button type="button" class="export-btn" onclick="exportConfig()">&#128190; Export Config</button><button type="button" class="import-btn" onclick="document.getElementById('importFile').click()">&#128229; Import Config</button></div><input type="file" id="importFile" accept=".json" onchange="importConfig(event)"><form action="/save" method="POST"><!-- Clock Settings Section --><div class="section-header" onclick="toggleSection('clockSection')"><h3>&#128348; Clock Settings</h3><span class="section-arrow">&#9660;</span></div><div id="clockSection" class="section-content collapsed"><div class="card"><label for="clockStyle">Idle Clock Style</label><select name="clockStyle" id="clockStyle" onchange="toggleMarioSettings()"><option value="0" )rawliteral" + String(settings.clockStyle == 0 ? "selected" : "") + R"rawliteral(>Mario Animation</option><option value="1" )rawliteral" + String(settings.clockStyle == 1 ? "selected" : "") + R"rawliteral(>Standard Clock</option><option value="2" )rawliteral" + String(settings.clockStyle == 2 ? "selected" : "") + R"rawliteral(>Large Clock</option><option value="3" )rawliteral" + String(settings.clockStyle == 3 ? "selected" : "") + R"rawliteral(>Space Invaders</option><option value="5" )rawliteral" + String(settings.clockStyle == 5 ? "selected" : "") + R"rawliteral(>Arkanoid</option><option value="6" )rawliteral" + String(settings.clockStyle == 6 ? "selected" : "") + R"rawliteral(>Pac-Man Clock</option></select><!-- Mario Clock Settings (only visible when Mario is selected) --><div id="marioSettings" style="display: )rawliteral" + String(settings.clockStyle == 0 ? "block" : "none") + R"rawliteral(; margin-top: 20px; padding: 15px; background-color: #1a1a2e; border-radius: 8px; border: 1px solid #3b82f6;"><h4 style="color: #3b82f6; margin-top: 0; font-size: 14px;">&#127922; Mario Animation Settings</h4><label for="marioBounceHeight">Bounce Height</label><input type="range" name="marioBounceHeight" id="marioBounceHeight"
@@ -262,19 +271,19 @@ void handleRoot() {
  Updates/second. Higher = smoother, more power.
  </p></div><div style="margin-top: 15px;"><label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" name="boostAnim" id="boostAnim" style="margin-right: 10px;" )rawliteral" + String(settings.boostAnimationRefresh ? "checked" : "") + R"rawliteral(><span style="font-size: 14px;"><strong>Enable Smooth Animations</strong> (Boost refresh during action)
  </span></label></div><label for="displayBrightness" style="margin-top: 15px;">Display Brightness</label><input type="range" name="displayBrightness" id="displayBrightness"
- min="0" max="255" step="5"
+ min=")rawliteral" + String(minAllowedBrightness) + R"rawliteral(" max="255" step="5"
  value=")rawliteral" + String(settings.displayBrightness) + R"rawliteral("
  oninput="document.getElementById('brightnessValue').textContent = Math.round((this.value / 255) * 100)"><span style="color: #3b82f6; font-size: 14px; margin-left: 10px;"><span id="brightnessValue">)rawliteral" + String((settings.displayBrightness * 100) / 255) + R"rawliteral(</span>%
  </span><p style="color: #888; font-size: 12px; margin-top: 5px;">
- Brightness control (0-100%). Display remains visible at 0%.
+ )rawliteral" + displayBrightnessHelp + R"rawliteral(
  </p><div style="margin-top: 15px;"><label style="display: flex; align-items: center; cursor: pointer;"><input type="checkbox" name="enableScheduledDimming" id="enableScheduledDimming" style="margin-right: 10px;" )rawliteral" + String(settings.enableScheduledDimming ? "checked" : "") + R"rawliteral( onchange="toggleScheduledDimming()"><span style="font-size: 14px;">
  <strong>&#127749; Scheduled Night Mode</strong>
  </span></label></div><div id="scheduledDimmingFields" style="display: )rawliteral" + String(settings.enableScheduledDimming ? "block" : "none") + R"rawliteral(; padding: 15px; background: #0f172a; border-radius: 8px; border: 1px solid #1e293b; margin-top: 10px;"><div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;"><div><label for="dimStartHour" style="font-size: 13px; color: #e2e8f0; display: block; margin-bottom: 5px;">Start Dimming At</label><select name="dimStartHour" id="dimStartHour" style="width: 100%; padding: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #f1f5f9; font-size: 13px;">)rawliteral" + startHourOptions + R"rawliteral(</select></div><div><label for="dimEndHour" style="font-size: 13px; color: #e2e8f0; display: block; margin-bottom: 5px;">End Dimming At</label><select name="dimEndHour" id="dimEndHour" style="width: 100%; padding: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; color: #f1f5f9; font-size: 13px;">)rawliteral" + endHourOptions + R"rawliteral(</select></div></div><label for="dimBrightness" style="font-size: 13px; color: #e2e8f0; display: block; margin-bottom: 5px;">Dim Brightness Level</label><input type="range" name="dimBrightness" id="dimBrightness"
- min="0" max="255" step="5"
+ min=")rawliteral" + String(minAllowedBrightness) + R"rawliteral(" max="255" step="5"
  value=")rawliteral" + String(settings.dimBrightness) + R"rawliteral("
  oninput="document.getElementById('dimBrightnessValue').textContent = Math.round((this.value / 255) * 100)"><span style="color: #818cf8; font-size: 14px; margin-left: 10px;"><span id="dimBrightnessValue">)rawliteral" + String((settings.dimBrightness * 100) / 255) + R"rawliteral(</span>%
  </span><p style="color: #94a3b8; font-size: 11px; margin-top: 5px;">
- Brightness level during scheduled dim period. Recommended: 10-20% for night use.
+ )rawliteral" + dimBrightnessHelp + R"rawliteral(
  </p></div><script> function toggleScheduledDimming(){const enabled=document.getElementById('enableScheduledDimming').checked;document.getElementById('scheduledDimmingFields').style.display=enabled ? 'block':'none';}</script><label for="ledBrightness" style="margin-top: 15px; display: block;">LED Night Light Brightness</label><input type="range" name="ledBrightness" id="ledBrightness"
  min="0" max="255" step="5"
  value=")rawliteral" + String(settings.ledBrightness) + R"rawliteral("
@@ -432,12 +441,14 @@ void handleSave() {
  // Save animation boost checkbox
  settings.boostAnimationRefresh = server.hasArg("boostAnim");
 
+ bool brightnessSettingsChanged = false;
+
  // Save display brightness
  if (server.hasArg("displayBrightness")) {
- uint8_t newBrightness = server.arg("displayBrightness").toInt();
+ uint8_t newBrightness = sanitizeBrightnessValue(server.arg("displayBrightness").toInt());
  if (newBrightness != settings.displayBrightness) {
  settings.displayBrightness = newBrightness;
- applyDisplayBrightness(); // Apply immediately
+ brightnessSettingsChanged = true;
  }
  }
 
@@ -450,15 +461,37 @@ void handleSave() {
 #endif
 
  // Save scheduled dimming settings
- settings.enableScheduledDimming = server.hasArg("enableScheduledDimming");
+ bool scheduledDimmingEnabled = server.hasArg("enableScheduledDimming");
+ if (scheduledDimmingEnabled != settings.enableScheduledDimming) {
+ settings.enableScheduledDimming = scheduledDimmingEnabled;
+ brightnessSettingsChanged = true;
+ } else {
+ settings.enableScheduledDimming = scheduledDimmingEnabled;
+ }
  if (server.hasArg("dimStartHour")) {
- settings.dimStartHour = server.arg("dimStartHour").toInt();
+ uint8_t newDimStartHour = server.arg("dimStartHour").toInt();
+ if (newDimStartHour != settings.dimStartHour) {
+ settings.dimStartHour = newDimStartHour;
+ brightnessSettingsChanged = true;
+ }
  }
  if (server.hasArg("dimEndHour")) {
- settings.dimEndHour = server.arg("dimEndHour").toInt();
+ uint8_t newDimEndHour = server.arg("dimEndHour").toInt();
+ if (newDimEndHour != settings.dimEndHour) {
+ settings.dimEndHour = newDimEndHour;
+ brightnessSettingsChanged = true;
+ }
  }
  if (server.hasArg("dimBrightness")) {
- settings.dimBrightness = server.arg("dimBrightness").toInt();
+ uint8_t newDimBrightness = sanitizeBrightnessValue(server.arg("dimBrightness").toInt());
+ if (newDimBrightness != settings.dimBrightness) {
+ settings.dimBrightness = newDimBrightness;
+ brightnessSettingsChanged = true;
+ }
+ }
+
+ if (brightnessSettingsChanged) {
+ refreshDisplayBrightnessNow();
  }
 
  // Save Mario bounce settings

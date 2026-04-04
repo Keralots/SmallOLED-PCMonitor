@@ -16,6 +16,11 @@ void loadSettings();
 // Save current settings to NVS
 void saveSettings();
 
+// Brightness helpers
+uint8_t sanitizeBrightnessValue(uint8_t value);
+bool isZeroBrightnessAllowed();
+void sanitizeBrightnessSettings();
+
 extern Preferences preferences;
 
 #endif // SETTINGS_H

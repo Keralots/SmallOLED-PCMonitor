@@ -12,6 +12,27 @@
 
 Preferences preferences;
 
+uint8_t sanitizeBrightnessValue(uint8_t value) {
+#if TOUCH_BUTTON_ENABLED
+  return value;
+#else
+  return value == 0 ? 1 : value;
+#endif
+}
+
+bool isZeroBrightnessAllowed() {
+#if TOUCH_BUTTON_ENABLED
+  return true;
+#else
+  return false;
+#endif
+}
+
+void sanitizeBrightnessSettings() {
+  settings.displayBrightness = sanitizeBrightnessValue(settings.displayBrightness);
+  settings.dimBrightness = sanitizeBrightnessValue(settings.dimBrightness);
+}
+
 void loadSettings() {
   // Try to open preferences namespace (create if doesn't exist)
   if (!preferences.begin("pcmonitor",
@@ -37,6 +58,11 @@ void loadSettings() {
     settings.refreshRateHz = 10;  // Default manual rate: 10 Hz
     settings.boostAnimationRefresh =
         true;                        // Default: Enable smooth animation boost
+    settings.displayBrightness = sanitizeBrightnessValue(255);
+    settings.enableScheduledDimming = false;
+    settings.dimStartHour = 22;
+    settings.dimEndHour = 7;
+    settings.dimBrightness = sanitizeBrightnessValue(50);
     settings.marioBounceHeight = 35; // Default: 3.5 (35 = 3.5 in tenths)
     settings.marioBounceSpeed = 6;   // Default: 0.6 (6 = 0.6 in tenths)
     settings.marioSmoothAnimation = false; // Default: 2-frame animation
@@ -91,6 +117,11 @@ void loadSettings() {
     preferences.putUChar("refreshMode", 0);   // Default: Auto
     preferences.putUChar("refreshHz", 10);    // Default: 10 Hz
     preferences.putBool("boostAnim", true);   // Default: Enable animation boost
+    preferences.putUChar("brightness", sanitizeBrightnessValue(255));
+    preferences.putBool("schedDim", false);
+    preferences.putUChar("dimStart", 22);
+    preferences.putUChar("dimEnd", 7);
+    preferences.putUChar("dimBright", sanitizeBrightnessValue(50));
     preferences.putUChar("marioBnceH", 35);   // Default: 3.5
     preferences.putUChar("marioBnceS", 6);    // Default: 0.6
     preferences.putBool("marioSmooth", false); // Default: 2-frame animation
@@ -249,6 +280,20 @@ void loadSettings() {
   settings.spaceExplosionGravity =
       preferences.getUChar("spaceExpGrv", 5); // Default: 0.5
 
+  bool brightnessSettingsSanitized = false;
+  uint8_t sanitizedDisplayBrightness =
+      sanitizeBrightnessValue(settings.displayBrightness);
+  if (sanitizedDisplayBrightness != settings.displayBrightness) {
+    settings.displayBrightness = sanitizedDisplayBrightness;
+    brightnessSettingsSanitized = true;
+  }
+
+  uint8_t sanitizedDimBrightness = sanitizeBrightnessValue(settings.dimBrightness);
+  if (sanitizedDimBrightness != settings.dimBrightness) {
+    settings.dimBrightness = sanitizedDimBrightness;
+    brightnessSettingsSanitized = true;
+  }
+
   // Load network configuration
   String loadedDeviceName = preferences.getString("deviceName", "smalloled");
   strncpy(settings.deviceName, loadedDeviceName.c_str(), 31);
@@ -374,10 +419,16 @@ void loadSettings() {
 
   preferences.end();
 
+  if (brightnessSettingsSanitized) {
+    saveSettings();
+    Serial.println("Brightness settings sanitized for this hardware build");
+  }
+
   Serial.println("Settings loaded (v2.0 - Compact Grid Layout)");
 }
 
 void saveSettings() {
+  sanitizeBrightnessSettings();
   preferences.begin("pcmonitor", false); // Read-write
   preferences.putInt("clockStyle", settings.clockStyle);
   preferences.putInt("gmtOffset", settings.gmtOffset); // Keep for backward compatibility
