@@ -32,7 +32,7 @@ void drawSpiny(int x, int y, int frame, bool hit);
 void drawMarioFireball(MarioFireball& fb);
 void updateMarioFireball();
 static void drawCoin(MarioCoin& c);
-void drawKoopa(int x, int y, int frame, bool shellOnly);
+void drawKoopa(int x, int y, int frame, bool shellOnly, bool facingRight);
 static void drawStarSprite(int x, int y, uint8_t frame);
 static void drawMushroomSprite(int x, int y, uint8_t frame);
 static void drawBigMario(int x, int y, bool facingRight, int frame);
@@ -1215,7 +1215,8 @@ void drawEnemy(MarioEnemy& e) {
   if (e.type == ENEMY_GOOMBA) {
     drawGoomba((int)e.x, y, e.walkFrame, e.state == ENEMY_SQUASHING);
   } else if (e.type == ENEMY_KOOPA) {
-    drawKoopa((int)e.x, y, e.walkFrame, e.state == ENEMY_SHELL_SLIDING);
+    drawKoopa((int)e.x, y, e.walkFrame, e.state == ENEMY_SHELL_SLIDING,
+              !e.fromRight);
   } else {
     drawSpiny((int)e.x, y, e.walkFrame, e.state == ENEMY_HIT);
   }
@@ -1232,7 +1233,7 @@ void drawMarioFireball(MarioFireball& fb) {
 }
 
 // NES SMB1 Koopa Troopa (10px tall, turtle with shell)
-void drawKoopa(int x, int y, int frame, bool shellOnly) {
+void drawKoopa(int x, int y, int frame, bool shellOnly, bool facingRight) {
   int sx = x - 5;
   int sy = y - 10;
 
@@ -1250,16 +1251,27 @@ void drawKoopa(int x, int y, int frame, bool shellOnly) {
   }
 
   // Head (poking out from shell)
-  display.fillRect(sx + 7, sy, 3, 3, DISPLAY_WHITE);
-  display.drawPixel(sx + 8, sy + 1, DISPLAY_BLACK);  // Eye
+  if (facingRight) {
+    display.fillRect(sx + 7, sy, 3, 3, DISPLAY_WHITE);
+    display.drawPixel(sx + 8, sy + 1, DISPLAY_BLACK);  // Eye
+  } else {
+    display.fillRect(sx, sy, 3, 3, DISPLAY_WHITE);
+    display.drawPixel(sx + 1, sy + 1, DISPLAY_BLACK);  // Eye
+  }
 
   // Shell (dome shape)
   display.fillRect(sx + 2, sy + 2, 6, 2, DISPLAY_WHITE);
   display.fillRect(sx + 1, sy + 4, 8, 3, DISPLAY_WHITE);
   // Shell pattern
-  display.drawPixel(sx + 3, sy + 4, DISPLAY_BLACK);
-  display.drawPixel(sx + 4, sy + 5, DISPLAY_BLACK);
-  display.drawPixel(sx + 6, sy + 4, DISPLAY_BLACK);
+  if (facingRight) {
+    display.drawPixel(sx + 3, sy + 4, DISPLAY_BLACK);
+    display.drawPixel(sx + 4, sy + 5, DISPLAY_BLACK);
+    display.drawPixel(sx + 6, sy + 4, DISPLAY_BLACK);
+  } else {
+    display.drawPixel(sx + 6, sy + 4, DISPLAY_BLACK);
+    display.drawPixel(sx + 5, sy + 5, DISPLAY_BLACK);
+    display.drawPixel(sx + 3, sy + 4, DISPLAY_BLACK);
+  }
 
   // Lower body
   display.fillRect(sx + 2, sy + 7, 6, 1, DISPLAY_WHITE);
