@@ -8,6 +8,29 @@
 #include "clock_globals.h"
 #include "../display/display.h"
 
+static void advanceDisplayTimeState(int& hour, int& minute, bool& isPM) {
+  minute++;
+  if (minute < 60) {
+    return;
+  }
+
+  minute = 0;
+
+  if (settings.use24Hour) {
+    hour = (hour + 1) % 24;
+    return;
+  }
+
+  if (hour == 11) {
+    hour = 12;
+    isPM = !isPM;
+  } else if (hour == 12) {
+    hour = 1;
+  } else {
+    hour++;
+  }
+}
+
 // ========== Colon Blink Helper ==========
 bool shouldShowColon() {
   if (settings.colonBlinkMode == 0) {
@@ -21,6 +44,95 @@ bool shouldShowColon() {
     unsigned long period_ms = (unsigned long)(1000.0 / hz);
     return (millis() % period_ms) < (period_ms / 2);  // 50% duty cycle
   }
+}
+
+// ========== Time Formatting Helpers ==========
+void formatTimeForDisplay(int hour24, int minute, int& displayHour,
+                          int& displayMin, bool& isPM) {
+  displayHour = hour24;
+  displayMin = minute;
+  isPM = hour24 >= 12;
+
+  if (!settings.use24Hour) {
+    displayHour = hour24 % 12;
+    if (displayHour == 0) {
+      displayHour = 12;
+    }
+  }
+}
+
+void syncDisplayedTime(const struct tm* timeinfo) {
+  formatTimeForDisplay(timeinfo->tm_hour, timeinfo->tm_min, displayed_hour,
+                       displayed_min, displayed_is_pm);
+}
+
+void advanceDisplayedTimeOneMinute() {
+  advanceDisplayTimeState(displayed_hour, displayed_min, displayed_is_pm);
+}
+
+bool displayedTimeMatches(const struct tm* timeinfo) {
+  int realHour = 0;
+  int realMin = 0;
+  bool realIsPM = false;
+  formatTimeForDisplay(timeinfo->tm_hour, timeinfo->tm_min, realHour, realMin,
+                       realIsPM);
+  return displayed_hour == realHour && displayed_min == realMin &&
+         displayed_is_pm == realIsPM;
+}
+
+uint8_t getDisplayedDigitValue(uint8_t digitIndex) {
+  switch (digitIndex) {
+    case 0:
+      return displayed_hour / 10;
+    case 1:
+      return displayed_hour % 10;
+    case 3:
+      return displayed_min / 10;
+    case 4:
+      return displayed_min % 10;
+    default:
+      return 0;
+  }
+}
+
+void updateDisplayedTimeDigit(uint8_t digitIndex, uint8_t newValue) {
+  int oldHour = displayed_hour;
+
+  int hourTens = displayed_hour / 10;
+  int hourOnes = displayed_hour % 10;
+  int minTens = displayed_min / 10;
+  int minOnes = displayed_min % 10;
+
+  if (digitIndex == 0) {
+    hourTens = newValue;
+    displayed_hour = hourTens * 10 + hourOnes;
+  } else if (digitIndex == 1) {
+    hourOnes = newValue;
+    displayed_hour = hourTens * 10 + hourOnes;
+  } else if (digitIndex == 3) {
+    minTens = newValue;
+    displayed_min = minTens * 10 + minOnes;
+  } else if (digitIndex == 4) {
+    minOnes = newValue;
+    displayed_min = minTens * 10 + minOnes;
+  }
+
+  if (!settings.use24Hour && oldHour == 11 && displayed_hour == 12) {
+    displayed_is_pm = !displayed_is_pm;
+  }
+
+  time_overridden = true;
+  time_override_start = millis();
+}
+
+void drawMeridiemIndicator(int x, int y, bool isPM) {
+  if (settings.use24Hour) {
+    return;
+  }
+
+  display.setTextSize(1);
+  display.setCursor(x, y);
+  display.print(isPM ? "PM" : "AM");
 }
 
 // ========== Digit Bounce Animation ==========
@@ -66,13 +178,11 @@ void updateDigitBounce() {
 }
 
 // ========== Calculate Target Digits for Minute Change ==========
-void calculateTargetDigits(int current_hour, int current_min) {
-  // Calculate the next minute
-  int next_min = (current_min + 1) % 60;
+void calculateTargetDigits(int current_hour, int current_min, bool current_is_pm) {
   int next_hour = current_hour;
-  if (next_min == 0) {
-    next_hour = (current_hour + 1) % 24;
-  }
+  int next_min = current_min;
+  bool next_is_pm = current_is_pm;
+  advanceDisplayTimeState(next_hour, next_min, next_is_pm);
 
   // Compare digits and build target list
   num_targets = 0;
@@ -128,18 +238,15 @@ void displayStandardClock() {
   display.setTextSize(3);
   char timeStr[9];
 
-  int displayHour = timeinfo.tm_hour;
+  int displayHour = 0;
+  int displayMin = 0;
   bool isPM = false;
-
-  if (!settings.use24Hour) {
-    isPM = displayHour >= 12;
-    displayHour = displayHour % 12;
-    if (displayHour == 0) displayHour = 12;
-  }
+  formatTimeForDisplay(timeinfo.tm_hour, timeinfo.tm_min, displayHour,
+                       displayMin, isPM);
 
   // Use blinking colon based on settings
   char separator = shouldShowColon() ? ':' : ' ';
-  sprintf(timeStr, "%02d%c%02d", displayHour, separator, timeinfo.tm_min);
+  sprintf(timeStr, "%02d%c%02d", displayHour, separator, displayMin);
 
   // Center time
   int time_width = 5 * 18;  // 5 chars * 18px
@@ -148,11 +255,7 @@ void displayStandardClock() {
   display.print(timeStr);
 
   // AM/PM indicator for 12-hour format
-  if (!settings.use24Hour) {
-    display.setTextSize(1);
-    display.setCursor(110, 8);
-    display.print(isPM ? "PM" : "AM");
-  }
+  drawMeridiemIndicator(110, 8, isPM);
 
   // Date display
   display.setTextSize(1);
@@ -202,33 +305,27 @@ void displayLargeClock() {
     return;
   }
 
-  int displayHour = timeinfo.tm_hour;
+  int displayHour = 0;
+  int displayMin = 0;
   bool isPM = false;
-
-  if (!settings.use24Hour) {
-    isPM = displayHour >= 12;
-    displayHour = displayHour % 12;
-    if (displayHour == 0) displayHour = 12;
-  }
+  formatTimeForDisplay(timeinfo.tm_hour, timeinfo.tm_min, displayHour,
+                       displayMin, isPM);
 
   // Large time display - size 4 (24px per char)
   display.setTextSize(4);
   char timeStr[6];
   // Use blinking colon based on settings
   char separator = shouldShowColon() ? ':' : ' ';
-  sprintf(timeStr, "%02d%c%02d", displayHour, separator, timeinfo.tm_min);
+  sprintf(timeStr, "%02d%c%02d", displayHour, separator, displayMin);
 
   // Center time: 5 chars * 24px = 120px, centered in 128px
   int time_x = (SCREEN_WIDTH - 120) / 2;
   display.setCursor(time_x, 4);
   display.print(timeStr);
 
-  // AM/PM indicator for 12-hour format
-  if (!settings.use24Hour) {
-    display.setTextSize(1);
-    display.setCursor(116, 4);
-    display.print(isPM ? "PM" : "AM");
-  }
+  // AM/PM indicator for 12-hour format lives in the bottom-right corner here,
+  // so it does not collide with the oversized minute digits.
+  drawMeridiemIndicator(110, 54, isPM);
 
   // Date at bottom
   display.setTextSize(1);

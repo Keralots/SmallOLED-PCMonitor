@@ -12,8 +12,6 @@
 
 // Forward declarations for helper functions used by Mario clock
 void drawTimeWithBounce();
-void advanceDisplayedTime();
-void updateSpecificDigit(int digitIndex, int newValue);
 
 // Coin animation struct (needed before displayClockWithMario)
 struct MarioCoin {
@@ -98,47 +96,6 @@ void drawTimeWithBounce() {
   }
 }
 
-// ========== Advance Displayed Time ==========
-void advanceDisplayedTime() {
-  displayed_min++;
-  if (displayed_min >= 60) {
-    displayed_min = 0;
-    displayed_hour++;
-    if (displayed_hour >= 24) {
-      displayed_hour = 0;
-    }
-  }
-  time_overridden = true;
-  time_override_start = millis();
-}
-
-// ========== Update Specific Digit ==========
-void updateSpecificDigit(int digitIndex, int newValue) {
-  // Update the specific digit in displayed_hour or displayed_min
-  // digitIndex corresponds to DIGIT_X array: 0=hour tens, 1=hour ones, 3=min tens, 4=min ones
-  int hour_tens = displayed_hour / 10;
-  int hour_ones = displayed_hour % 10;
-  int min_tens = displayed_min / 10;
-  int min_ones = displayed_min % 10;
-
-  if (digitIndex == 0) {
-    hour_tens = newValue;
-    displayed_hour = hour_tens * 10 + hour_ones;
-  } else if (digitIndex == 1) {
-    hour_ones = newValue;
-    displayed_hour = hour_tens * 10 + hour_ones;
-  } else if (digitIndex == 3) {
-    min_tens = newValue;
-    displayed_min = min_tens * 10 + min_ones;
-  } else if (digitIndex == 4) {
-    min_ones = newValue;
-    displayed_min = min_tens * 10 + min_ones;
-  }
-
-  time_overridden = true;
-  time_override_start = millis();
-}
-
 // ========== Display Clock With Mario ==========
 void displayClockWithMario() {
   struct tm timeinfo;
@@ -154,21 +111,19 @@ void displayClockWithMario() {
   }
 
   if (!time_overridden) {
-    displayed_hour = timeinfo.tm_hour;
-    displayed_min = timeinfo.tm_min;
+    syncDisplayedTime(&timeinfo);
   }
 
   // Check if time override should be cleared
   if (time_overridden) {
-    bool ntp_matches = (timeinfo.tm_hour == displayed_hour && timeinfo.tm_min == displayed_min);
+    bool ntp_matches = displayedTimeMatches(&timeinfo);
     bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
 
     if (ntp_matches || timeout_expired) {
       time_overridden = false;
       // If timeout expired but NTP doesn't match, force sync to real time
       if (timeout_expired && !ntp_matches) {
-        displayed_hour = timeinfo.tm_hour;
-        displayed_min = timeinfo.tm_min;
+        syncDisplayedTime(&timeinfo);
       }
     }
   }
@@ -192,6 +147,7 @@ void displayClockWithMario() {
   int date_x = (SCREEN_WIDTH - DATE_DISPLAY_WIDTH) / 2;
   display.setCursor(date_x, 4);
   display.print(dateStr);
+  drawMeridiemIndicator(110, 4, displayed_is_pm);
 
   // SMB1-style coin counter (top-left, only when encounters enabled)
   if (settings.marioIdleEncounters) {
@@ -288,7 +244,7 @@ void updateMarioAnimation(struct tm* timeinfo) {
 
   if (seconds >= MARIO_ANIMATION_TRIGGER_SECOND && !animation_triggered && mario_state == MARIO_IDLE) {
     animation_triggered = true;
-    calculateTargetDigits(displayed_hour, displayed_min);
+    calculateTargetDigits(displayed_hour, displayed_min, displayed_is_pm);
     if (num_targets > 0) {
       current_target_index = 0;
       mario_x = MARIO_START_X;
@@ -359,8 +315,8 @@ void updateMarioAnimation(struct tm* timeinfo) {
           triggerDigitBounce(target_digit_index[current_target_index]);
 
           // Update only the specific digit that Mario just hit
-          updateSpecificDigit(target_digit_index[current_target_index],
-                             target_digit_values[current_target_index]);
+          updateDisplayedTimeDigit(target_digit_index[current_target_index],
+                                   target_digit_values[current_target_index]);
 
           jump_velocity = MARIO_BOUNCE_VELOCITY;
         }
