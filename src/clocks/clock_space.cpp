@@ -225,8 +225,8 @@ void updateSpaceLaser() {
   if (laser_end_y <= digit_bottom_y) {
     space_laser.active = false;
     spawnSpaceExplosion(space_laser.target_digit_idx);
-    updateSpecificDigit(target_digit_index[current_target_index],
-                       target_digit_values[current_target_index]);
+    updateDisplayedTimeDigit(target_digit_index[current_target_index],
+                             target_digit_values[current_target_index]);
     space_explosion_timer = 0;
     space_state = SPACE_EXPLODING_DIGIT;
   }
@@ -342,7 +342,7 @@ void updateSpaceAnimation(struct tm* timeinfo) {
     animation_triggered = true;
     time_overridden = true;
     time_override_start = millis();
-    calculateTargetDigits(displayed_hour, displayed_min);
+    calculateTargetDigits(displayed_hour, displayed_min, displayed_is_pm);
 
     if (num_targets > 0) {
       current_target_index = 0;
@@ -394,23 +394,20 @@ void displayClockWithSpaceInvader() {
 
   // Time management
   if (!time_overridden) {
-    displayed_hour = timeinfo.tm_hour;
-    displayed_min = timeinfo.tm_min;
+    syncDisplayedTime(&timeinfo);
   }
 
   // Check if time override should be cleared
   if (time_overridden) {
-    bool ntp_matches = (timeinfo.tm_hour == displayed_hour &&
-                        timeinfo.tm_min == displayed_min &&
-                        space_state == SPACE_PATROL);
+    bool ntp_matches = displayedTimeMatches(&timeinfo) &&
+                       space_state == SPACE_PATROL;
     bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
 
     if (ntp_matches || timeout_expired) {
       time_overridden = false;
       // If timeout expired but NTP doesn't match, force sync to real time
       if (timeout_expired && !ntp_matches) {
-        displayed_hour = timeinfo.tm_hour;
-        displayed_min = timeinfo.tm_min;
+        syncDisplayedTime(&timeinfo);
       }
     }
   }
@@ -428,6 +425,7 @@ void displayClockWithSpaceInvader() {
   }
   display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
   display.print(dateStr);
+  drawMeridiemIndicator(110, 4, displayed_is_pm);
 
   // Time digits
   const int SPACE_TIME_Y = 16;

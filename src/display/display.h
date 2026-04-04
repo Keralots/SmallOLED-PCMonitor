@@ -46,6 +46,12 @@
 // Initialize display - returns true on success
 bool initDisplay();
 void applyDisplayBrightness();
+void refreshDisplayBrightnessNow();
 void checkScheduledBrightness();
+
+#if TOUCH_BUTTON_ENABLED
+bool handleTemporaryDisplayWake();
+void updateTemporaryDisplayWake();
+#endif
 
 #endif // DISPLAY_H

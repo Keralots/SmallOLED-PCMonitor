@@ -74,12 +74,10 @@ void initPongAnimation() {
   // Initialize displayed time from current time
   struct tm timeinfo;
   if (getTimeWithTimeout(&timeinfo)) {
-    displayed_hour = timeinfo.tm_hour;
-    displayed_min = timeinfo.tm_min;
+    syncDisplayedTime(&timeinfo);
   } else {
     // Fallback if time not available
-    displayed_hour = 0;
-    displayed_min = 0;
+    formatTimeForDisplay(0, 0, displayed_hour, displayed_min, displayed_is_pm);
   }
 
   last_pong_update = millis();
@@ -934,11 +932,15 @@ void updatePongAnimation(struct tm* timeinfo) {
 
   // Update displayed time and detect digit changes
   if (!time_overridden) {
-    int new_hour = timeinfo->tm_hour;
-    int new_min = timeinfo->tm_min;
+    int new_hour = 0;
+    int new_min = 0;
+    bool new_is_pm = false;
+    formatTimeForDisplay(timeinfo->tm_hour, timeinfo->tm_min, new_hour, new_min,
+                         new_is_pm);
 
     // Detect minute change (trigger digit transitions)
-    if (new_min != displayed_min || new_hour != displayed_hour) {
+    if (new_min != displayed_min || new_hour != displayed_hour ||
+        new_is_pm != displayed_is_pm) {
       // Check each digit for changes
       int old_hour_tens = displayed_hour / 10;
       int old_hour_ones = displayed_hour % 10;
@@ -965,6 +967,7 @@ void updatePongAnimation(struct tm* timeinfo) {
 
       displayed_hour = new_hour;
       displayed_min = new_min;
+      displayed_is_pm = new_is_pm;
     }
   }
 
@@ -1082,6 +1085,7 @@ void displayClockWithPong() {
   }
   display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
   display.print(dateStr);
+  drawMeridiemIndicator(110, 4, displayed_is_pm);
 
   // 2. Digits (with transitions and bounce)
   drawPongDigits();

@@ -12,7 +12,7 @@
 #include "user_config.h"
 
 // ========== Version ==========
-#define FIRMWARE_VERSION "1.5.2"
+#define FIRMWARE_VERSION "1.5.3"
 
 // ========== Constants ==========
 #define MAX_METRICS 20
@@ -343,6 +343,7 @@ extern int mario_walk_frame;
 extern unsigned long last_mario_update;
 extern int displayed_hour;
 extern int displayed_min;
+extern bool displayed_is_pm;
 extern bool time_overridden;
 extern int last_minute;
 extern bool animation_triggered;

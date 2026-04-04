@@ -180,23 +180,20 @@ void displayClockWithPacman() {
 
   // Time management
   if (!time_overridden) {
-    displayed_hour = timeinfo.tm_hour;
-    displayed_min = timeinfo.tm_min;
+    syncDisplayedTime(&timeinfo);
   }
 
   // Check if time override should be cleared
   if (time_overridden) {
-    bool ntp_matches = (timeinfo.tm_hour == displayed_hour &&
-                        timeinfo.tm_min == displayed_min &&
-                        pacman_state == PACMAN_PATROL);
+    bool ntp_matches = displayedTimeMatches(&timeinfo) &&
+                        pacman_state == PACMAN_PATROL;
     bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
 
     if (ntp_matches || timeout_expired) {
       time_overridden = false;
       // If timeout expired but NTP doesn't match, force sync to real time
       if (timeout_expired && !ntp_matches) {
-        displayed_hour = timeinfo.tm_hour;
-        displayed_min = timeinfo.tm_min;
+        syncDisplayedTime(&timeinfo);
       }
     }
   }
@@ -214,14 +211,15 @@ void displayClockWithPacman() {
   }
   display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
   display.print(dateStr);
+  drawMeridiemIndicator(110, 4, displayed_is_pm);
 
   // Draw time digits as pellets
   uint8_t digitValues[5];
-  digitValues[0] = displayed_hour / 10;
-  digitValues[1] = displayed_hour % 10;
+  digitValues[0] = getDisplayedDigitValue(0);
+  digitValues[1] = getDisplayedDigitValue(1);
   digitValues[2] = 10;  // Colon marker (not a digit)
-  digitValues[3] = displayed_min / 10;
-  digitValues[4] = displayed_min % 10;
+  digitValues[3] = getDisplayedDigitValue(3);
+  digitValues[4] = getDisplayedDigitValue(4);
 
   for (int i = 0; i < 5; i++) {
     if (i == 2) {
@@ -315,7 +313,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
     time_override_start = millis();
 
     // Calculate which digits will change
-    calculateTargetDigits(displayed_hour, displayed_min);
+    calculateTargetDigits(displayed_hour, displayed_min, displayed_is_pm);
 
     if (num_targets > 0) {
       // Build queue in left-to-right order, SKIPPING the colon (position 2)
@@ -336,11 +334,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
         pacman_state = PACMAN_TARGETING;
         // Set direction toward first digit's first pellet
         uint8_t first_idx = target_digit_queue[0];
-        uint8_t first_digit_val = 0;
-        if (first_idx == 0) first_digit_val = displayed_hour / 10;
-        else if (first_idx == 1) first_digit_val = displayed_hour % 10;
-        else if (first_idx == 3) first_digit_val = displayed_min / 10;
-        else if (first_idx == 4) first_digit_val = displayed_min % 10;
+        uint8_t first_digit_val = getDisplayedDigitValue(first_idx);
 
         const PathStep first_step = eatingPaths[first_digit_val][0];
         float first_x = DIGIT_X_PACMAN[first_idx] + first_step.col * PELLET_SPACING;
@@ -365,11 +359,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
         uint8_t target_idx = target_digit_queue[target_queue_index];
 
         // Get the CURRENT digit value to determine the path start position
-        uint8_t current_digit_value = 0;
-        if (target_idx == 0) current_digit_value = displayed_hour / 10;
-        else if (target_idx == 1) current_digit_value = displayed_hour % 10;
-        else if (target_idx == 3) current_digit_value = displayed_min / 10;
-        else if (target_idx == 4) current_digit_value = displayed_min % 10;
+        uint8_t current_digit_value = getDisplayedDigitValue(target_idx);
 
         // Target the first pellet position in the eating path
         const PathStep first_step = eatingPaths[current_digit_value][0];
@@ -425,7 +415,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
             // Clear eaten pellets BEFORE updating digit value (prevents old digit reappearance)
             memset(digitEatenPellets[pending_digit_index], 0, 5);
 
-            updateSpecificDigit(pending_digit_index, pending_digit_value);
+            updateDisplayedTimeDigit(pending_digit_index, pending_digit_value);
 
             // Trigger bounce animation if enabled
             if (settings.pacmanBounceEnabled) {
@@ -441,11 +431,7 @@ void updatePacmanAnimation(struct tm* timeinfo) {
             pacman_state = PACMAN_TARGETING;
             // Set direction toward next digit's first pellet
             uint8_t next_idx = target_digit_queue[target_queue_index];
-            uint8_t next_digit_val = 0;
-            if (next_idx == 0) next_digit_val = displayed_hour / 10;
-            else if (next_idx == 1) next_digit_val = displayed_hour % 10;
-            else if (next_idx == 3) next_digit_val = displayed_min / 10;
-            else if (next_idx == 4) next_digit_val = displayed_min % 10;
+            uint8_t next_digit_val = getDisplayedDigitValue(next_idx);
 
             const PathStep next_step = eatingPaths[next_digit_val][0];
             float next_x = DIGIT_X_PACMAN[next_idx] + next_step.col * PELLET_SPACING;
@@ -801,28 +787,3 @@ void drawPacman(int x, int y, int direction, int mouthFrame) {
   }
 }
 
-void updateSpecificDigit(uint8_t digitIndex, uint8_t newValue) {
-  // Update the specific digit in displayed_hour or displayed_min
-  // digitIndex corresponds to DIGIT_X array: 0=hour tens, 1=hour ones, 3=min tens, 4=min ones
-  int hour_tens = displayed_hour / 10;
-  int hour_ones = displayed_hour % 10;
-  int min_tens = displayed_min / 10;
-  int min_ones = displayed_min % 10;
-
-  if (digitIndex == 0) {
-    hour_tens = newValue;
-    displayed_hour = hour_tens * 10 + hour_ones;
-  } else if (digitIndex == 1) {
-    hour_ones = newValue;
-    displayed_hour = hour_tens * 10 + hour_ones;
-  } else if (digitIndex == 3) {
-    min_tens = newValue;
-    displayed_min = min_tens * 10 + min_ones;
-  } else if (digitIndex == 4) {
-    min_ones = newValue;
-    displayed_min = min_tens * 10 + min_ones;
-  }
-
-  time_overridden = true;
-  time_override_start = millis();
-}
