@@ -786,33 +786,10 @@ void handleSave() {
  applyTimezone();
  ntpSynced = false; // Force NTP resync after timezone change
 
- // Reset Mario animation state when switching modes
- mario_state = MARIO_IDLE;
- mario_x = -15;
- animation_triggered = false;
- time_overridden = false;
- last_minute = -1;
-
- // Reset Space clock animation state when switching modes
- space_state = SPACE_PATROL;
- space_x = 64; // Center of screen (space_y is const at 56)
-
- // Reset Pong animation state when switching modes
- resetPongAnimation();
-
- // Reset Pac-Man animation state when switching modes
- pacman_state = PACMAN_PATROL;
- pacman_x = 30.0;
- pacman_y = PACMAN_PATROL_Y;
- pacman_direction = 1;
- pacman_animation_triggered = false;
- last_minute_pacman = -1;
- for (int i = 0; i < 5; i++) {
- digit_being_eaten[i] = false;
- digit_eaten_rows_left[i] = 0;
- digit_eaten_rows_right[i] = 0;
- }
- generatePellets();
+ // Reset every clock's animation state (one source of truth in
+ // clock_globals.cpp; also clears time_overridden and Pac-Man eat-queue
+ // residue).
+ resetClockAnimationState();
 
  // Check if network settings changed - if so, restart is required
  bool networkChanged = (previousStaticIPSetting != settings.useStaticIP);
@@ -1098,6 +1075,11 @@ void handleImportConfig() {
  saveSettings();
  applyTimezone();
  ntpSynced = false; // Force NTP resync after config import
+
+ // Imported config can change clockStyle. Reset every clock's animation
+ // state so a previous in-flight animation doesn't carry stale time
+ // override + queue residue into the new style.
+ resetClockAnimationState();
 
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", "{\"success\":true,\"message\":\"Configuration imported successfully\"}");

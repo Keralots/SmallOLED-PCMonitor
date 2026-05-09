@@ -121,8 +121,30 @@ void updateDisplayedTimeDigit(uint8_t digitIndex, uint8_t newValue) {
     displayed_is_pm = !displayed_is_pm;
   }
 
+  if (!time_overridden) {
+    time_override_start = millis();
+  }
   time_overridden = true;
-  time_override_start = millis();
+}
+
+// Centralized time-override maintenance. Called once per frame from each
+// animated clock's display function. Clears the override either after
+// TIME_OVERRIDE_MAX_MS (absolute cap from the start of the override) or
+// when the caller is animation-idle and the cached time matches NTP.
+// Force-syncs displayed time on timeout-driven clears so a stuck animation
+// can never leave displayed_hour/displayed_min behind reality.
+void maintainTimeOverride(const struct tm* timeinfo, bool animationIdle) {
+  if (!time_overridden) {
+    return;
+  }
+  bool ntp_matches = animationIdle && displayedTimeMatches(timeinfo);
+  bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
+  if (ntp_matches || timeout_expired) {
+    time_overridden = false;
+    if (timeout_expired && !ntp_matches) {
+      syncDisplayedTime(timeinfo);
+    }
+  }
 }
 
 void drawMeridiemIndicator(int x, int y, bool isPM) {

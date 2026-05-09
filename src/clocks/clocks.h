@@ -37,6 +37,13 @@ bool displayedTimeMatches(const struct tm* timeinfo);
 uint8_t getDisplayedDigitValue(uint8_t digitIndex);
 void updateDisplayedTimeDigit(uint8_t digitIndex, uint8_t newValue);
 
+// Animated-clock time-override maintenance (clears stuck overrides)
+void maintainTimeOverride(const struct tm* timeinfo, bool animationIdle);
+
+// Reset every clock's animation state to a clean baseline (used on
+// touch-button cycle, /save, and /api/import when clockStyle changes).
+void resetClockAnimationState();
+
 // Draw a compact AM/PM indicator when 12-hour mode is active
 void drawMeridiemIndicator(int x, int y, bool isPM);
 

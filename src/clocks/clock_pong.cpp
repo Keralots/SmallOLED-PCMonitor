@@ -1070,6 +1070,17 @@ void displayClockWithPong() {
   // Update animation
   updatePongAnimation(&timeinfo);
 
+  // Pong is permanently animated (ball/paddle) so "idle" for the override
+  // helper means "no digit transition currently breaking or assembling".
+  bool pong_idle = true;
+  for (int i = 0; i < 5; i++) {
+    if (digit_transitions[i].state != DIGIT_NORMAL) {
+      pong_idle = false;
+      break;
+    }
+  }
+  maintainTimeOverride(&timeinfo, pong_idle);
+
   // RENDERING ORDER (back to front):
 
   // 1. Date at top (textSize 1)
