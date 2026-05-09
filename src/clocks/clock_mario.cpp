@@ -142,6 +142,9 @@ void displayClockWithMario() {
     case 2:
       sprintf(dateStr, "%04d-%02d-%02d", timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, timeinfo.tm_mday);
       break;
+    case 3:
+      sprintf(dateStr, "%02d.%02d.%04d", timeinfo.tm_mday, timeinfo.tm_mon + 1, timeinfo.tm_year + 1900);
+      break;
   }
 
   int date_x = (SCREEN_WIDTH - DATE_DISPLAY_WIDTH) / 2;
