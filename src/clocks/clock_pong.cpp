@@ -1070,6 +1070,17 @@ void displayClockWithPong() {
   // Update animation
   updatePongAnimation(&timeinfo);
 
+  // Pong is permanently animated (ball/paddle) so "idle" for the override
+  // helper means "no digit transition currently breaking or assembling".
+  bool pong_idle = true;
+  for (int i = 0; i < 5; i++) {
+    if (digit_transitions[i].state != DIGIT_NORMAL) {
+      pong_idle = false;
+      break;
+    }
+  }
+  maintainTimeOverride(&timeinfo, pong_idle);
+
   // RENDERING ORDER (back to front):
 
   // 1. Date at top (textSize 1)
@@ -1082,6 +1093,8 @@ void displayClockWithPong() {
                     timeinfo.tm_mday, timeinfo.tm_year + 1900); break;
     case 2: sprintf(dateStr, "%04d-%02d-%02d", timeinfo.tm_year + 1900,
                     timeinfo.tm_mon + 1, timeinfo.tm_mday); break;
+    case 3: sprintf(dateStr, "%02d.%02d.%04d", timeinfo.tm_mday,
+                    timeinfo.tm_mon + 1, timeinfo.tm_year + 1900); break;
   }
   display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
   display.print(dateStr);

@@ -397,20 +397,7 @@ void displayClockWithSpaceInvader() {
     syncDisplayedTime(&timeinfo);
   }
 
-  // Check if time override should be cleared
-  if (time_overridden) {
-    bool ntp_matches = displayedTimeMatches(&timeinfo) &&
-                       space_state == SPACE_PATROL;
-    bool timeout_expired = (millis() - time_override_start > TIME_OVERRIDE_MAX_MS);
-
-    if (ntp_matches || timeout_expired) {
-      time_overridden = false;
-      // If timeout expired but NTP doesn't match, force sync to real time
-      if (timeout_expired && !ntp_matches) {
-        syncDisplayedTime(&timeinfo);
-      }
-    }
-  }
+  maintainTimeOverride(&timeinfo, space_state == SPACE_PATROL);
 
   // Date (at top, Y=4)
   display.setTextSize(1);
@@ -422,6 +409,8 @@ void displayClockWithSpaceInvader() {
                     timeinfo.tm_mday, timeinfo.tm_year + 1900); break;
     case 2: sprintf(dateStr, "%04d-%02d-%02d", timeinfo.tm_year + 1900,
                     timeinfo.tm_mon + 1, timeinfo.tm_mday); break;
+    case 3: sprintf(dateStr, "%02d.%02d.%04d", timeinfo.tm_mday,
+                    timeinfo.tm_mon + 1, timeinfo.tm_year + 1900); break;
   }
   display.setCursor((SCREEN_WIDTH - 60) / 2, 4);
   display.print(dateStr);

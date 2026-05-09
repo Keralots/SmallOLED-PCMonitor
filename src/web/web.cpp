@@ -257,7 +257,7 @@ void handleRoot() {
  min="3" max="10" step="1"
  value=")rawliteral" + String(settings.spaceExplosionGravity) + R"rawliteral("
  oninput="document.getElementById('explosionGravityValue').textContent = (this.value / 10).toFixed(1)"><span style="color: #3b82f6; font-size: 14px; margin-left: 10px;"><span id="explosionGravityValue">)rawliteral" + String(settings.spaceExplosionGravity / 10.0, 1) + R"rawliteral(</span></span><p style="color: #888; font-size: 11px;">
- Controls fragment gravity (how fast debris falls).</p></div><label for="use24Hour">Time Format</label><select name="use24Hour" id="use24Hour"><option value="1" )rawliteral" + String(settings.use24Hour ? "selected" : "") + R"rawliteral(>24-Hour (14:30)</option><option value="0" )rawliteral" + String(!settings.use24Hour ? "selected" : "") + R"rawliteral(>12-Hour (2:30 PM)</option></select><label for="dateFormat">Date Format</label><select name="dateFormat" id="dateFormat"><option value="0" )rawliteral" + String(settings.dateFormat == 0 ? "selected" : "") + R"rawliteral(>DD/MM/YYYY</option><option value="1" )rawliteral" + String(settings.dateFormat == 1 ? "selected" : "") + R"rawliteral(>MM/DD/YYYY</option><option value="2" )rawliteral" + String(settings.dateFormat == 2 ? "selected" : "") + R"rawliteral(>YYYY-MM-DD</option></select></div></div><!-- Display Settings Section --><div class="section-header" onclick="toggleSection('displayPerfSection')"><h3>&#9889; Display Settings</h3><span class="section-arrow">&#9660;</span></div><div id="displayPerfSection" class="section-content collapsed"><div class="card"><label for="colonBlinkMode">Clock Colon Display</label><select name="colonBlinkMode" id="colonBlinkMode"><option value="0" )rawliteral" + String(settings.colonBlinkMode == 0 ? "selected" : "") + R"rawliteral(>On</option><option value="1" )rawliteral" + String(settings.colonBlinkMode == 1 ? "selected" : "") + R"rawliteral(>Blinking</option><option value="2" )rawliteral" + String(settings.colonBlinkMode == 2 ? "selected" : "") + R"rawliteral(>Off</option></select><label for="colonBlinkRate">Blink Rate (Hz)</label><input type="range" name="colonBlinkRate" id="colonBlinkRate"
+ Controls fragment gravity (how fast debris falls).</p></div><label for="use24Hour">Time Format</label><select name="use24Hour" id="use24Hour"><option value="1" )rawliteral" + String(settings.use24Hour ? "selected" : "") + R"rawliteral(>24-Hour (14:30)</option><option value="0" )rawliteral" + String(!settings.use24Hour ? "selected" : "") + R"rawliteral(>12-Hour (2:30 PM)</option></select><label for="dateFormat">Date Format</label><select name="dateFormat" id="dateFormat"><option value="0" )rawliteral" + String(settings.dateFormat == 0 ? "selected" : "") + R"rawliteral(>DD/MM/YYYY</option><option value="1" )rawliteral" + String(settings.dateFormat == 1 ? "selected" : "") + R"rawliteral(>MM/DD/YYYY</option><option value="2" )rawliteral" + String(settings.dateFormat == 2 ? "selected" : "") + R"rawliteral(>YYYY-MM-DD</option><option value="3" )rawliteral" + String(settings.dateFormat == 3 ? "selected" : "") + R"rawliteral(>DD.MM.YYYY</option></select></div></div><!-- Display Settings Section --><div class="section-header" onclick="toggleSection('displayPerfSection')"><h3>&#9889; Display Settings</h3><span class="section-arrow">&#9660;</span></div><div id="displayPerfSection" class="section-content collapsed"><div class="card"><label for="colonBlinkMode">Clock Colon Display</label><select name="colonBlinkMode" id="colonBlinkMode"><option value="0" )rawliteral" + String(settings.colonBlinkMode == 0 ? "selected" : "") + R"rawliteral(>On</option><option value="1" )rawliteral" + String(settings.colonBlinkMode == 1 ? "selected" : "") + R"rawliteral(>Blinking</option><option value="2" )rawliteral" + String(settings.colonBlinkMode == 2 ? "selected" : "") + R"rawliteral(>Off</option></select><label for="colonBlinkRate">Blink Rate (Hz)</label><input type="range" name="colonBlinkRate" id="colonBlinkRate"
  min="5" max="50" step="5"
  value=")rawliteral" + String(settings.colonBlinkRate) + R"rawliteral("
  oninput="document.getElementById('blinkRateValue').textContent = (this.value / 10).toFixed(1)"><span style="color: #3b82f6; font-size: 14px; margin-left: 10px;"><span id="blinkRateValue">)rawliteral" + String(settings.colonBlinkRate / 10.0, 1) + R"rawliteral(</span> Hz
@@ -786,33 +786,10 @@ void handleSave() {
  applyTimezone();
  ntpSynced = false; // Force NTP resync after timezone change
 
- // Reset Mario animation state when switching modes
- mario_state = MARIO_IDLE;
- mario_x = -15;
- animation_triggered = false;
- time_overridden = false;
- last_minute = -1;
-
- // Reset Space clock animation state when switching modes
- space_state = SPACE_PATROL;
- space_x = 64; // Center of screen (space_y is const at 56)
-
- // Reset Pong animation state when switching modes
- resetPongAnimation();
-
- // Reset Pac-Man animation state when switching modes
- pacman_state = PACMAN_PATROL;
- pacman_x = 30.0;
- pacman_y = PACMAN_PATROL_Y;
- pacman_direction = 1;
- pacman_animation_triggered = false;
- last_minute_pacman = -1;
- for (int i = 0; i < 5; i++) {
- digit_being_eaten[i] = false;
- digit_eaten_rows_left[i] = 0;
- digit_eaten_rows_right[i] = 0;
- }
- generatePellets();
+ // Reset every clock's animation state (one source of truth in
+ // clock_globals.cpp; also clears time_overridden and Pac-Man eat-queue
+ // residue).
+ resetClockAnimationState();
 
  // Check if network settings changed - if so, restart is required
  bool networkChanged = (previousStaticIPSetting != settings.useStaticIP);
@@ -1098,6 +1075,11 @@ void handleImportConfig() {
  saveSettings();
  applyTimezone();
  ntpSynced = false; // Force NTP resync after config import
+
+ // Imported config can change clockStyle. Reset every clock's animation
+ // state so a previous in-flight animation doesn't carry stale time
+ // override + queue residue into the new style.
+ resetClockAnimationState();
 
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", "{\"success\":true,\"message\":\"Configuration imported successfully\"}");

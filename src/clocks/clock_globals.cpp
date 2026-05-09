@@ -7,6 +7,7 @@
 
 #include "clock_globals.h"
 #include "clock_constants.h"
+#include "clocks.h"
 #include "../display/display.h"
 
 // ========== Common Digit Positioning ==========
@@ -121,6 +122,50 @@ uint8_t target_queue_length = 0;
 uint8_t target_queue_index = 0;
 uint8_t pending_digit_index = 255;
 uint8_t pending_digit_value = 0;
+
+// ========== Reset All Clock Animation State ==========
+// Called whenever the active clock style changes (touch button, /save,
+// /api/import). Brings every animated clock back to its idle baseline so
+// the next minute-change animation starts from a clean slate, regardless
+// of where the previous animation was interrupted.
+void resetClockAnimationState() {
+  // Mario
+  mario_state = MARIO_IDLE;
+  mario_x = MARIO_START_X;
+  animation_triggered = false;
+  last_minute = -1;
+
+  // Space
+  space_state = SPACE_PATROL;
+  space_x = SCREEN_CENTER_X;
+
+  // Pong
+  resetPongAnimation();
+
+  // Pac-Man
+  pacman_state = PACMAN_PATROL;
+  pacman_x = 30.0f;
+  pacman_y = PACMAN_PATROL_Y;
+  pacman_direction = 1;
+  pacman_animation_triggered = false;
+  last_minute_pacman = -1;
+  for (int i = 0; i < 5; i++) {
+    digit_being_eaten[i] = false;
+    digit_eaten_rows_left[i] = 0;
+    digit_eaten_rows_right[i] = 0;
+  }
+  generatePellets();
+
+  // Cross-cutting override + queue residue (leftover Pac-Man eat-queue
+  // state can survive an aborted animation; clear so the next minute
+  // change starts clean).
+  time_overridden = false;
+  time_override_start = 0;
+  target_queue_length = 0;
+  target_queue_index = 0;
+  pending_digit_index = 255;
+  pending_digit_value = 0;
+}
 
 // ========== WiFi Status Icon ==========
 // Draw a "no WiFi" icon (8x8 pixels) - WiFi symbol with diagonal cross

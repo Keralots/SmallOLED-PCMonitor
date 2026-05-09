@@ -306,6 +306,7 @@ void loop() {
           settings.clockStyle = (settings.clockStyle + 1) % 7;
           // Skip reserved clock style 4
           if (settings.clockStyle == 4) settings.clockStyle = 5;
+          resetClockAnimationState();
           Serial.print("Touch button: PC offline, cycling clock style -> ");
           Serial.println(settings.clockStyle);
         }
@@ -318,6 +319,7 @@ void loop() {
         settings.clockStyle = (settings.clockStyle + 1) % 7;
         // Skip reserved clock style 4
         if (settings.clockStyle == 4) settings.clockStyle = 5;
+        resetClockAnimationState();
         Serial.print("Touch button: Clock style -> ");
         Serial.println(settings.clockStyle);
       }
