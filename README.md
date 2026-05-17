@@ -145,7 +145,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 
 #### Option A: Pre-built Binary (Easy - No Compilation Needed)
 
-**Download the latest release**: [v1.5.0](release/v1.5.0/)
+**Download the latest release**: [v1.5.4](release/v1.5.4/)
 
 **Easiest Method - Web Flasher (No Installation Required!):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
@@ -161,8 +161,6 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 - **Windows**: Run `flash.bat` and follow prompts
 - **Linux/Mac**: Run `./flash.sh` and follow prompts
 - **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-complete.bin`
-
-For detailed instructions, see [release/v1.1.0/FLASH_INSTRUCTIONS.md](release/v1.1.0/FLASH_INSTRUCTIONS.md)
 
 #### Option B: Build from Source
 
