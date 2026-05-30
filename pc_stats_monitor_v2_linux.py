@@ -94,6 +94,28 @@ def discover_sensors():
     })
 
     sensor_database["system"].append({
+        "name": "SWAP",
+        "display_name": "Swap Usage",
+        "source": "psutil",
+        "type": "percent",
+        "unit": "%",
+        "psutil_method": "swap_memory.percent",
+        "custom_label": "",
+        "current_value": int(psutil.swap_memory().percent)
+    })
+
+    sensor_database["system"].append({
+        "name": "SWAP_GB",
+        "display_name": "Swap Used (GB)",
+        "source": "psutil",
+        "type": "memory",
+        "unit": "GB",
+        "psutil_method": "swap_memory.used",
+        "custom_label": "",
+        "current_value": int(psutil.swap_memory().used / (1024**3))
+    })
+
+    sensor_database["system"].append({
         "name": "DISK",
         "display_name": "Disk / Usage",
         "source": "psutil",
@@ -1355,6 +1377,10 @@ def get_metric_value(metric_config):
             return int(psutil.virtual_memory().percent)
         elif method == "virtual_memory.used":
             return int(psutil.virtual_memory().used / (1024**3))  # GB
+        elif method == "swap_memory.percent":
+            return int(psutil.swap_memory().percent)
+        elif method == "swap_memory.used":
+            return int(psutil.swap_memory().used / (1024**3))  # GB
         elif method == "disk_usage":
             return int(psutil.disk_usage('/').percent)
 
