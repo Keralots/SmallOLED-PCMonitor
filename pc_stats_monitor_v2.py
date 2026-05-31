@@ -59,6 +59,7 @@ sensor_database = {
     "power": [],
     "data": [],       # Network/disk data (uploaded/downloaded GB)
     "throughput": [], # Network throughput (upload/download speed KB/s, MB/s)
+    "gpu": [],        # GPU metrics (usage, memory, freq, fan, power) — from LHM
     "other": []
 }
 
@@ -431,8 +432,10 @@ def discover_sensors_via_http(host, port):
                     "parent_hardware": parent_hardware  # Hardware name (useful for NICs)
                 }
 
-                # Categorize sensor
-                if sensor_type == "temperature":
+                # Categorize sensor — GPU sensors go to dedicated "gpu" category
+                if _is_gpu_sensor(sensor_id):
+                    sensor_database["gpu"].append(sensor_info)
+                elif sensor_type == "temperature":
                     sensor_database["temperature"].append(sensor_info)
                 elif sensor_type == "fan":
                     sensor_database["fan"].append(sensor_info)
@@ -455,6 +458,7 @@ def discover_sensors_via_http(host, port):
 
             if sensor_count > 0:
                 print(f"  ✓ Found {sensor_count} hardware sensors via REST API:")
+                print(f"    - GPU:         {len(sensor_database['gpu'])}")
                 print(f"    - Temperatures: {len(sensor_database['temperature'])}")
                 print(f"    - Fans: {len(sensor_database['fan'])}")
                 print(f"    - Loads: {len(sensor_database['load'])}")
@@ -842,6 +846,22 @@ def generate_short_name_from_id(sensor_id, sensor_type, sensor_name=""):
         return _make_unique_name(f"{device}{sensor_idx}")
 
 
+def _is_gpu_sensor(identifier):
+    """
+    Return True if the LHM sensor identifier belongs to a GPU device.
+    Uses the same device-part logic as generate_short_name_from_id so that
+    AMD CPU sensors (amdcpu) are NOT mistaken for GPU sensors.
+    """
+    parts = identifier.lower().split('/')
+    if len(parts) < 2:
+        return False
+    device = parts[1]
+    # "cpu" check must come first to exclude intelcpu / amdcpu
+    if "cpu" in device:
+        return False
+    return "gpu" in device or "nvidia" in device or "amd" in device
+
+
 def check_wmi_connectivity():
     """
     Diagnostics: Check if LibreHardwareMonitor WMI namespace is accessible
@@ -1202,8 +1222,11 @@ def discover_sensors():
                 "is_active_nic": is_active_nic
             }
 
-            # Categorize sensor
-            if sensor_type_lower == "temperature":
+            # Categorize sensor — GPU sensors go to dedicated "gpu" category
+            if _is_gpu_sensor(sensor.Identifier):
+                sensor_database["gpu"].append(sensor_info)
+                sensor_count += 1
+            elif sensor_type_lower == "temperature":
                 sensor_database["temperature"].append(sensor_info)
                 sensor_count += 1
             elif sensor_type_lower == "fan":
@@ -1229,6 +1252,7 @@ def discover_sensors():
                 sensor_count += 1
 
         print(f"  Found {sensor_count} hardware sensors:")
+        print(f"    - GPU:          {len(sensor_database['gpu'])}")
         print(f"    - Temperatures: {len(sensor_database['temperature'])}")
         print(f"    - Fans: {len(sensor_database['fan'])}")
         print(f"    - Loads: {len(sensor_database['load'])}")
@@ -1703,6 +1727,7 @@ class MetricSelectorGUI:
         # Create checkboxes by category
         categories = [
             ("SYSTEM METRICS", "system"),
+            ("GPU METRICS", "gpu"),
             ("TEMPERATURES", "temperature"),
             ("FANS & COOLING", "fan"),
             ("LOADS", "load"),
