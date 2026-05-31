@@ -145,7 +145,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 
 #### Option A: Pre-built Binary (Easy - No Compilation Needed)
 
-**Download the latest release**: [v1.5.4](release/v1.5.4/)
+**Download the latest release**: [v1.5.5](release/v1.5.5/)
 
 **Easiest Method - Web Flasher (No Installation Required!):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
