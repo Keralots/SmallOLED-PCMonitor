@@ -77,6 +77,7 @@ unsigned long lastReceived = 0;
 unsigned long wifiDisconnectTime = 0;
 unsigned long nextDisplayUpdate = 0;
 bool wifiConnected = false;  // WiFi connection status for icon display
+bool httpForceClock = false;  // HTTP override to force clock mode (via /api/mode/clock)
 
 #if TOUCH_BUTTON_ENABLED
 bool manualClockMode = false;  // Manual override to force clock mode when PC is online
@@ -365,15 +366,15 @@ void loop() {
   int targetHz = getOptimalRefreshRate();
   unsigned long frameInterval = 1000 / targetHz;
 
-  if (millis() >= nextDisplayUpdate && displayAvailable) {
+  if (millis() >= nextDisplayUpdate && displayAvailable && !isDisplayForcedOff()) {
     nextDisplayUpdate = millis() + frameInterval;
 
     display.clearDisplay();
 
 #if TOUCH_BUTTON_ENABLED
-    bool showStats = metricData.online && !manualClockMode;
+    bool showStats = metricData.online && !manualClockMode && !httpForceClock;
 #else
-    bool showStats = metricData.online;
+    bool showStats = metricData.online && !httpForceClock;
 #endif
 
     // Show error status if PC is connected but LHM has issues

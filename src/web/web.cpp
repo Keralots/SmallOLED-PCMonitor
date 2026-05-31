@@ -21,6 +21,12 @@
 // ========== Web Server Object ==========
 WebServer server(80);
 
+// Runtime mode override flags (defined in main.cpp)
+extern bool httpForceClock;
+#if TOUCH_BUTTON_ENABLED
+extern bool manualClockMode;
+#endif
+
 // ========== Web Server Setup ==========
 void setupWebServer() {
  server.on("/", handleRoot);
@@ -31,6 +37,16 @@ void setupWebServer() {
  server.on("/api/export", HTTP_GET, handleExportConfig);
  server.on("/api/import", HTTP_POST, handleImportConfig);
  server.on("/api/rename", HTTP_POST, handleRename);
+
+ // Runtime control API (display power, mode, brightness, clock style, reboot)
+ server.on("/api/status", HTTP_GET, handleStatus);
+ server.on("/api/display/on", HTTP_GET, handleDisplayOn);
+ server.on("/api/display/off", HTTP_GET, handleDisplayOff);
+ server.on("/api/display/brightness", HTTP_GET, handleSetBrightness);
+ server.on("/api/mode/clock", HTTP_GET, handleModeClock);
+ server.on("/api/mode/auto", HTTP_GET, handleModeAuto);
+ server.on("/api/clock/style", HTTP_GET, handleSetClockStyle);
+ server.on("/api/reboot", HTTP_GET, handleReboot);
 
  // OTA Firmware Update handlers
  server.on("/update", HTTP_POST, []() {
@@ -106,6 +122,104 @@ void handleDeviceInfo() {
  serializeJson(doc, json);
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", json);
+}
+
+// ========== Runtime Control API ==========
+// All endpoints are GET (automation-friendly), unauthenticated, and runtime-only
+// (no flash writes) so frequent toggling from automations doesn't wear the NVS.
+
+// GET /api/status - report live display/mode state as JSON
+void handleStatus() {
+ JsonDocument doc;
+
+ bool pcOnline = metricData.online;
+#if TOUCH_BUTTON_ENABLED
+ bool showStats = pcOnline && !manualClockMode && !httpForceClock;
+#else
+ bool showStats = pcOnline && !httpForceClock;
+#endif
+
+ doc["displayOn"] = !isDisplayForcedOff() && settings.displayBrightness > 0;
+ doc["forcedOff"] = isDisplayForcedOff();
+ doc["mode"] = showStats ? "metrics" : "clock";
+ doc["forcedClock"] = httpForceClock;
+ doc["brightness"] = (settings.displayBrightness * 100) / 255; // percent
+ doc["clockStyle"] = settings.clockStyle;
+ doc["pcOnline"] = pcOnline;
+
+ String json;
+ serializeJson(doc, json);
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", json);
+}
+
+// GET /api/display/on - turn the panel back on (restore normal/scheduled brightness)
+void handleDisplayOn() {
+ setDisplayForcedOff(false);
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true,\"displayOn\":true}");
+}
+
+// GET /api/display/off - hold the panel off (suppresses scheduled brightness re-applies)
+void handleDisplayOff() {
+ setDisplayForcedOff(true);
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true,\"displayOn\":false}");
+}
+
+// GET /api/display/brightness?value=0-100 - set brightness percentage
+void handleSetBrightness() {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ if (!server.hasArg("value")) {
+   server.send(400, "application/json", "{\"error\":\"Missing value (0-100)\"}");
+   return;
+ }
+ int value = server.arg("value").toInt();
+ if (value < 0) value = 0;
+ if (value > 100) value = 100;
+ setDisplayBrightnessPercent((uint8_t)value);
+ server.send(200, "application/json",
+             "{\"success\":true,\"brightness\":" + String(value) + "}");
+}
+
+// GET /api/mode/clock - force clock display even when the PC is online
+void handleModeClock() {
+ httpForceClock = true;
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true,\"mode\":\"clock\"}");
+}
+
+// GET /api/mode/auto - resume automatic mode (metrics when PC online, clock otherwise)
+void handleModeAuto() {
+ httpForceClock = false;
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true,\"mode\":\"auto\"}");
+}
+
+// GET /api/clock/style?id=0-6 - switch the active clock animation
+void handleSetClockStyle() {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ if (!server.hasArg("id")) {
+   server.send(400, "application/json", "{\"error\":\"Missing id (0-6)\"}");
+   return;
+ }
+ int id = server.arg("id").toInt();
+ if (id < 0 || id > 6) {
+   server.send(400, "application/json", "{\"error\":\"id must be 0-6\"}");
+   return;
+ }
+ settings.clockStyle = (uint8_t)id;
+ resetClockAnimationState();
+ server.send(200, "application/json",
+             "{\"success\":true,\"clockStyle\":" + String(id) + "}");
+}
+
+// GET /api/reboot - soft restart (non-destructive, unlike /reset which wipes config)
+void handleReboot() {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true,\"message\":\"Rebooting\"}");
+ delay(500);
+ ESP.restart();
 }
 
 void handleRename() {

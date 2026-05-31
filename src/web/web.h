@@ -32,4 +32,14 @@ void handleRename();
 void handleExportConfig();
 void handleImportConfig();
 
+// Runtime control API (display power, mode, brightness, clock style, reboot)
+void handleStatus();
+void handleDisplayOn();
+void handleDisplayOff();
+void handleSetBrightness();
+void handleModeClock();
+void handleModeAuto();
+void handleSetClockStyle();
+void handleReboot();
+
 #endif // WEB_H

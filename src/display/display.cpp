@@ -15,6 +15,10 @@ static uint8_t lastAppliedBrightness = 255;
 static unsigned long lastBrightnessCheck = 0;
 const unsigned long BRIGHTNESS_CHECK_INTERVAL = 60000; // Check every minute
 
+// Runtime override: when true, the panel is held off (e.g. via HTTP /api/display/off).
+// Scheduled dimming and brightness re-applies are suppressed so they don't turn it back on.
+static bool displayForcedOff = false;
+
 #if TOUCH_BUTTON_ENABLED
 static bool temporaryWakeActive = false;
 static unsigned long temporaryWakeExpiry = 0;
@@ -137,6 +141,10 @@ void applyDisplayBrightness() {
   }
 #endif
 
+  if (displayForcedOff) {
+    return;
+  }
+
   applyBrightnessLevel(settings.displayBrightness);
 }
 
@@ -146,6 +154,10 @@ void refreshDisplayBrightnessNow() {
     return;
   }
 #endif
+
+  if (displayForcedOff) {
+    return;
+  }
 
   uint8_t targetBrightness = settings.displayBrightness;
   if (settings.enableScheduledDimming &&
@@ -166,6 +178,10 @@ void checkScheduledBrightness() {
   }
 #endif
 
+  if (displayForcedOff) {
+    return;
+  }
+
   // Only check every minute to avoid unnecessary updates
   unsigned long currentTime = millis();
   if (currentTime - lastBrightnessCheck < BRIGHTNESS_CHECK_INTERVAL) {
@@ -176,9 +192,43 @@ void checkScheduledBrightness() {
   refreshDisplayBrightnessNow();
 }
 
+// ---- Runtime display power / brightness control (HTTP API) ----
+
+bool isDisplayForcedOff() {
+  return displayForcedOff;
+}
+
+// Force the panel off (off=true) or restore normal/scheduled brightness (off=false).
+void setDisplayForcedOff(bool off) {
+  displayForcedOff = off;
+  if (off) {
+    applyBrightnessLevel(0); // sends panel-off command
+  } else {
+    refreshDisplayBrightnessNow(); // re-applies normal or scheduled brightness
+  }
+}
+
+// Set display brightness from a 0-100 percentage and apply immediately.
+// Updates the in-RAM "normal" brightness so scheduled dimming still layers on top.
+// Not persisted to flash (runtime-only, like the on/off override).
+void setDisplayBrightnessPercent(uint8_t percent) {
+  if (percent > 100) {
+    percent = 100;
+  }
+  uint8_t brightness = (uint16_t)percent * 255 / 100;
+  settings.displayBrightness = brightness;
+  displayForcedOff = (brightness == 0);
+  applyBrightnessLevel(brightness);
+}
+
 #if TOUCH_BUTTON_ENABLED
 bool handleTemporaryDisplayWake() {
   if (!displayAvailable) {
+    return false;
+  }
+
+  // Don't wake into a blank lit panel while the display is held off via HTTP.
+  if (displayForcedOff) {
     return false;
   }
 

@@ -463,6 +463,90 @@ With the v2.0 GUI, you can easily select any sensors available on your system:
 - You can select up to 20 different metrics
 - Labels set in Python GUI will override default names on ESP32
 
+## HTTP Control API
+
+The firmware exposes a small set of HTTP endpoints for remote control and home automation (e.g. Home Assistant, Node-RED, or a simple `curl` from a script). This is handy for **turning the display off while you're away to extend OLED lifetime**, forcing the clock display, dimming on your own schedule, or rebooting the device remotely.
+
+All endpoints are plain **HTTP GET** (easy to call from any tool), return JSON, and have **no authentication** — anyone on your local network can call them, so keep the device on a trusted LAN.
+
+> **Note:** These controls are **runtime-only** — they are *not* saved to flash and reset to your normal configured behavior after a reboot or power cycle. This is intentional: it avoids flash wear from automations toggling frequently, and lets an external scheduler own the state. To change defaults permanently, use the web configuration portal.
+
+Replace `smalloled.local` in the examples with your device's mDNS name (configurable) or its IP address.
+
+### Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/status` | Return current display/mode state as JSON |
+| GET | `/api/display/off` | Turn the display off (panel powered down) |
+| GET | `/api/display/on` | Turn the display back on |
+| GET | `/api/display/brightness?value=0-100` | Set display brightness (percent) |
+| GET | `/api/mode/clock` | Force the animated clock, even when the PC is online |
+| GET | `/api/mode/auto` | Resume automatic mode (PC stats when online, clock when offline) |
+| GET | `/api/clock/style?id=0-6` | Switch the clock animation |
+| GET | `/api/reboot` | Soft-restart the device (does **not** erase settings) |
+
+**Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man.
+
+### Examples
+
+```bash
+# Turn the display off (e.g. when leaving home) and back on
+curl http://smalloled.local/api/display/off
+curl http://smalloled.local/api/display/on
+
+# Dim the display to 30%
+curl "http://smalloled.local/api/display/brightness?value=30"
+
+# Always show the clock, then go back to automatic
+curl http://smalloled.local/api/mode/clock
+curl http://smalloled.local/api/mode/auto
+
+# Switch to the Pac-Man clock
+curl "http://smalloled.local/api/clock/style?id=6"
+
+# Check current state
+curl http://smalloled.local/api/status
+```
+
+A `/api/status` response looks like:
+
+```json
+{
+  "displayOn": true,
+  "forcedOff": false,
+  "mode": "clock",
+  "forcedClock": true,
+  "brightness": 100,
+  "clockStyle": 0,
+  "pcOnline": false
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `displayOn` | `false` when the panel is off (forced off, or brightness 0) |
+| `forcedOff` | `true` if the display was turned off via `/api/display/off` |
+| `mode` | `"metrics"` or `"clock"` — what is currently being shown |
+| `forcedClock` | `true` if clock mode is being forced via `/api/mode/clock` |
+| `brightness` | Current brightness, 0-100% |
+| `clockStyle` | Active clock style ID (see list above) |
+| `pcOnline` | `true` if the PC sender is currently sending stats |
+
+### Home Assistant example
+
+Add this to your `configuration.yaml` to expose the display on/off controls as commands:
+
+```yaml
+rest_command:
+  oled_display_off:
+    url: "http://smalloled.local/api/display/off"
+  oled_display_on:
+    url: "http://smalloled.local/api/display/on"
+```
+
+You can then call `rest_command.oled_display_off` / `oled_display_on` from an automation — for example, turn the display off when everyone leaves home and back on when someone arrives.
+
 ## Troubleshooting
 
 ### ESP32 Issues

@@ -49,6 +49,11 @@ void applyDisplayBrightness();
 void refreshDisplayBrightnessNow();
 void checkScheduledBrightness();
 
+// Runtime display control (HTTP API) - not persisted to flash
+void setDisplayForcedOff(bool off);
+bool isDisplayForcedOff();
+void setDisplayBrightnessPercent(uint8_t percent);
+
 #if TOUCH_BUTTON_ENABLED
 bool handleTemporaryDisplayWake();
 void updateTemporaryDisplayWake();
