@@ -174,6 +174,23 @@ void loadSettings() {
       strncpy(settings.timezoneString, loadedTz.c_str(), 63);
       settings.timezoneString[63] = '\0';
       settings.timezoneIndex = preferences.getUChar("tzIdx", 255);
+
+      // Auto-heal: if the user picked a region from the dropdown (a valid
+      // index was stored), re-derive the POSIX string from the current
+      // database. This lets corrected DST/offset rules (e.g. Turkey now
+      // UTC+3) take effect after a firmware update without the user having
+      // to re-select. Migrated or imported configs use index 255 and keep
+      // their stored string untouched.
+      if (settings.timezoneIndex < 255) {
+        size_t tzCount = 0;
+        const TimezoneRegion* regions = getSupportedTimezones(&tzCount);
+        if (settings.timezoneIndex < tzCount) {
+          strncpy(settings.timezoneString, regions[settings.timezoneIndex].posixString, 63);
+          settings.timezoneString[63] = '\0';
+          settings.gmtOffset = regions[settings.timezoneIndex].gmtOffsetMinutes;
+        }
+      }
+
       Serial.printf("Loaded timezone string: %s (index: %d)\n", settings.timezoneString, settings.timezoneIndex);
     } else {
       // Key exists but empty, set default

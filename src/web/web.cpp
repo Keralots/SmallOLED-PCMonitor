@@ -1103,6 +1103,10 @@ void handleImportConfig() {
  if (tz && strlen(tz) < 64) {
  strncpy(settings.timezoneString, tz, 63);
  settings.timezoneString[63] = '\0';
+ // Imported string has no database index. Mark as custom (255) so the
+ // boot-time auto-heal in settings.cpp does not overwrite it from a
+ // stale timezoneIndex left over from a previous dropdown selection.
+ settings.timezoneIndex = 255;
  }
  }
  // Legacy: import old gmtOffset/dst if timezoneString is not provided

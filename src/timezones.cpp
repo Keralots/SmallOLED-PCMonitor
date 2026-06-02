@@ -20,12 +20,12 @@ static const TimezoneRegion timezoneDatabase[] = {
   {"Baltic (Lithuania, Latvia, Estonia)", "EET-2EEST,M3.5.0/03:00,M10.5.0/04:00", 120},
   {"Ukraine (Kyiv)", "EET-2EEST,M3.5.0/03:00,M10.5.0/04:00", 120},
   {"Russia (Moscow - no DST)", "MSK-3", 180},
-  {"Belarus (Minsk - no DST)", "EET-2", 120},
+  {"Belarus (Minsk - no DST)", "<+03>-3", 180},
 
   // Americas - North
   {"US Eastern (New York, Washington)", "EST5EDT,M3.2.0/02:00,M11.1.0/02:00", -300},
   {"US Central (Chicago, Texas)", "CST6CDT,M3.2.0/02:00,M11.1.0/02:00", -360},
-  {"US Mountain (Denver, Arizona)", "MST7MDT,M3.2.0/02:00,M11.1.0/02:00", -420},
+  {"US Mountain (Denver)", "MST7MDT,M3.2.0/02:00,M11.1.0/02:00", -420},
   {"US Pacific (Los Angeles, San Francisco)", "PST8PDT,M3.2.0/02:00,M11.1.0/02:00", -480},
   {"Alaska (Anchorage)", "AKST9AKDT,M3.2.0/02:00,M11.1.0/02:00", -540},
   {"Hawaii (Honolulu - no DST)", "HST10", -600},
@@ -35,10 +35,10 @@ static const TimezoneRegion timezoneDatabase[] = {
   {"Canada Central (Winnipeg)", "CST6CDT,M3.2.0/02:00,M11.1.0/02:00", -360},
   {"Canada Mountain (Edmonton)", "MST7MDT,M3.2.0/02:00,M11.1.0/02:00", -420},
   {"Canada Pacific (Vancouver)", "PST8PDT,M3.2.0/02:00,M11.1.0/02:00", -480},
-  {"Mexico Central (Mexico City)", "CST6CDT,M4.1.0/02:00,M10.5.0/02:00", -360},
+  {"Mexico Central (Mexico City - no DST)", "CST6", -360},
   {"Mexico Pacific (Tijuana)", "PST8PDT,M3.2.0/02:00,M11.1.0/02:00", -480},
   {"South America (Brazil, Argentina - no DST)", "BRT3", -180},
-  {"Chile (Santiago)", "CLT4CLST,M9.2.0/00:00,M4.2.0/00:00", -240},
+  {"Chile (Santiago)", "CLT4CLST,M9.1.6/24,M4.1.6/24", -240},
   {"Colombia (Bogota - no DST)", "COT5", -300},
   {"Peru (Lima - no DST)", "PET5", -300},
 
@@ -61,23 +61,27 @@ static const TimezoneRegion timezoneDatabase[] = {
   {"India (Mumbai, Delhi - no DST)", "IST-5:30", 330},
 
   // Middle East & Africa
-  {"Israel (Jerusalem)", "IST-2IDT,M3.4.0/02:00,M10.2.0/02:00", 120},
-  {"Turkey (Istanbul - no DST)", "EET-2", 120},
+  {"Israel (Jerusalem)", "IST-2IDT,M3.4.4/26,M10.5.0", 120},
+  {"Turkey (Istanbul - no DST)", "<+03>-3", 180},
   {"UAE (Dubai - no DST)", "GST-4", 240},
   {"Saudi Arabia (Riyadh - no DST)", "AST-3", 180},
-  {"Egypt (Cairo - no DST)", "EET-2", 120},
+  {"Egypt (Cairo)", "EET-2EEST,M4.5.5/0,M10.5.4/24", 120},
   {"South Africa (Johannesburg - no DST)", "SAST-2", 120},
   {"Nigeria (Lagos - no DST)", "WAT-1", 60},
   {"Kenya (Nairobi - no DST)", "EAT-3", 180},
 
   // Additional Zones
-  {"Atlantic (Azores)", "AZOT1AZOST,M3.5.0/00:00,M10.5.0/01:00", 60},
-  {"Cape Verde (no DST)", "CVT1", 60},
+  {"Atlantic (Azores)", "AZOT1AZOST,M3.5.0/00:00,M10.5.0/01:00", -60},
+  {"Cape Verde (no DST)", "CVT1", -60},
   {"Iceland (Reykjavik - no DST)", "GMT0", 0},
-  {"Greenland)", "WGT3WGST,M3.5.0/22:00,M10.5.0/23:00", -180},
+  {"Greenland (Nuuk)", "<-02>2<-01>,M3.5.0/-1,M10.5.0/0", -120},
 
   // No DST zones
   {"UTC (Universal Coordinated Time)", "UTC0", 0},
+
+  // Appended after release - keep at the end so existing saved timezone
+  // indices (settings.timezoneIndex) continue to map to the same regions.
+  {"US Arizona (Phoenix - no DST)", "MST7", -420},
 };
 
 // Total number of timezones in database
