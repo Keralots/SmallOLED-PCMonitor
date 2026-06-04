@@ -39,6 +39,7 @@
 #define SNAKE_PELLETS_PER_DIGIT 5    // how many pellets a digit leaves behind
 #define SNAKE_MAX_PELLETS 35         // 5x7 glyph cells
 #define SNAKE_LEAVE_MAX_STEPS 40     // safety cap waiting for the snake to clear
+#define SNAKE_EAT_MAX_STEPS 80       // safety cap chasing a digit's pellets
 
 enum SnakePhase { SNAKE_ROAM, SNAKE_EAT, SNAKE_LEAVE };
 
@@ -82,6 +83,7 @@ static int snake_pellet_count = 0;
 static int snake_pellets_left = 0;
 static int snake_eating_idx = -1;    // digit currently dropped into pellets
 static uint8_t snake_eat_val = 0;    // its new value
+static int snake_eat_steps = 0;      // steps spent chasing the current digit's pellets
 
 static int snake_leaving_idx = -1;   // digit cleared, waiting for snake to exit
 static uint8_t snake_leaving_val = 0;
@@ -197,6 +199,7 @@ void resetSnakeAnimation() {
   snake_num_changes = 0;
   snake_cur_change = 0;
   snake_eating_idx = -1;
+  snake_eat_steps = 0;
   snake_leaving_idx = -1;
   snake_leave_steps = 0;
   snake_pellet_count = 0;
@@ -361,6 +364,7 @@ static void snakeAdvance() {
 static void snakeStartEatDigit(int changeIndex) {
   snake_eating_idx = snake_change_idx[changeIndex];
   snake_eat_val = snake_change_val[changeIndex];
+  snake_eat_steps = 0;
   snake_phase = SNAKE_EAT;
 
   // Collect the lit glyph pixels of the OLD digit, then keep only a few of
@@ -454,7 +458,12 @@ static void updateSnakeAnimation(struct tm *timeinfo) {
       int d = abs(pcx - hx) + abs(pcy - hy);
       if (d < bestD) { bestD = d; tcx = pcx; tcy = pcy; found = true; }
     }
-    if (!found) {  // all pellets eaten - begin slithering clear of the spot
+    // Done when every pellet is eaten, or give up if the snake has spent too
+    // long chasing one it has accidentally walled off with its own body. The
+    // EAT phase has no other exit, so without this cap rare trap geometry could
+    // hang it indefinitely - freezing the clock on the pellet frame until the
+    // 60s time-override safety net fired. Mirrors SNAKE_LEAVE_MAX_STEPS.
+    if (!found || snake_eat_steps >= SNAKE_EAT_MAX_STEPS) {
       snake_leaving_idx = snake_eating_idx;
       snake_leaving_val = snake_eat_val;
       snake_eating_idx = -1;
@@ -465,6 +474,7 @@ static void updateSnakeAnimation(struct tm *timeinfo) {
     }
     snakeSteer(tcx, tcy);
     snakeAdvance();
+    snake_eat_steps++;
     // Eat only the pellet the head lands exactly on (one at a time).
     hx = snake_body[0].cx;
     hy = snake_body[0].cy;
