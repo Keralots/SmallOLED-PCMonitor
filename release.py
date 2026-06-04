@@ -2,19 +2,19 @@
 """
 End-to-end release builder for the SmallOLED-PCMonitor web flasher.
 
-Runs the whole release pipeline for the browser flasher at docs/flasher/:
+Runs the whole release pipeline for the browser flasher at docs/:
     1. Reads FIRMWARE_VERSION from src/config/config.h  ->  v<ver>
     2. Locates the PlatformIO CLI (PATH, then the standard penv install)
     3. Builds both OLED variants in a single PlatformIO invocation
        (oled-096 = SSD1306/SSD1309, oled-13 = SH1106)
     4. Merges bootloader + partitions + app into a single "Full" image per
        variant (flashed at 0x0, what ESP Web Tools writes)
-    5. Copies the Full.bin images into docs/flasher/firmware/latest/ as
+    5. Copies the Full.bin images into docs/firmware/latest/ as
        SmallOLED-<id>-v<ver>-Full.bin and writes the VERSION file the page reads
     6. Copies each firmware.bin into release/v<ver>/ as an -ota.bin for the
        GitHub Release (existing users update over the web UI)
 
-The web flasher reads firmware id from the BOARDS map in docs/flasher/flasher.js:
+The web flasher reads firmware id from the BOARDS map in docs/flasher.js:
 SSD1306 (0.96") and SSD1309 (2.42") deliberately share the `ssd1306` image;
 SH1106 (1.3") has its own `sh1106` image.
 
@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 
 # Variants published by the web flasher. (PlatformIO env, firmware id, label).
-# The firmware id must match the `firmware` field in docs/flasher/flasher.js.
+# The firmware id must match the `firmware` field in docs/flasher.js.
 VARIANTS = [
     ("oled-096", "ssd1306", '0.96" SSD1306  (also 2.42" SSD1309)'),
     ("oled-13",  "sh1106",  '1.3" SH1106'),
@@ -46,7 +46,7 @@ FIRMWARE_OFFSET = 0x10000
 
 REPO_ROOT = Path(__file__).resolve().parent
 CONFIG_H = REPO_ROOT / "src" / "config" / "config.h"
-DOCS_LATEST = REPO_ROOT / "docs" / "flasher" / "firmware" / "latest"
+DOCS_LATEST = REPO_ROOT / "docs" / "firmware" / "latest"
 
 
 def read_version() -> str:
@@ -147,7 +147,7 @@ def write_version_file(version: str):
 
 
 def find_old_full_bins(version: str):
-    """List Full.bin files in docs/flasher/firmware/latest/ not for this version."""
+    """List Full.bin files in docs/firmware/latest/ not for this version."""
     if not DOCS_LATEST.exists():
         return []
     pat = re.compile(r"^SmallOLED-(.+)-(v[^-]+)-Full\.bin$")
@@ -186,7 +186,7 @@ def main():
     else:
         print("Skipping build (--skip-build)")
 
-    print("\n--- Web flasher images (docs/flasher/firmware/latest/) ---")
+    print("\n--- Web flasher images (docs/firmware/latest/) ---")
     full_names = []
     for env, fid, _label in VARIANTS:
         out = DOCS_LATEST / f"SmallOLED-{fid}-{version}-Full.bin"
@@ -208,13 +208,13 @@ def main():
 
     old = find_old_full_bins(version)
     if old:
-        print("\nOlder Full.bin files still in docs/flasher/firmware/latest/ "
+        print("\nOlder Full.bin files still in docs/firmware/latest/ "
               "(remove with `git rm` when no longer needed):")
         for name in old:
             print(f"  {name}")
 
     print("\nNext steps:")
-    print("  git add docs/flasher/firmware/latest/ src/config/config.h")
+    print("  git add docs/firmware/latest/ src/config/config.h")
     print(f'  git commit -m "release {version}"')
     print(f"  gh release create {version} release/{version}/*.bin --notes \"...\"")
     print("  git push")

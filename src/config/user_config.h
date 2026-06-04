@@ -130,7 +130,7 @@
 
 // ========== Improv-Serial WiFi Setup (Web Flasher) ==========
 // In-browser WiFi provisioning over USB serial, used by the web flasher at
-// docs/flasher/. After flashing, ESP Web Tools probes the device for
+// docs/. After flashing, ESP Web Tools probes the device for
 // Improv-Serial and shows a "Configure WiFi" dialog right in the browser tab:
 // the user picks their home network and the credentials are pushed over USB.
 // Active only on first boot (no saved WiFi); the WiFiManager AP portal

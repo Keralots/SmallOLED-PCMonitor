@@ -2,7 +2,7 @@
  * SmallOLED-PCMonitor - Improv-Serial WiFi Provisioning (Web Flasher)
  *
  * Non-blocking Improv-Serial setup window used by the browser web flasher
- * (docs/flasher/). After flashing, ESP Web Tools probes the device for
+ * (docs/). After flashing, ESP Web Tools probes the device for
  * Improv-Serial and presents a "Configure WiFi" dialog right in the browser
  * tab - the user picks their network and the credentials are pushed over USB.
  *

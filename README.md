@@ -71,7 +71,7 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 **Never done this before? Here's the simple version:**
 
-1. **Flash ESP32** - Open the [SmallOLED Web Flasher](https://keralots.github.io/SmallOLED-PCMonitor/flasher/) in desktop Chrome or Edge, pick your OLED, and click Install (no installation needed!)
+1. **Flash ESP32** - Open the [SmallOLED Web Flasher](https://keralots.github.io/SmallOLED-PCMonitor/) in desktop Chrome or Edge, pick your OLED, and click Install (no installation needed!)
 2. **Connect ESP32 to WiFi** - Right after flashing, use the flasher's **Configure WiFi** step to send your network to the device over USB. (No web flasher? Join the "PCMonitor-Setup" network and open 192.168.4.1.)
 3. **Install Python** - Download from [python.org](https://www.python.org/downloads/) (check "Add to PATH" during install)
 4. **Install LibreHardwareMonitor** (Windows only) - Download from [GitHub](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases), run as Admin
@@ -148,7 +148,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 
 A dedicated browser flasher that picks the right firmware for your OLED, installs it over USB, and then hands your WiFi to the device in the same tab. No separate flashing tool and no captive portal needed.
 
-1. Open the **[SmallOLED Web Flasher](https://keralots.github.io/SmallOLED-PCMonitor/flasher/)** in desktop **Chrome or Edge** (Web Serial is required, so Firefox, Safari and mobile won't work).
+1. Open the **[SmallOLED Web Flasher](https://keralots.github.io/SmallOLED-PCMonitor/)** in desktop **Chrome or Edge** (Web Serial is required, so Firefox, Safari and mobile won't work).
 2. Connect your ESP32-C3 via USB. If it constantly connects/disconnects, hold the **BOOT** button, connect to USB while still holding it, then release after connecting. Alternatively, hold **BOOT**, press **RESET** while holding **BOOT**, then release both buttons.
 3. Pick your OLED (0.96" SSD1306, 1.3" SH1106, or 2.42" SSD1309) and click **Install**. It erases and writes the full image at `0x0` in ~30 seconds.
 4. When the install finishes, use the **Configure WiFi** step to send your home network to the device over USB. If you miss it, join the **PCMonitor-Setup** hotspot and open `192.168.4.1` instead.
