@@ -1,0 +1,15 @@
+# PyInstaller build artifacts.
+# Note: dist/ is intentionally NOT ignored - the prebuilt
+# pc_stats_monitor_v3.exe is tracked so it ships/syncs with the repo.
+build/
+*.spec
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local runtime files (config + log live in %APPDATA% for the .exe, but the
+# dev script writes them next to this file)
+monitor_config.json
+monitor*.log
+*_backup.json

@@ -1,0 +1,15 @@
+# Runtime dependencies for pc_stats_monitor_v3.py (Windows)
+#
+#   python -m pip install -r requirements.txt
+#
+# To build the standalone .exe you ALSO need PyInstaller (build-time only):
+#   python -m pip install pyinstaller
+
+psutil          # CPU / RAM / disk metrics (always-available fallback)
+wmi             # LibreHardwareMonitor sensors on older LHM (0.9.4 and earlier)
+pywin32         # COM init for WMI + LHM version detection
+pystray         # System-tray icon for background / autostart mode
+pillow          # Tray icon image (used by pystray)
+
+# No winshell needed any more: autostart now uses the stdlib winreg module
+# (HKCU Run key) instead of a Startup-folder shortcut.
