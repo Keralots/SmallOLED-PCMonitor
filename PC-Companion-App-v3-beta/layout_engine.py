@@ -325,12 +325,18 @@ def auto_layout(metrics, template):
     return _layout_singles(ranked, layout, pair=True)  # compact (default)
 
 
-def build_device_layout_json(row_mode, layout_by_id, show_clock=False, clock_position=0):
+def build_device_layout_json(row_mode, layout_by_id, show_clock=False, clock_position=0,
+                             rpm_k=None, net_mb=None, clock_offset=None):
     """Assemble the /api/import payload from a layout.
 
     Arrays are MAX_METRICS long, indexed by (id-1). metricNames is pushed EMPTY
     so the firmware binds the layout to whatever names arrive on those ids on
     the next UDP packet (initial-bind-by-id).
+
+    rpm_k / net_mb / clock_offset are the device display-format settings. They are
+    only added to the payload when not None, so a push can carry the values shown
+    in the preview (keeping device and preview in sync) without clobbering the
+    device's existing settings when they are unknown.
     """
     n = MAX_METRICS
     payload = {
@@ -361,6 +367,12 @@ def build_device_layout_json(row_mode, layout_by_id, show_clock=False, clock_pos
         payload["metricBarMax"][idx] = e.get("barMax", 100)
         payload["metricBarWidths"][idx] = e.get("barWidth", 60)
         payload["metricBarOffsets"][idx] = e.get("barOffsetX", 0)
+    if rpm_k is not None:
+        payload["useRpmKFormat"] = bool(rpm_k)
+    if net_mb is not None:
+        payload["useNetworkMBFormat"] = bool(net_mb)
+    if clock_offset is not None:
+        payload["clockOffset"] = int(clock_offset)
     return payload
 
 

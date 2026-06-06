@@ -160,9 +160,7 @@ DEFAULT_CONFIG = {
 # Maximum metrics supported by ESP32
 from constants import MAX_METRICS
 from layout_engine import (
-    LAYOUT_TEMPLATES,
     auto_layout,
-    slot_geometry,
     build_device_layout_json,
     push_layout_to_device,
 )
@@ -1709,9 +1707,8 @@ class MetricSelectorGUI:
         self.checkboxes = []
         self.label_entries = {}
         self.sections = []          # [{'frame': section_frame, 'rows': [checkbox tuples]}]
-        self._search_after_id = None  # debounce handle for filter-mode search
-        self._preview_after_id = None  # debounce handle for the auto-layout preview
-        self.current_layout = None     # {"row_mode", "layout", "source"}
+        self._search_after_id = None  # debounce handle for the row-visibility refresh
+        self.current_layout = None     # last layout from the Customize dialog (or None)
 
         # Load existing config if available
         if existing_config:
@@ -1877,8 +1874,9 @@ class MetricSelectorGUI:
         search_label = tk.Label(counter_frame, text="Search:", bg="#2d2d2d", fg="#ffffff")
         search_label.pack(side=tk.LEFT, padx=(50, 5))
 
-        # filter_var must exist before on_search runs (search trace below)
+        # filter_var / show_selected_var must exist before on_search runs (search trace below)
         self.filter_var = tk.BooleanVar(value=False)
+        self.show_selected_var = tk.BooleanVar(value=False)
 
         self.search_var = tk.StringVar()
         self.search_var.trace_add('write', lambda *_: self._on_search_var_changed())
@@ -1893,6 +1891,15 @@ class MetricSelectorGUI:
             activeforeground="#ffffff", font=("Arial", 9)
         )
         filter_check.pack(side=tk.LEFT, padx=(8, 0))
+
+        # When checked, only currently-selected sensors stay visible
+        show_sel_check = tk.Checkbutton(
+            counter_frame, text="Show only selected", variable=self.show_selected_var,
+            command=self._refresh_row_visibility, bg="#2d2d2d", fg="#ffffff",
+            selectcolor="#444444", activebackground="#2d2d2d",
+            activeforeground="#ffffff", font=("Arial", 9)
+        )
+        show_sel_check.pack(side=tk.LEFT, padx=(8, 0))
 
         # Info note about static values
         info_label = tk.Label(
@@ -1987,71 +1994,22 @@ class MetricSelectorGUI:
         )
         self.preview_text.pack(fill=tk.X, padx=10, pady=(0, 5))
 
-        # ---- Auto Layout: pick a template, see a live device preview, push it ----
-        auto_frame = tk.LabelFrame(
-            self.root, text=" Auto Layout (configure the screen in one click) ",
-            bg="#2d2d2d", fg="#00d4ff", font=("Arial", 10, "bold"),
-            bd=1, relief=tk.GROOVE, labelanchor="nw"
-        )
-        auto_frame.pack(fill=tk.X, padx=10, pady=(0, 4))
-
-        # Left: controls.  Right: 128x64 device preview at 2x.
-        auto_controls = tk.Frame(auto_frame, bg="#2d2d2d")
-        auto_controls.pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=6)
-
-        tk.Label(auto_controls, text="Template:", bg="#2d2d2d", fg="#ffffff",
-                 font=("Arial", 10)).grid(row=0, column=0, sticky="w", padx=(0, 6))
-
-        self._template_labels = [label for _key, label in LAYOUT_TEMPLATES]
-        self._template_key_by_label = {label: key for key, label in LAYOUT_TEMPLATES}
-        self.template_var = tk.StringVar(value=self._template_labels[0])
-        template_combo = ttk.Combobox(
-            auto_controls, textvariable=self.template_var, state="readonly",
-            values=self._template_labels, width=24
-        )
-        template_combo.grid(row=0, column=1, sticky="w")
-        template_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh_layout_preview())
-
-        tk.Label(
-            auto_controls,
-            text="The device is laid out automatically and pushed over\n"
-                 "the network. No need to open the device web page.",
-            bg="#2d2d2d", fg="#888888", font=("Arial", 9), justify=tk.LEFT, anchor="w"
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(4, 2))
-
-        self.overflow_label = tk.Label(
-            auto_controls, text="", bg="#2d2d2d", fg="#ffb454",
-            font=("Arial", 9, "bold"), justify=tk.LEFT, anchor="w"
-        )
-        self.overflow_label.grid(row=2, column=0, columnspan=2, sticky="w")
-
-        self.apply_layout_btn = tk.Button(
-            auto_controls, text="Apply layout + Start monitoring",
-            command=self.apply_layout_and_start,
-            bg="#00d4ff", fg="#000000", font=("Arial", 11, "bold"),
-            relief=tk.FLAT, padx=16, pady=5
-        )
-        self.apply_layout_btn.grid(row=3, column=0, sticky="w", pady=(6, 0))
-
+        # ---- Layout: open the Customize Layout window (template + live 1:1 preview + push) ----
+        layout_frame = tk.Frame(self.root, bg="#1e1e1e")
+        layout_frame.pack(fill=tk.X, padx=10, pady=(0, 4))
+        self._default_template_key = "compact"
         self.customize_layout_btn = tk.Button(
-            auto_controls, text="Customize layout...",
+            layout_frame, text="Customize layout / preview...",
             command=self.open_layout_editor,
-            bg="#555555", fg="#ffffff", font=("Arial", 10),
-            relief=tk.FLAT, padx=10, pady=5, state=tk.DISABLED
+            bg="#00d4ff", fg="#000000", font=("Arial", 11, "bold"),
+            relief=tk.FLAT, padx=16, pady=5, state=tk.DISABLED
         )
-        self.customize_layout_btn.grid(row=3, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
-
-        # Right: the preview canvas (128x64 scaled by PREVIEW_SCALE)
-        self.PREVIEW_SCALE = 2
-        preview_right = tk.Frame(auto_frame, bg="#2d2d2d")
-        preview_right.pack(side=tk.RIGHT, padx=10, pady=6)
-        tk.Label(preview_right, text="Device preview (128x64)", bg="#2d2d2d",
-                 fg="#888888", font=("Arial", 8)).pack(anchor="e")
-        self.preview_canvas = tk.Canvas(
-            preview_right, width=128 * self.PREVIEW_SCALE, height=64 * self.PREVIEW_SCALE,
-            bg="#000000", highlightthickness=1, highlightbackground="#555555"
-        )
-        self.preview_canvas.pack()
+        self.customize_layout_btn.pack(side=tk.LEFT)
+        tk.Label(
+            layout_frame,
+            text="Arrange the screen, see a 1:1 live preview, and push to the device.",
+            bg="#1e1e1e", fg="#888888", font=("Arial", 9)
+        ).pack(side=tk.LEFT, padx=10)
 
         # Bottom buttons
         button_frame = tk.Frame(self.root, bg="#1e1e1e", height=50)
@@ -2478,8 +2436,12 @@ class MetricSelectorGUI:
         preview = " | ".join([f"{i+1}. {self.get_display_label_for_metric(m)}" for i, m in enumerate(self.selected_metrics[:MAX_METRICS])])
         self.preview_text.config(text=preview if preview else "(none selected)")
 
-        # Keep the auto-layout device preview in sync with the selection.
-        self.schedule_preview_refresh()
+        # Enable the Customize button only when something is selected.
+        self._update_customize_btn_state()
+
+        # If viewing selected-only, keep the list in sync as boxes toggle.
+        if getattr(self, "show_selected_var", None) and self.show_selected_var.get():
+            self._refresh_row_visibility()
 
     # ---- Auto Layout: input building, preview, and one-click push ----
 
@@ -2503,172 +2465,40 @@ class MetricSelectorGUI:
         return metrics
 
     def _current_template_key(self):
-        return self._template_key_by_label.get(self.template_var.get(), "compact")
+        return getattr(self, "_default_template_key", "compact")
 
-    def schedule_preview_refresh(self):
-        """Debounce preview re-renders so rapid selection changes stay snappy."""
-        if getattr(self, "preview_canvas", None) is None:
-            return  # widgets not built yet
-        if self._preview_after_id is not None:
-            self.root.after_cancel(self._preview_after_id)
-        self._preview_after_id = self.root.after(200, self.refresh_layout_preview)
+    def _fetch_device_format(self, esp_ip):
+        """Best-effort GET /api/export for the device's current display-format
+        settings so the 1:1 preview matches a device with non-default flags.
+        Returns {"rpm_k", "net_mb", "clock_offset"} (defaults on any failure)."""
+        fmt = {"rpm_k": False, "net_mb": False, "clock_offset": 0}
+        try:
+            url = f"http://{esp_ip}/api/export"
+            with urllib_request.urlopen(url, timeout=2) as resp:
+                data = json.loads(resp.read().decode("utf-8", "replace"))
+            fmt["rpm_k"] = bool(data.get("useRpmKFormat", False))
+            fmt["net_mb"] = bool(data.get("useNetworkMBFormat", False))
+            fmt["clock_offset"] = int(data.get("clockOffset", 0))
+        except Exception:
+            pass  # device unreachable / old firmware -> sane defaults
+        return fmt
 
-    def refresh_layout_preview(self):
-        """Run the engine for the current selection + template and draw the preview."""
-        self._preview_after_id = None
-        if getattr(self, "preview_canvas", None) is None:
-            return
-        metrics = self._build_layout_input()
-        tpl_key = self._current_template_key()
-        row_mode, layout_by_id, hidden = auto_layout(metrics, tpl_key)
-        self.current_layout = {
-            "row_mode": row_mode,
-            "layout": layout_by_id,
-            "source": tpl_key,
-            "show_clock": False,
-            "clock_position": 0,
-        }
-        metrics_by_id = {m["id"]: m for m in metrics}
-        self._render_preview(row_mode, layout_by_id, metrics_by_id)
-        if hidden > 0:
-            self.overflow_label.config(
-                text=f"⚠ {hidden} metric(s) won't fit and are hidden.\n"
-                     "Pick another template or deselect some sensors."
-            )
-        else:
-            self.overflow_label.config(text="")
-        self._update_customize_btn_state()
-
-    def _preview_value_str(self, m):
-        """A short VALUE+UNIT string for the preview (illustrative, not live)."""
-        unit = m.get("unit", "")
-        if unit == "KB/s":
-            return "1.2K"  # neutral placeholder (current_value encoding varies)
-        cv = m.get("current_value", 0) or 0
-        return f"{cv}{unit}"
-
-    def _slot_xy(self, row_mode, slot):
-        sc = self.current_layout.get("show_clock", False) if self.current_layout else False
-        cp = self.current_layout.get("clock_position", 0) if self.current_layout else 0
-        return slot_geometry(row_mode, slot, sc, cp)
-
-    def _render_preview(self, row_mode, layout_by_id, metrics_by_id):
-        """Draw the generated layout onto the 128x64 preview canvas (scaled)."""
-        c = self.preview_canvas
-        c.delete("all")
-        S = self.PREVIEW_SCALE
-        is_large = row_mode >= 2
-        font = ("Courier New", 15, "bold") if is_large else ("Courier New", 8)
-        text_h = 16 if is_large else 8
-
-        # Progress bars first (they own their slot, overriding text there).
-        for mid, e in layout_by_id.items():
-            if e.get("barPosition", 255) == 255:
-                continue
-            geo = self._slot_xy(row_mode, e["barPosition"])
-            if geo is None:
-                continue
-            x, y, col_w = geo
-            bar_h = 16 if is_large else 8
-            width = min(e.get("barWidth", 60), col_w)
-            c.create_rectangle(x * S, y * S, (x + width) * S, (y + bar_h) * S,
-                               outline="#ffffff")
-            m = metrics_by_id.get(mid, {})
-            bmin, bmax = e.get("barMin", 0), e.get("barMax", 100)
-            rng = (bmax - bmin) or 100
-            val = m.get("current_value", 0) or 0
-            frac = max(0.0, min(1.0, (val - bmin) / rng))
-            fill_w = int((width - 2) * frac)
-            if fill_w > 0:
-                c.create_rectangle((x + 1) * S, (y + 1) * S,
-                                   (x + 1 + fill_w) * S, (y + bar_h - 1) * S,
-                                   fill="#ffffff", outline="")
-
-        # Text metrics (with companions appended / right-aligned).
-        for mid, e in layout_by_id.items():
-            if e.get("position", 255) == 255:
-                continue
-            geo = self._slot_xy(row_mode, e["position"])
-            if geo is None:
-                continue
-            x, y, _col_w = geo
-            m = metrics_by_id.get(mid, {})
-            label = (e.get("label") or m.get("name", ""))[:10]
-            text = f"{label}:{self._preview_value_str(m)}"
-            max_chars = 10 if is_large else 11
-            comp_id = e.get("companionId", 0)
-            comp = metrics_by_id.get(comp_id) if comp_id else None
-            if comp is not None and not is_large:
-                text = (text + f" {self._preview_value_str(comp)}")[:max_chars + 6]
-            else:
-                text = text[:max_chars]
-            c.create_text(x * S + 1, y * S, text=text, anchor="nw",
-                          fill="#ffffff", font=font)
-            # Large modes: companion is right-aligned on the same row.
-            if comp is not None and is_large:
-                c.create_text(128 * S - 1, y * S, text=self._preview_value_str(comp),
-                              anchor="ne", fill="#ffffff", font=font)
-
-        # Empty-state hint.
-        if not any(e.get("position", 255) != 255 or e.get("barPosition", 255) != 255
-                   for e in layout_by_id.values()):
-            c.create_text(64 * S, 32 * S, text="(no metrics selected)",
-                          fill="#666666", font=("Courier New", 9))
-
-    def apply_layout_and_start(self):
-        """Validate, push current_layout to the device, then start monitoring."""
-        config = self.build_config_from_gui()
-        if config is None:
-            return
-
-        if self.current_layout is None:
-            metrics = self._build_layout_input()
-            row_mode, layout_by_id, _hidden = auto_layout(metrics, self._current_template_key())
-            show_clock, clock_position = False, 0
-        else:
-            row_mode = self.current_layout["row_mode"]
-            layout_by_id = self.current_layout["layout"]
-            show_clock = self.current_layout.get("show_clock", False)
-            clock_position = self.current_layout.get("clock_position", 0)
-        payload = build_device_layout_json(row_mode, layout_by_id, show_clock, clock_position)
-
-        if not save_config(config):
-            messagebox.showerror("Error", "Failed to save configuration!")
-            return
-
-        esp_ip = config["esp32_ip"]
-        self.apply_layout_btn.config(state=tk.DISABLED, text="Applying...")
-        self.root.update_idletasks()
-
-        def worker():
-            try:
-                ok, detail = push_layout_to_device(esp_ip, payload)
-            except Exception as e:  # urllib/OSError -> device unreachable etc.
-                ok, detail = False, str(e)
-            self.root.after(0, lambda: self._apply_layout_done(ok, detail, esp_ip))
-
-        threading.Thread(target=worker, daemon=True).start()
-
-    def _apply_layout_done(self, ok, detail, esp_ip):
-        """Report the push result on the UI thread; start monitoring on success."""
-        self.apply_layout_btn.config(state=tk.NORMAL, text="Apply layout + Start monitoring")
-        if ok:
-            messagebox.showinfo(
-                "Layout applied - running in the background",
-                f"The device at {esp_ip} was configured and PC Monitor is now "
-                "sending data.\n\n"
-                "It runs in the system tray (the up-arrow ^ area by the clock) - "
-                "right-click the icon to reconfigure or quit."
-            )
-            self.root.quit()  # same as Save & Start: hand off to the monitor loop
-        else:
-            messagebox.showwarning(
-                "Could not apply layout",
-                f"Reached the apply step but the device did not confirm:\n\n{detail}\n\n"
-                "Your settings were saved locally. Check that the ESP32 IP is "
-                "correct and the device is on the same network (try Test "
-                "Connection), or configure the layout from the device web page."
-            )
+    def _make_device_session(self, config):
+        """Build the device-session dict the layout dialog uses to fetch live
+        values and stream them to the OLED. Captures `config` (metrics + ip/port).
+        The dialog calls collect() on its worker thread once per second."""
+        def collect(last_good):
+            snapshot = build_snapshot(config, force=True)  # keep trying; self-recover
+            payload, values, fresh, lg, _stale = collect_metrics(config, snapshot, last_good)
+            # A single transient REST miss must not flash "LHM API Error" on the
+            # device during a live preview. If we still have cached values, keep
+            # streaming them as a normal (OK) frame.
+            if not fresh and lg:
+                payload["status"] = STATUS_OK
+                payload["timestamp"] = datetime.now().strftime('%H:%M')
+            return payload, values, lg
+        return {"collect": collect, "esp_ip": config["esp32_ip"],
+                "udp_port": config["udp_port"]}
 
     def _update_customize_btn_state(self):
         if getattr(self, "customize_layout_btn", None) is None:
@@ -2677,17 +2507,41 @@ class MetricSelectorGUI:
         self.customize_layout_btn.config(state=tk.NORMAL if has_metrics else tk.DISABLED)
 
     def open_layout_editor(self):
-        if not self.selected_metrics or self.current_layout is None:
+        """Open the Customize Layout window (template + drag grid + live 1:1 +
+        push). Builds the starting layout on demand, so it no longer depends on a
+        bottom-of-window preview being present."""
+        if not self.selected_metrics:
             return
         metrics = self._build_layout_input()
-        metrics_by_id = {m["id"]: m for m in metrics}
-        layout_copy = copy.deepcopy(self.current_layout["layout"])
-        row_mode = self.current_layout["row_mode"]
-        tpl_key = self.current_layout["source"]
-        show_clock = self.current_layout.get("show_clock", False)
-        clock_position = self.current_layout.get("clock_position", 0)
-        dlg = LayoutEditorDialog(self.root, metrics, row_mode, layout_copy, tpl_key,
-                                 show_clock, clock_position)
+
+        # Starting layout: reuse a previous custom layout, else auto-layout now.
+        if self.current_layout is not None and self.current_layout.get("layout"):
+            row_mode = self.current_layout["row_mode"]
+            layout = copy.deepcopy(self.current_layout["layout"])
+            tpl_key = self.current_layout.get("source", self._current_template_key())
+            show_clock = self.current_layout.get("show_clock", False)
+            clock_position = self.current_layout.get("clock_position", 0)
+            fmt = {
+                "rpm_k": self.current_layout.get("rpm_k", False),
+                "net_mb": self.current_layout.get("net_mb", False),
+                "clock_offset": self.current_layout.get("clock_offset", 0),
+            }
+        else:
+            tpl_key = self._current_template_key()
+            row_mode, layout, _hidden = auto_layout(metrics, tpl_key)
+            show_clock, clock_position, fmt = False, 0, None
+
+        # Device session for live values + push (needs a valid config).
+        config = self.build_config_from_gui(require_metrics=False)
+        device_session = None
+        if config is not None and config.get("metrics"):
+            device_session = self._make_device_session(config)
+            if fmt is None:
+                fmt = self._fetch_device_format(config["esp32_ip"])
+
+        dlg = LayoutEditorDialog(self.root, metrics, row_mode, layout, tpl_key,
+                                 show_clock, clock_position,
+                                 device_session=device_session, fmt=fmt)
         if dlg.result is not None:
             self.current_layout = {
                 "row_mode": dlg.result["row_mode"],
@@ -2695,14 +2549,29 @@ class MetricSelectorGUI:
                 "source": "custom",
                 "show_clock": dlg.result.get("show_clock", False),
                 "clock_position": dlg.result.get("clock_position", 0),
+                "rpm_k": dlg.result.get("rpm_k", False),
+                "net_mb": dlg.result.get("net_mb", False),
+                "clock_offset": dlg.result.get("clock_offset", 0),
             }
-            self.template_var.set("Custom")
-            self._render_preview(
-                self.current_layout["row_mode"],
-                self.current_layout["layout"],
-                metrics_by_id,
-            )
-            self.overflow_label.config(text="")
+            self._apply_label_overrides(dlg.result["layout"])
+
+    def _apply_label_overrides(self, layout):
+        """Write names edited in the dialog back to the main label entries, so the
+        UDP metric name matches the device label (ids map to selection order)."""
+        for mid, e in layout.items():
+            idx = mid - 1
+            if not (0 <= idx < len(self.selected_metrics)):
+                continue
+            label = (e.get("label") or "").strip()
+            s = self.selected_metrics[idx]
+            key = s.get('wmi_identifier') or f"{s['source']}_{s['display_name']}"
+            info = self.label_entries.get(key)
+            if info is None:
+                continue
+            if label and label != s.get("name", ""):
+                info['entry'].delete(0, tk.END)
+                info['entry'].insert(0, label[:10])
+        self.update_counter()
 
     def clear_all(self):
         for cb, sensor, var, frame in self.checkboxes:
@@ -2722,35 +2591,29 @@ class MetricSelectorGUI:
         return "#d4ffd4" if sensor.get('is_active_nic') else "#f0f0f0"
 
     def _on_search_var_changed(self):
-        """Search box changed. Recolor immediately in highlight mode; debounce
-        the heavier hide/show work in filter mode so typing stays responsive."""
-        if self.filter_var.get():
-            if self._search_after_id is not None:
-                self.root.after_cancel(self._search_after_id)
-            self._search_after_id = self.root.after(150, self._apply_filter)
-        else:
-            self._recolor_only()
+        """Search box changed - debounce the visibility refresh so typing stays
+        responsive."""
+        if self._search_after_id is not None:
+            self.root.after_cancel(self._search_after_id)
+        self._search_after_id = self.root.after(120, self._refresh_row_visibility)
 
-    def _recolor_only(self):
-        """Highlight matches without changing visibility (all rows stay shown).
-        Non-matching rows fall back to their base color (preserving NIC green)."""
-        term = self.search_var.get().lower()
-        for cb, sensor, var, frame in self.checkboxes:
-            base = self._row_base_bg(sensor)
-            if term and self._sensor_matches_search(sensor, term):
-                cb.config(bg="#ffffcc")
-                frame.config(bg="#ffffcc")
-            else:
-                cb.config(bg=base)
-                frame.config(bg=base)
+    def on_filter_toggle(self):
+        """'Hide non-matching' checkbox toggled."""
+        self._refresh_row_visibility()
 
-    def _apply_filter(self):
-        """Filter mode: show only matching rows and hide any section whose rows
-        are all filtered out. Re-packs in original order to preserve layout."""
+    def _refresh_row_visibility(self):
+        """Single source of truth for which sensor rows are shown + highlighted.
+        Composes three predicates together: 'show only selected', the search
+        term, and 'hide non-matching'. Re-packs in original order to preserve
+        layout."""
         self._search_after_id = None
+        if not getattr(self, "sections", None):
+            return  # list not built yet
         term = self.search_var.get().lower()
+        show_selected = self.show_selected_var.get()
+        hide_nonmatch = self.filter_var.get()
 
-        # Clean slate so visible rows/sections keep their original order
+        # Clean slate so visible rows/sections keep their original order.
         for section in self.sections:
             section['frame'].pack_forget()
             for cb, sensor, var, frame in section['rows']:
@@ -2760,9 +2623,21 @@ class MetricSelectorGUI:
             visible = []
             for cb, sensor, var, frame in section['rows']:
                 base = self._row_base_bg(sensor)
-                cb.config(bg=base)
-                frame.config(bg=base)
-                if self._sensor_matches_search(sensor, term):
+                matches = self._sensor_matches_search(sensor, term)
+                # Highlight search matches; otherwise fall back to base colour.
+                if term and matches:
+                    cb.config(bg="#ffffcc")
+                    frame.config(bg="#ffffcc")
+                else:
+                    cb.config(bg=base)
+                    frame.config(bg=base)
+                # Visibility: every active condition must pass.
+                vis = True
+                if show_selected and not var.get():
+                    vis = False
+                if hide_nonmatch and term and not matches:
+                    vis = False
+                if vis:
                     visible.append(frame)
             if visible:
                 section['frame'].pack(fill=tk.X, padx=5, pady=5, anchor="n")
@@ -2770,23 +2645,6 @@ class MetricSelectorGUI:
                     frame.pack(fill=tk.X, padx=10, pady=2)
 
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-
-    def on_filter_toggle(self):
-        """Handle the 'Hide non-matching' checkbox toggling."""
-        if self.filter_var.get():
-            self._apply_filter()
-        else:
-            # Turning filter OFF: restore every section + row in original order
-            for section in self.sections:
-                section['frame'].pack_forget()
-                for cb, sensor, var, frame in section['rows']:
-                    frame.pack_forget()
-            for section in self.sections:
-                section['frame'].pack(fill=tk.X, padx=5, pady=5, anchor="n")
-                for cb, sensor, var, frame in section['rows']:
-                    frame.pack(fill=tk.X, padx=10, pady=2)
-            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-            self._recolor_only()
 
     def _update_label_counter(self, info):
         """Refresh one custom-label character counter (red once over 10)."""
@@ -2906,24 +2764,49 @@ class MetricSelectorGUI:
 
         return config
 
+    def _push_layout_best_effort(self, config):
+        """Push the current (or a freshly auto-generated) layout to the device so
+        the screen matches the selection. Non-fatal: monitoring still starts and
+        the layout binds by id on the next packet even if the push fails."""
+        try:
+            cl = self.current_layout
+            if cl is not None and cl.get("layout"):
+                payload = build_device_layout_json(
+                    cl["row_mode"], cl["layout"],
+                    cl.get("show_clock", False), cl.get("clock_position", 0),
+                    rpm_k=cl.get("rpm_k"), net_mb=cl.get("net_mb"),
+                    clock_offset=cl.get("clock_offset"))
+            else:
+                metrics = self._build_layout_input()
+                row_mode, layout, _hidden = auto_layout(metrics, self._current_template_key())
+                payload = build_device_layout_json(row_mode, layout)
+            push_layout_to_device(config["esp32_ip"], payload, timeout=4)
+        except Exception as e:
+            print(f"Layout push skipped (device unreachable?): {e}")
+
     def save_and_start(self):
         config = self.build_config_from_gui()
         if config is None:
             return
 
-        if save_config(config):
-            messagebox.showinfo(
-                "Saved - running in the background",
-                f"Configuration saved! {len(self.selected_metrics)} metric(s) will be monitored.\n\n"
-                "PC Monitor now runs in the background. Look for its icon in the "
-                "system tray (the up-arrow ^ area next to the clock) - right-click "
-                "it to reconfigure or quit.\n\n"
-                "There is no need to launch it again; double-clicking the app while "
-                "it is running just reopens this window."
-            )
-            self.root.quit()
-        else:
+        if not save_config(config):
             messagebox.showerror("Error", "Failed to save configuration!")
+            return
+
+        # Configure the device screen to match the selection before handing off
+        # to the monitor loop (best-effort; failures do not block startup).
+        self._push_layout_best_effort(config)
+
+        messagebox.showinfo(
+            "Saved - running in the background",
+            f"Configuration saved! {len(self.selected_metrics)} metric(s) will be monitored.\n\n"
+            "PC Monitor now runs in the background. Look for its icon in the "
+            "system tray (the up-arrow ^ area next to the clock) - right-click "
+            "it to reconfigure or quit.\n\n"
+            "There is no need to launch it again; double-clicking the app while "
+            "it is running just reopens this window."
+        )
+        self.root.quit()
 
     def export_settings(self):
         """Export the current GUI configuration to a user-chosen JSON file.
@@ -3252,94 +3135,95 @@ STATUS_LHM_STARTING = 4
 STATUS_UNKNOWN_ERROR = 5
 
 
-def send_metrics(sock, config, last_good_values=None, status_code=STATUS_OK):
-    """
-    Collect metric values and send to ESP32
+def build_snapshot(config, force=False):
+    """Fetch the hardware-sensor source ONCE for this cycle (REST or WMI), or
+    None when there are no hardware metrics or the source is unavailable. Shared
+    by the UDP sender and the dialog's live preview so both read one source.
 
-    Args:
-        sock: UDP socket
-        config: Configuration dictionary
-        last_good_values: Dict to track last known good values per metric ID
-        status_code: LHM status code (1=OK, 2=API error, 3=LHM not running, etc.)
+    force=True bypasses the is_healthy fast-path skip, so a caller without its own
+    recovery probing (the live-preview dialog) keeps attempting and self-recovers
+    instead of getting stuck once the health monitor trips."""
+    if not any(m.get("source") == "wmi" for m in config["metrics"]):
+        return None
+    if use_rest_api:
+        # Skip the request while the API is known down (fast path); the monitoring
+        # loop handles periodic recovery probing separately. force overrides this.
+        if force or lhm_health_monitor.is_healthy:
+            return build_rest_snapshot(rest_api_host, rest_api_port)
+        return None
+    return build_wmi_snapshot()
 
-    Returns:
-        Tuple of (success: bool, last_good_values: dict, has_fresh_data: bool)
+
+def collect_metrics(config, snapshot, last_good_values=None, status_code=STATUS_OK):
+    """Collect values and assemble the UDP payload. PURE (no socket).
+
+    Shared by send_metrics() and the live preview so the OLED and the preview
+    never disagree. Carries the single status / timestamp / last-good policy.
+
+    Returns: (payload, values_by_id, has_fresh_data, last_good_values, stale_count)
     """
     if last_good_values is None:
         last_good_values = {}
 
-    # Track if we got any fresh data
     has_fresh_data = False
     stale_count = 0
-
-    # Build JSON payload with status code
     payload = {
         "version": "2.2",
         "status": status_code,  # LHM health status code
-        "timestamp": "",  # Will be set based on data freshness
+        "timestamp": "",        # Will be set based on data freshness
         "metrics": []
     }
-
-    # Fetch the hardware-sensor source ONCE per cycle (instead of once per
-    # metric). All wmi-source metrics then resolve from this single snapshot.
-    snapshot = None
-    if any(m.get("source") == "wmi" for m in config["metrics"]):
-        if use_rest_api:
-            # Skip the request entirely while the API is known down (fast path);
-            # the monitoring loop handles periodic recovery probing separately.
-            if lhm_health_monitor.is_healthy:
-                snapshot = build_rest_snapshot(rest_api_host, rest_api_port)
-        else:
-            snapshot = build_wmi_snapshot()
+    values_by_id = {}
 
     for metric_config in config["metrics"]:
         value = get_metric_value(metric_config, snapshot)
         metric_id = metric_config["id"]
 
         if value is not None:
-            # Fresh data - update cache
-            last_good_values[metric_id] = value
+            last_good_values[metric_id] = value  # fresh data -> update cache
             has_fresh_data = True
         else:
-            # Stale data - use cached value if available
-            value = last_good_values.get(metric_id, 0)
+            value = last_good_values.get(metric_id, 0)  # stale -> use cached
             stale_count += 1
+        values_by_id[metric_id] = value
 
-        # Use custom label if set, otherwise use generated name
+        # Use custom label if set, otherwise the generated name
         display_name = metric_config.get("custom_label", "")
         if not display_name:
             display_name = metric_config["name"]
-
-        metric_data = {
+        payload["metrics"].append({
             "id": metric_id,
             "name": display_name,
             "value": value,
             "unit": metric_config["unit"]
-        }
-        payload["metrics"].append(metric_data)
+        })
 
-    # Override status if data is stale (even if health monitor says OK)
-    # This catches the case where API starts failing but health monitor hasn't triggered yet
+    # Override status if data is stale (catches the API failing before the
+    # health monitor trips).
     total_metrics = len(config["metrics"])
     if total_metrics > 0 and stale_count >= total_metrics:
-        # All metrics are stale - definitely an API error
         if status_code == STATUS_OK:
             status_code = STATUS_API_ERROR
-        payload["status"] = status_code
     elif stale_count > 0 and stale_count >= total_metrics * 0.5:
-        # More than half metrics stale - likely API issue
         if status_code == STATUS_OK:
             status_code = STATUS_API_ERROR
-        payload["status"] = status_code
+    payload["status"] = status_code
 
-    # Set timestamp only if we have fresh data
-    # Empty timestamp signals ESP32 that data may be stale
-    if has_fresh_data:
-        payload["timestamp"] = datetime.now().strftime('%H:%M')
-    else:
-        payload["timestamp"] = ""  # Signal stale data to ESP32
+    # Empty timestamp signals the ESP32 that data may be stale.
+    payload["timestamp"] = datetime.now().strftime('%H:%M') if has_fresh_data else ""
+    return payload, values_by_id, has_fresh_data, last_good_values, stale_count
 
-    # Send via UDP
+
+def send_metrics(sock, config, last_good_values=None, status_code=STATUS_OK):
+    """Collect metric values and send them to the ESP32 over UDP.
+
+    Thin wrapper over build_snapshot() + collect_metrics().
+    Returns (success, last_good_values, has_fresh_data).
+    """
+    snapshot = build_snapshot(config)
+    payload, _values, has_fresh_data, last_good_values, stale_count = collect_metrics(
+        config, snapshot, last_good_values, status_code)
+
     try:
         message = json.dumps(payload).encode('utf-8')
         sock.sendto(message, (config["esp32_ip"], config["udp_port"]))
@@ -3349,10 +3233,8 @@ def send_metrics(sock, config, last_good_values=None, status_code=STATUS_OK):
         metrics_str = " | ".join([f"{m['name']}:{m['value']}{m['unit']}" for m in payload["metrics"][:4]])
         if len(payload["metrics"]) > 4:
             metrics_str += f" ... +{len(payload['metrics'])-4} more"
-
         stale_indicator = f" [!{stale_count} stale]" if stale_count > 0 else ""
 
-        # Status code indicator
         status_names = {
             STATUS_OK: "",
             STATUS_API_ERROR: " [API ERR]",
@@ -3360,10 +3242,9 @@ def send_metrics(sock, config, last_good_values=None, status_code=STATUS_OK):
             STATUS_LHM_STARTING: " [LHM STARTING]",
             STATUS_UNKNOWN_ERROR: " [ERROR]"
         }
-        status_indicator = status_names.get(status_code, f" [STATUS:{status_code}]")
+        status_indicator = status_names.get(payload["status"], f" [STATUS:{payload['status']}]")
 
         print(f"[{timestamp}] {metrics_str}{stale_indicator}{status_indicator}")
-
         return True, last_good_values, has_fresh_data
     except Exception as e:
         print(f"Error sending data: {e}")
