@@ -278,6 +278,11 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "VER")) { out = String(FIRMWARE_VERSION); return true; }
   if (!strcmp(n, "IP")) { out = WiFi.localIP().toString(); return true; }
   if (!strcmp(n, "BUILT")) { out = String(__DATE__); return true; }
+  if (!strcmp(n, "ASSETVER")) {
+    String s = String(__DATE__) + __TIME__;
+    s.replace(" ", ""); s.replace(":", ""); // alnum only -> safe in a query string
+    out = s; return true;
+  }
   if (!strcmp(n, "HEAP")) { out = String(ESP.getFreeHeap() / 1024.0, 1); return true; }
   if (!strcmp(n, "DISPLAYMODEL")) {
     out = (settings.displayType == 2) ? "CH1116" : (settings.displayType == 1) ? "SH1106" : "SSD1306";

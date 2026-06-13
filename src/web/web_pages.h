@@ -22,12 +22,13 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
 <title>SmallOLED - Config Portal v%VER%</title>
 <meta name="theme-color" content="#f4f0e7">
 <script>(function(){try{var a=localStorage.getItem('soled_accent');if(a)document.documentElement.setAttribute('data-accent',a);var m=localStorage.getItem('soled_mode');if(m){document.documentElement.setAttribute('data-mode',m);var mt=document.querySelector('meta[name=theme-color]');if(mt)mt.setAttribute('content',m==='dark'?'#161512':'#f4f0e7');}}catch(e){}})();</script>
-<link rel="stylesheet" href="/portal.css">
+<link rel="stylesheet" href="/portal.css?v=%ASSETVER%">
 </head>
 <body>
 <div class="app">
 
 <header class="topbar">
+  <button type="button" class="hamburger" id="navToggle" aria-label="Toggle navigation" aria-expanded="false"><span></span></button>
   <div class="tb-brand">
     <span class="brand-mark" aria-hidden="true"></span>
     <span class="tb-name">SmallOLED</span>
@@ -50,6 +51,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
 
 <div class="workspace">
 
+  <div class="nav-scrim" id="navScrim" aria-hidden="true"></div>
   <aside class="sidebar">
     <nav aria-label="Sections">
       <div class="nav-group">
@@ -66,7 +68,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
       </div>
       <div class="nav-group">
         <div class="nav-label">System</div>
-        <button type="button" class="nav-item" data-nav="firmware">Firmware</button>
+        <button type="button" class="nav-item" data-nav="firmware">Maintenance</button>
       </div>
     </nav>
 
@@ -806,8 +808,8 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
         <!-- FIRMWARE -->
         <section class="page" data-page="firmware">
           <div class="page-header">
-            <h1 class="page-h1">Firmware</h1>
-            <p class="page-lede">Update over the air and back up or restore your configuration.</p>
+            <h1 class="page-h1">Maintenance</h1>
+            <p class="page-lede">Update firmware over the air, back up or restore your configuration, and reset the device.</p>
           </div>
 
           <div class="card">
@@ -845,6 +847,17 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               <input type="file" id="importFile" accept=".json" hidden>
             </div>
           </div>
+
+          <div class="card">
+            <h2 class="card-title">Factory reset</h2>
+            <div class="note warn">
+              <span class="note-k">danger</span>
+              <div>Erases <strong>all settings and WiFi credentials</strong> and restarts into AP setup mode. This cannot be undone - export a backup first.</div>
+            </div>
+            <div class="page-actions">
+              <button type="button" class="btn btn-danger" id="resetBtn">Factory reset</button>
+            </div>
+          </div>
         </section>
 
       </form>
@@ -856,13 +869,12 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
 <div class="save-bar">
   <div class="save-bar-inner">
     <div class="save-meta clean" id="saveMeta"><span class="dot"></span><span class="txt">All saved</span></div>
-    <button type="button" class="btn btn-danger btn-lg" id="resetBtn">Factory reset</button>
     <button type="submit" form="cfgForm" class="btn btn-accent btn-lg" id="saveBtn">Save &amp; apply</button>
   </div>
 </div>
 
 <script>window.SOLED={maxRows:%JS_MAXROWS%,isLarge:%JS_ISLARGE%,minBright:%MINBRIGHT%,ver:"%VER%"};</script>
-<script src="/portal.js"></script>
+<script src="/portal.js?v=%ASSETVER%"></script>
 </body>
 </html>
 )PAGE";
@@ -977,6 +989,16 @@ a:hover { color: var(--accent); }
 .tb-sep { width: 1px; height: 22px; background: var(--line-2); margin: 0 4px; }
 .tb-crumb { font-size: 14px; color: var(--mute); font-weight: 500; }
 .tb-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+.hamburger { display: none; width: 34px; height: 34px; flex: none; padding: 0; cursor: pointer; align-items: center; justify-content: center; background: var(--paper-2); border: 1px solid var(--line); border-radius: 8px; transition: background 120ms ease, border-color 120ms ease; }
+.hamburger:hover { background: var(--card); border-color: var(--line-2); }
+.hamburger > span, .hamburger > span::before, .hamburger > span::after { content: ""; display: block; width: 16px; height: 1.6px; border-radius: 2px; background: var(--ink); transition: transform 180ms ease, opacity 120ms ease; }
+.hamburger > span { position: relative; }
+.hamburger > span::before { position: absolute; left: 0; top: -5px; }
+.hamburger > span::after { position: absolute; left: 0; top: 5px; }
+html.nav-open .hamburger > span { background: transparent; }
+html.nav-open .hamburger > span::before { transform: translateY(5px) rotate(45deg); }
+html.nav-open .hamburger > span::after { transform: translateY(-5px) rotate(-45deg); }
+.nav-scrim { display: none; }
 .acc-pick { display: flex; align-items: center; gap: 6px; }
 .acc-pick .lab { font-family: var(--mono); font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint); margin-right: 2px; }
 .acc-sw { width: 22px; height: 22px; border-radius: 999px; border: 2px solid transparent; cursor: pointer; padding: 0; background: var(--paper-2); display: grid; place-items: center; transition: border-color 120ms ease, transform 80ms ease; }
@@ -1144,24 +1166,29 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius
 .save-meta .dot { width: 7px; height: 7px; border-radius: 999px; background: var(--warn); box-shadow: 0 0 0 3px color-mix(in oklab, var(--warn) 18%, transparent); }
 .save-meta.clean .dot { background: var(--ok); box-shadow: 0 0 0 3px var(--accent-soft); }
 @media (max-width: 880px) {
-  .topbar { padding: 0 14px; gap: 10px; }
+  .topbar { padding: 0 12px; gap: 10px; }
+  .hamburger { display: inline-flex; }
   .tb-ver, .tb-sep, .tb-crumb { display: none; }
   .acc-pick .lab { display: none; }
   .workspace { grid-template-columns: 1fr; }
+  /* sidebar becomes a slide-in drawer toggled by the hamburger */
   .sidebar {
-    position: static; height: auto; overflow: visible;
-    border-right: 0; border-bottom: 1px solid var(--line);
-    flex-direction: row; flex-wrap: wrap; gap: 8px; align-items: center;
-    padding: 12px 14px; overflow-x: auto;
+    position: fixed; top: var(--topbar-h); left: 0;
+    width: min(280px, 84vw);
+    height: calc(100vh - var(--topbar-h));
+    height: calc(100dvh - var(--topbar-h));
+    overflow-y: auto; z-index: 46;
+    border-right: 1px solid var(--line); border-bottom: 0;
+    box-shadow: var(--shadow-pop);
+    transform: translateX(-102%); transition: transform 220ms ease;
   }
-  .nav-group { flex-direction: row; flex-wrap: nowrap; gap: 6px; }
-  .nav-group + .nav-group { margin-top: 0; }
-  .nav-label { display: none; }
-  .nav-item { padding: 8px 13px; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; }
-  .nav-item.active::before { display: none; }
-  .nav-item .nv-tag { display: none; }
-  .sidebar-spacer { display: none; }
-  .status-block, .about { display: none; }
+  html.nav-open .sidebar { transform: none; }
+  .nav-scrim {
+    display: block; position: fixed; left: 0; right: 0; top: var(--topbar-h); bottom: 0;
+    z-index: 45; background: rgba(20, 16, 8, 0.42);
+    opacity: 0; visibility: hidden; transition: opacity 200ms ease, visibility 200ms ease;
+  }
+  html.nav-open .nav-scrim { opacity: 1; visibility: visible; }
   .content { padding: 24px 18px 130px; }
   .save-bar-inner { padding: 11px 16px; }
   .save-meta .txt { display: none; }
@@ -1171,6 +1198,20 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius
   .card { padding: 18px 16px; }
   .page-actions .btn { flex: 1; justify-content: center; }
   .metric-adv { grid-template-columns: 1fr; }
+}
+/* ultra-narrow (e.g. foldable cover screens): keep the top bar from overflowing */
+@media (max-width: 410px) {
+  .topbar { gap: 8px; padding: 0 10px; }
+  .tb-brand { gap: 7px; }
+  .tb-right { gap: 8px; }
+  .mode-toggle button { padding: 5px 9px; font-size: 11px; }
+  .acc-sw { width: 20px; height: 20px; }
+}
+@media (max-width: 360px) {
+  .tb-name { display: none; }
+  .acc-pick { gap: 4px; }
+  /* icon-only light/dark toggle: font-size:0 hides the label, the .ic dot keeps its fixed size */
+  .mode-toggle button { font-size: 0; gap: 0; padding: 6px 8px; }
 }
 )CSS";
 
@@ -1185,6 +1226,17 @@ static const char PORTAL_JS[] PROGMEM = R"JS(
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
   var CFG = window.SOLED || {};
 
+  /* ---- mobile nav drawer (hamburger) ---- */
+  var navToggle = $('#navToggle'), navScrim = $('#navScrim');
+  function setNav(open) {
+    document.documentElement.classList.toggle('nav-open', open);
+    if (navToggle) navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  function closeNav() { setNav(false); }
+  if (navToggle) navToggle.addEventListener('click', function () { setNav(!document.documentElement.classList.contains('nav-open')); });
+  if (navScrim) navScrim.addEventListener('click', closeNav);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeNav(); });
+
   /* ---- section nav (master-detail) ---- */
   var navItems = $$('.nav-item');
   var pages = $$('.page');
@@ -1195,6 +1247,7 @@ static const char PORTAL_JS[] PROGMEM = R"JS(
     var active = navItems.filter(function (n) { return n.dataset.nav === key; })[0];
     if (active && crumb) crumb.textContent = active.textContent.replace(/PC$/, '').trim();
     window.scrollTo(0, 0);
+    closeNav();
     try { localStorage.setItem('soled_section', key); } catch (e) {}
   }
   navItems.forEach(function (n) { n.addEventListener('click', function () { showPage(n.dataset.nav); }); });
