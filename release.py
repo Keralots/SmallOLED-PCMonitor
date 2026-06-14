@@ -11,8 +11,10 @@ Runs the whole release pipeline for the browser flasher at docs/:
        variant (flashed at 0x0, what ESP Web Tools writes)
     5. Copies the Full.bin images into docs/firmware/latest/ as
        SmallOLED-<id>-v<ver>-Full.bin and writes the VERSION file the page reads
-    6. Copies each firmware.bin into release/v<ver>/ as an -ota.bin for the
-       GitHub Release (existing users update over the web UI)
+    6. Writes the GitHub Release images into release/v<ver>/ with screen-size
+       names non-technical users recognise:
+         firmware-v<ver>-OLED_<size>.bin           (new device, full 0x0 image)
+         OTA_ONLY_firmware-v<ver>-OLED_<size>.bin  (existing device, web UI update)
 
 The web flasher reads firmware id from the BOARDS map in docs/flasher.js:
 SSD1306 (0.96") and SSD1309 (2.42") deliberately share the `ssd1306` image;
@@ -32,12 +34,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Variants published by the web flasher. (PlatformIO env, firmware id, label).
-# The firmware id must match the `firmware` field in docs/flasher.js.
+# Variants published by the web flasher.
+# (PlatformIO env, firmware id, screen-size token, label).
+# The firmware id must match the `firmware` field in docs/flasher.js (used for
+# the docs/ flasher images). The size token drives the user-facing release/
+# filenames (firmware-v<ver>-OLED_<size>.bin) that go on the GitHub Release.
 VARIANTS = [
-    ("oled-096", "ssd1306", '0.96" SSD1306  (also 2.42" SSD1309)'),
-    ("oled-13",  "sh1106",  '1.3" SH1106'),
-    ("oled-154", "ch1116",  '1.54" CH1116'),
+    ("oled-096", "ssd1306", "0.96inch", '0.96" SSD1306  (also 2.42" SSD1309)'),
+    ("oled-13",  "sh1106",  "1.3inch",  '1.3" SH1106'),
+    ("oled-154", "ch1116",  "1.54inch", '1.54" CH1116'),
 ]
 
 # Flash offsets for the ESP32-C3 (bootloader starts at 0x0).
@@ -96,7 +101,7 @@ def run(cmd, cwd=REPO_ROOT):
 def build_envs(pio_path: str):
     """Build every variant env in a single PlatformIO invocation."""
     cmd = [pio_path, "run"]
-    for env, _id, _label in VARIANTS:
+    for env, *_ in VARIANTS:
         cmd.extend(["-e", env])
     run(cmd)
 
@@ -178,7 +183,7 @@ def main():
     ota_dir = REPO_ROOT / "release" / version
 
     print(f"SmallOLED web-flasher release: {version}")
-    print("Variants: " + ", ".join(f"{env} -> {fid}" for env, fid, _ in VARIANTS))
+    print("Variants: " + ", ".join(f"{env} -> {fid}" for env, fid, *_ in VARIANTS))
 
     if not args.skip_build:
         pio = locate_pio()
@@ -189,19 +194,28 @@ def main():
 
     print("\n--- Web flasher images (docs/firmware/latest/) ---")
     full_names = []
-    for env, fid, _label in VARIANTS:
+    for env, fid, _size, _label in VARIANTS:
         out = DOCS_LATEST / f"SmallOLED-{fid}-{version}-Full.bin"
         merge_full_bin(env, out)
         full_names.append(out.name)
     write_version_file(version)
     print(f"  VERSION  ({version})")
 
-    print(f"\n--- OTA images (release/{version}/) ---")
-    ota_names = []
-    for env, fid, _label in VARIANTS:
-        out = ota_dir / f"SmallOLED-{fid}-{version}-ota.bin"
-        copy_ota_bin(env, out)
-        ota_names.append(out.name)
+    print(f"\n--- GitHub Release images (release/{version}/) ---")
+    rel_names = []
+    for env, fid, size, _label in VARIANTS:
+        # Full 0x0 image for new devices - same bytes as the docs flasher image,
+        # named by screen size so non-technical users pick the right one.
+        full_src = DOCS_LATEST / f"SmallOLED-{fid}-{version}-Full.bin"
+        full_out = ota_dir / f"firmware-{version}-OLED_{size}.bin"
+        full_out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(full_src, full_out)
+        print(f"  Full: {full_out.relative_to(REPO_ROOT)} ({full_out.stat().st_size / 1024:.1f} KB)")
+        rel_names.append(full_out.name)
+        # OTA-only image for existing devices (web UI update).
+        ota_out = ota_dir / f"OTA_ONLY_firmware-{version}-OLED_{size}.bin"
+        copy_ota_bin(env, ota_out)
+        rel_names.append(ota_out.name)
 
     print("\n" + "=" * 60)
     print(f"Release {version} ready.")

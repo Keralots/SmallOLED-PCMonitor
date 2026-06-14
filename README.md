@@ -47,7 +47,7 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 - **Dual Display Modes:**
   - **PC Online**: Real-time stats with customizable metrics and positions
-  - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Standard, or Large styles, plus a Cycle All mode)
+  - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, Standard, or Large styles, plus a Cycle All mode)
 - **v2.0 Python GUI**:
   - Easy graphical configuration - no more editing files!
   - Select from all available sensors on your system
@@ -155,7 +155,7 @@ A dedicated browser flasher that picks the right firmware for your OLED, install
 
 1. Open the **[SmallOLED Web Flasher](https://keralots.github.io/SmallOLED-PCMonitor/)** in desktop **Chrome or Edge** (Web Serial is required, so Firefox, Safari and mobile won't work).
 2. Connect your ESP32-C3 via USB. If it constantly connects/disconnects, hold the **BOOT** button, connect to USB while still holding it, then release after connecting. Alternatively, hold **BOOT**, press **RESET** while holding **BOOT**, then release both buttons.
-3. Pick your OLED (0.96" SSD1306, 1.3" SH1106, or 2.42" SSD1309) and click **Install**. It erases and writes the full image at `0x0` in ~30 seconds.
+3. Pick your OLED (0.96" SSD1306, 1.3" SH1106, 1.54" CH1116, or 2.42" SSD1309) and click **Install**. It erases and writes the full image at `0x0` in ~30 seconds.
 4. When the install finishes, use the **Configure WiFi** step to send your home network to the device over USB. If you miss it, join the **PCMonitor-Setup** hotspot and open `192.168.4.1` instead.
 5. The device reboots, joins your WiFi, and shows its IP address on the OLED.
 
@@ -165,13 +165,13 @@ A dedicated browser flasher that picks the right firmware for your OLED, install
 
 Prefer to flash the raw binary with your own tool? Download it from the latest release and flash the full image at `0x0`.
 
-**Download the latest release**: [v1.5.6](release/v1.5.6/)
+**Download the latest release**: [v1.6.0](release/v1.6.0/)
 
 **Generic web flasher (esptool-js):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
 2. Connect your ESP32-C3 via USB (use the BOOT/RESET trick above if it won't stay connected).
 3. Click **"Connect"** and select your port
-4. Click **"Choose File"** and select the full image for your display, e.g. `firmware-v1.5.6-OLED_0.96inch.bin`
+4. Click **"Choose File"** and select the full image for your display, e.g. `firmware-v1.6.0-OLED_0.96inch.bin`
 5. Make sure you pick firmware for correct OLED size version! It may initially work but you will get black screen after you reconnect device.
 6. Set **Flash Address** to `0x0`
 7. Click **"Program"** and wait ~30 seconds
@@ -180,7 +180,7 @@ Prefer to flash the raw binary with your own tool? Download it from the latest r
 **Other methods:**
 - **Windows**: Run `flash.bat` and follow prompts
 - **Linux/Mac**: Run `./flash.sh` and follow prompts
-- **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-v1.5.6-OLED_0.96inch.bin`
+- **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-v1.6.0-OLED_0.96inch.bin`
 
 #### Option C: Build from Source
 
@@ -213,7 +213,7 @@ Once connected to WiFi, access the full configuration page:
 ![ESP32 Web Portal - Clock Settings](img/ESP-WEBPortal1.png)
 
 2. **Clock Settings:**
-   - Idle clock style (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Standard, or Large, plus a Cycle All mode)
+   - Idle clock style (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, Standard, or Large, plus a Cycle All mode)
    - Time format (12/24 hour)
    - Date format (DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD)
 
@@ -225,11 +225,11 @@ Once connected to WiFi, access the full configuration page:
 4. **Timezone:**
    - Select your region from ~50 timezone presets
    - Automatic DST transitions (no manual toggle needed)
-5. **Display Labels:**
-   - Customize static labels shown on OLED (not metric names)
-   - Fan/Pump label (e.g., "PUMP", "FAN", "COOLER")
-   - CPU, RAM, GPU, and Disk labels
-   - Perfect for personalizing your setup!
+5. **Visible metrics (custom labels & placement):**
+   - Give each metric a custom label (max 10 chars) shown on the OLED - e.g. relabel a pump RPM sensor as "PUMP", "FAN" or "COOLER"
+   - Drag a metric chip onto the live OLED preview (or tap a chip then a slot) to place it
+   - Pair two metrics on one row and add progress bars
+   - Labels can also be set from the companion app
 6. **Configuration:**
    - Export configuration to JSON file (backup)
    - Import configuration from JSON file (restore)
@@ -325,11 +325,11 @@ The configuration window lets you:
 After the Python script starts sending data:
 
 1. Open your ESP32's IP address in a web browser
-2. Scroll down to the **"Metrics from PC"** section
-3. You'll see all metrics received from your PC
-4. Select location of the metric on display and optionally pair it with companion metric. E.g. **"CPU: 10% 40C"** > shows usage and temperature of CPU.
+2. Open the **Visible metrics** page
+3. You'll see all metrics received from your PC as draggable chips under a live OLED preview
+4. Drag a chip onto a slot (or tap a chip then a slot) to place it; optionally pair it with a companion metric. E.g. **"CPU: 10% 40C"** > shows usage and temperature of CPU.
 5. Use **progress bars** for visual representation (optional)
-6. Choose between **5-row** (more spacing) or **6-row** (compact) display modes
+6. Choose between **5-row** (more spacing) or **6-row** (compact) display modes on the Display layout page
 
 **TIP:** Start with 1-2 metrics initially and slowly build entire layout.
 
@@ -428,7 +428,7 @@ These require manual configuration by editing the ESP32_IP in the script file.
 
 The OLED will display:
 - **PC Online**: Real-time stats (CPU, RAM, GPU temp, disk, fan speed)
-- **PC Offline**: Animated clock (choose from 8 styles in the web portal, or a Cycle All mode that rotates through them)
+- **PC Offline**: Animated clock (choose from 10 styles in the web portal, or a Cycle All mode that rotates through them)
 
 ### Display Modes
 
@@ -445,6 +445,8 @@ The OLED will display:
 - **Pac-Man Clock**: Pac-Man eats pellet-based digits
 - **Snake Clock**: A Nokia-style snake roams the screen chasing food and steering around the digits and its own body. On each minute change the changed digits crumble into pellets that the snake hunts down one by one before the new digit drops in. Optional arena border and date row.
 - **Tetris Clock**: Block-grid digits sit low on the screen with the occasional tumbling tetromino. On each minute change the changed digits are rebuilt one at a time, either as drop-in slabs or as falling dots. Optional date row at the top or bottom.
+- **Asteroids Clock**: A wireframe vector clock - the ship drifts with inertia and splits tumbling rocks while idle, then aims at and shoots each changed digit into spinning line shards at the minute change. Optional date row.
+- **Dino Runner Clock**: A Chrome T-Rex homage - the dino runs and auto-jumps cacti over a scrolling ground with parallax clouds; at the minute change a pterodactyl swoops in, carries off the old digit, and the new one drops in from above. Optional clouds and date row.
 - **Standard Clock**: Simple centered clock with date and day of week
 - **Large Clock**: Extra-large time display with date
 - **Cycle All Styles**: Rotates through every clock style automatically, switching every 5 minutes.
@@ -455,11 +457,11 @@ Change clock style anytime via the web portal or touch button!
 
 **Via Web Portal (Recommended):**
 1. Open ESP32's IP address in browser
-2. Go to "Display Labels" section
-3. Change labels to match your setup:
-   - "PUMP" → "FAN" or "COOLER"
-   - Customize CPU, RAM, GPU, Disk labels too
-4. Save settings - changes apply immediately!
+2. Go to the **Visible metrics** page
+3. Expand a metric and set its **Custom label** to match your setup:
+   - relabel a pump RPM sensor "PUMP", "FAN" or "COOLER"
+   - give CPU, RAM, GPU, Disk metrics your own labels too
+4. Changes apply live in the preview; click **Save & apply** to keep them
 
 ### Customizing Monitored Sensors (v2.0)
 
@@ -513,10 +515,10 @@ Replace `smalloled.local` in the examples with your device's mDNS name (configur
 | GET | `/api/display/brightness?value=0-100` | Set display brightness (percent) |
 | GET | `/api/mode/clock` | Force the animated clock, even when the PC is online |
 | GET | `/api/mode/auto` | Resume automatic mode (PC stats when online, clock when offline) |
-| GET | `/api/clock/style?id=0-9` | Switch the clock animation |
+| GET | `/api/clock/style?id=0-11` | Switch the clock animation |
 | GET | `/api/reboot` | Soft-restart the device (does **not** erase settings) |
 
-**Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man, `7` = Snake, `8` = Tetris, `9` = Cycle All Styles.
+**Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man, `7` = Snake, `8` = Tetris, `9` = Cycle All Styles, `10` = Asteroids, `11` = Dino Runner.
 
 ### Examples
 
@@ -619,7 +621,7 @@ You can then call `rest_command.oled_display_off` / `oled_display_on` from an au
 - Verify ESP32 IP address in Python GUI matches actual IP (shown on OLED)
 - Check Windows Firewall isn't blocking UDP port 4210
 - Ensure both PC and ESP32 are on the same network
-- Open ESP32 web interface and check "Metrics from PC" section at the bottom
+- Open ESP32 web interface and check the **Visible metrics** page
 - Try running: `python pc_stats_monitor_v2.py` (not minimized) to see console output
 
 **Autostart not working (Windows)**
