@@ -18,6 +18,15 @@
 #include <Update.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <esp_ota_ops.h>
+
+// True when the device is still on the original 4 MB partition table, whose OTA
+// app slot is 0x140000 (1,310,720 B). Repartitioned devices have a larger slot
+// (e.g. 0x1E0000), so the firmware-too-big-for-OTA warning only applies here.
+static bool isLegacyOtaPartition() {
+  const esp_partition_t* running = esp_ota_get_running_partition();
+  return running && running->size <= 0x140000; // <= 1,310,720 B
+}
 
 // ========== Web Server Object ==========
 WebServer server(80);
@@ -305,6 +314,11 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "HEAP")) { out = String(ESP.getFreeHeap() / 1024.0, 1); return true; }
   if (!strcmp(n, "DISPLAYMODEL")) {
     out = (settings.displayType == 2) ? "CH1116" : (settings.displayType == 1) ? "SH1106" : "SSD1306";
+    return true;
+  }
+  // Hides the OTA partition-limit warning on already-repartitioned devices.
+  if (!strcmp(n, "OTAWARNSTYLE")) {
+    out = isLegacyOtaPartition() ? "" : "display:none";
     return true;
   }
 

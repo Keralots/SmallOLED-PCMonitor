@@ -835,6 +835,10 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               <span class="note-k">care</span>
               <div>Don't unplug or close this tab during an update. Flashing the wrong board image can require a USB re-flash to recover.</div>
             </div>
+            <div class="note warn" style="%OTAWARNSTYLE%">
+              <span class="note-k">partition</span>
+              <div>New features (extra clock animations and this redesigned web page) have made the firmware bigger, and it is now close to the size limit for over-the-air updates on older devices. A future update may be <strong>too large to install from this page</strong> until your device is updated to the newer storage layout - a one-time step. <strong>If an update ever fails with a "size" or "no space" error</strong>, don't worry: just <strong>Export your config below first</strong>, then plug the device into a computer and re-flash it once with the <a href="https://keralots.github.io/SmallOLED-PCMonitor/" target="_blank" rel="noopener">browser flasher</a> (this updates the storage layout automatically). After that, updates from this page work normally again and you can Import your backup.</div>
+            </div>
           </div>
 
           <div class="card">
