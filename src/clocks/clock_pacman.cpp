@@ -241,10 +241,14 @@ void displayClockWithPacman() {
 
         // Calculate pellet index (0-34)
         uint8_t pellet_idx = row * DIGIT_GRID_W + col;
-        // Check if pellet has been eaten
+        // Only honor the eaten mask while this slot is actively being eaten or
+        // is pending replacement. Otherwise a stale mask (e.g. from an aborted
+        // animation) would keep punching holes in an otherwise static digit.
+        bool mask_active = digit_being_eaten[i] || (pending_digit_index == i);
         uint8_t byte_idx = pellet_idx / 8;
         uint8_t bit_mask = 1 << (pellet_idx % 8);
-        bool is_eaten = (digitEatenPellets[i][byte_idx] & bit_mask) != 0;
+        bool is_eaten = mask_active &&
+                        (digitEatenPellets[i][byte_idx] & bit_mask) != 0;
 
         if (!is_eaten) {
           // Draw pellet (small circle like patrol pellets)

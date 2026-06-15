@@ -9,6 +9,7 @@
 #include "clock_constants.h"
 #include "clocks.h"
 #include "../display/display.h"
+#include <cstring>
 
 // ========== Common Digit Positioning ==========
 // Standard digit X positions for time display (18px spacing, starting at 19)
@@ -154,6 +155,10 @@ void resetClockAnimationState() {
     digit_eaten_rows_left[i] = 0;
     digit_eaten_rows_right[i] = 0;
   }
+  // Clear the per-slot eaten-pellet mask too. An animation aborted mid-eat
+  // (mode switch, /save, style cycle) otherwise leaves stale bits that punch
+  // holes in a static digit until that slot happens to be eaten again.
+  memset(digitEatenPellets, 0, sizeof(digitEatenPellets));
   generatePellets();
 
   // Snake + Tetris + Asteroids + Dino (state is file-local in their .cpp files)
