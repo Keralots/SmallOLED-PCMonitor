@@ -1,0 +1,6 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Local runtime config (normally ~/.config/PCStatsMonitor/, but ignore any local one)
+monitor_config.json

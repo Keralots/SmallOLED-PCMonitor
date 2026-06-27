@@ -1,0 +1,19 @@
+# Runtime dependencies for pc_stats_monitor_v4_linux.py (Linux)
+#
+#   python3 -m pip install -r requirements.txt
+#
+# There is NO build step on Linux - run it straight from source.
+
+psutil          # CPU / RAM / disk / temps / fans / net (always available)
+pywebview       # native config window (falls back to the browser if GTK libs absent)
+
+# Optional:
+pynvml          # NVIDIA GPU sensors (AMD uses sysfs, no package needed)
+pystray         # system-tray icon (needs AppIndicator/GTK on some desktops)
+pillow          # tray icon image (used by pystray)
+
+# A NATIVE window via pywebview needs the system GTK/WebKit libraries, e.g. on
+# Debian/Ubuntu:   sudo apt install gir1.2-webkit2-4.1 python3-gi
+# Without them the app still works - it opens the UI in your default browser at
+# http://127.0.0.1:8736 . lm-sensors (`sudo apt install lm-sensors && sensors-detect`)
+# improves temperature/fan coverage.

@@ -77,9 +77,10 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 1. **Flash ESP32** - Open the [SmallOLED Web Flasher](https://keralots.github.io/SmallOLED-PCMonitor/) in desktop Chrome or Edge, pick your OLED, and click Install (no installation needed!)
 2. **Connect ESP32 to WiFi** - Right after flashing, use the flasher's **Configure WiFi** step to send your network to the device over USB. (No web flasher? Join the "PCMonitor-Setup" network and open 192.168.4.1.)
 3. **Install LibreHardwareMonitor** (Windows only) - Download from [GitHub](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases), run as Admin (needed for temps/fans/GPU/power)
-4. **Get the companion app:**
-   - **Windows (easiest, recommended):** download `pc_stats_monitor_v3.exe` from [`PC-Companion-App-v3-beta/dist/`](PC-Companion-App-v3-beta/) and double-click it - no Python needed. This v3 beta adds a built-in **"Configure OLED screen"** editor so you arrange the whole display right from the app.
-   - **Linux, or prefer the classic script:** install Python from [python.org](https://www.python.org/downloads/) (check "Add to PATH"), then in a terminal run `pip install psutil pywin32 wmi pystray pillow` followed by `python pc_stats_monitor_v2.py`. The v2 script still works the same.
+4. **Get the companion app (v4 beta - recommended on both Windows and Linux):**
+   - **Windows (easiest):** download `pc_stats_monitor_v4.exe` from [`PC-Companion-App-v4-beta/win-companion/dist/`](PC-Companion-App-v4-beta/win-companion/) and double-click it - no Python needed. v4 gives a polished **web-style config window** (1:1 device preview, drag-and-drop layout, sensor picker, number formats, quick templates) that lives in the system tray.
+   - **Linux:** `cd PC-Companion-App-v4-beta/linux-companion`, then `python3 -m pip install -r requirements.txt` and `python3 pc_stats_monitor_v4_linux.py` (no build step). Same UI; opens a native window or your browser.
+   - **Classic scripts (legacy):** the older `pc_stats_monitor_v2.py` (Windows) / `pc_stats_monitor_v2_linux.py` (Linux) and the `PC-Companion-App-v3-beta` app still work if you prefer them.
 5. **Configure in GUI** - Enter ESP32 IP address, select the sensors you want, click "Save & Start"
 6. **Position metrics** - In the v3 beta app click **"Configure OLED screen"**; with the v2 script, open the ESP32 IP in a browser and drag metrics on the preview
 
@@ -237,9 +238,15 @@ Once connected to WiFi, access the full configuration page:
 
 ### 2. PC Stats Sender
 
-> **Windows users - start here (recommended):** grab the prebuilt **`pc_stats_monitor_v3.exe`** from [`PC-Companion-App-v3-beta/dist/`](PC-Companion-App-v3-beta/). It needs **no Python install**, runs from the system tray, and adds a built-in **"Configure OLED screen"** layout editor (drag/drop, 1:1 live preview, pull/push the layout to the device, backup to file) so you can do all the PC-monitoring setup from the desktop app instead of the device web page. See [`PC-Companion-App-v3-beta/README.md`](PC-Companion-App-v3-beta/README.md). It is BETA but stable for daily use.
+> **Recommended (v4 beta, Windows + Linux):** the v4 companion gives a web-style
+> config window that mirrors the device portal 1:1 - live OLED preview, drag-and-drop
+> layout, sensor picker, number formats, quick templates, pull/push and backup -
+> all from the desktop, hosted in a native window + system tray.
+> - **Windows:** prebuilt **`pc_stats_monitor_v4.exe`** in [`PC-Companion-App-v4-beta/win-companion/dist/`](PC-Companion-App-v4-beta/win-companion/) - no Python needed.
+> - **Linux:** run from source in [`PC-Companion-App-v4-beta/linux-companion/`](PC-Companion-App-v4-beta/linux-companion/) (`pip install -r requirements.txt` then `python3 pc_stats_monitor_v4_linux.py`).
 >
-> The classic **`pc_stats_monitor_v2.py`** script below still works exactly as before and remains the supported path on Linux - use it if you prefer running from source or aren't on Windows. New setups are easier with the v3 beta app.
+> **Legacy:** the `PC-Companion-App-v3-beta` app and the classic **`pc_stats_monitor_v2.py`** /
+> **`pc_stats_monitor_v2_linux.py`** scripts below still work if you prefer them.
 
 #### Prerequisites (v2 script)
 - **Python 3.7+**

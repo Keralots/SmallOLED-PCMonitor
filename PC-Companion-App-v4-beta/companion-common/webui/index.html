@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en" data-accent="green" data-mode="dark">
+
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SmallOLED PC Companion v4</title>
+<meta name="theme-color" content="#161512">
+<script>(function(){try{var a=localStorage.getItem('soled_accent');if(a)document.documentElement.setAttribute('data-accent',a);var m=localStorage.getItem('soled_mode');if(m){document.documentElement.setAttribute('data-mode',m);var mt=document.querySelector('meta[name=theme-color]');if(mt)mt.setAttribute('content',m==='dark'?'#161512':'#f4f0e7');}}catch(e){}})();</script>
+<script>window.SOLED={maxRows:5,isLarge:false,minBright:0,ver:"4.0",maxMetrics:20};</script>
+<link rel="stylesheet" href="/portal.css">
+<style>
+/* PC-companion tweaks on top of the shared device-portal CSS */
+.sidebar { padding-bottom: 78px; }                 /* clear the fixed save bar so the footer isn't cut */
+/* The device portal caps content at 860px (form readability). The desktop window
+   is much wider, so widen it - and let the Sensors page go full width for a
+   dense multi-column sensor grid. */
+.content-inner { max-width: 1320px; }
+#sensorList { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px 24px; }
+#sensorList .sensor-cat { grid-column: 1 / -1; }    /* category headers span all columns */
+#sensorList .check-row { border-top: 0; padding: 8px 0; }
+#selectedTray { margin: 2px 0 16px; }
+/* Selected-sensor chips: green = placed on the device screen, accent = sent but not placed. */
+#selectedTray .chip.onscreen { border-color: var(--ok); background: color-mix(in oklab, var(--ok) 16%, var(--card)); box-shadow: 0 0 0 3px color-mix(in oklab, var(--ok) 16%, transparent); }
+#selectedTray .chip.onscreen .cn { color: var(--ok); }
+/* Bar controls: slider + editable number box (matches the clock-offset row). */
+.metric-adv .range-row { max-width: none; gap: 12px; }
+.metric-adv .range-num { width: 78px; max-width: 78px; flex: 0 0 78px; text-align: center; padding: 8px 6px; }
+.metric-adv .range-row input[type="range"] { flex: 1 1 auto; min-width: 80px; }
+</style>
+</head>
+
+<body>
+<div class="app">
+  <header class="topbar">
+    <button class="hamburger" id="navToggle" aria-label="Menu" aria-expanded="false"><span></span></button>
+    <div class="tb-brand">
+      <span class="brand-mark"></span>
+      <span class="tb-name">SmallOLED</span>
+      <span class="tb-ver">PC v4</span>
+    </div>
+    <span class="tb-sep"></span>
+    <span class="tb-crumb" id="crumb">Connection</span>
+    <div class="tb-right">
+      <div class="acc-pick">
+        <span class="lab">Accent</span>
+        <button class="acc-sw on" data-acc="green" aria-label="Green"><i></i></button>
+        <button class="acc-sw" data-acc="amber" aria-label="Amber"><i></i></button>
+      </div>
+      <div class="mode-toggle">
+        <button type="button" data-mode="light"><span class="ic"></span>Light</button>
+        <button type="button" data-mode="dark" class="on"><span class="ic"></span>Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="nav-scrim" id="navScrim"></div>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <nav class="nav-group">
+        <div class="nav-label">Configure</div>
+        <button class="nav-item active" data-nav="connection">Connection</button>
+        <button class="nav-item" data-nav="sensors">Sensors</button>
+        <button class="nav-item" data-nav="layout">Layout &amp; preview</button>
+        <button class="nav-item" data-nav="backup">Backup &amp; restore</button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div>
+        <p class="rail-label">Status</p>
+        <div class="status-readout">
+          <div class="sr-head"><span class="sr-led offline" id="srLed"></span><span class="sr-title" id="srTitle">Device offline</span></div>
+          <dl class="sr-rows">
+            <div class="sr-row"><dt>device</dt><dd id="srDevice">-</dd></div>
+            <div class="sr-row"><dt>source</dt><dd id="srSource">-</dd></div>
+            <div class="sr-row"><dt>sending</dt><dd id="srCount">0 metrics</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div class="about">
+        <span class="line">SmallOLED PC Companion &middot; <b>v4 beta</b></span>
+        <span class="line">Runs in the tray &middot; close window to hide</span>
+      </div>
+    </aside>
+
+    <main class="content">
+      <div class="content-inner">
+
+        <!-- CONNECTION ------------------------------------------------ -->
+        <section class="page active" data-page="connection">
+          <div class="page-header">
+            <h1 class="page-h1">Connection</h1>
+            <p class="page-lede">Where to send your PC's sensor readings, and how often. The device address is shown on the OLED at boot.</p>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Device <span class="tag">UDP</span></h2>
+            <div class="grid-2">
+              <div class="field">
+                <label class="field-label" for="esp32_ip">Device IP address</label>
+                <input type="text" id="esp32_ip" name="esp32_ip" placeholder="192.168.0.163" autocomplete="off">
+              </div>
+              <div class="field">
+                <label class="field-label" for="udp_port">UDP port</label>
+                <input type="number" id="udp_port" name="udp_port" value="4210" min="1" max="65535">
+              </div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="update_interval">Update interval (seconds)</label>
+              <input type="number" id="update_interval" name="update_interval" value="3" min="0.5" step="0.5">
+              <p class="field-hint">How often to push fresh values. 3s is a good balance; lower is snappier but busier.</p>
+            </div>
+            <div class="page-actions">
+              <button type="button" class="btn btn-accent" id="saveConnBtn"><span class="gl"></span>Save connection</button>
+              <button type="button" class="btn" id="testConnBtn">Test connection</button>
+            </div>
+            <div class="note" id="connResult" style="display:none"></div>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Windows autostart <span class="tag" id="autostartState">-</span></h2>
+            <label class="check-row standalone">
+              <input type="checkbox" id="autostartChk"><span class="check-box"></span>
+              <span class="check-text"><strong>Start with Windows</strong>
+                <span class="ct-hint">Saved instantly when you toggle it - no need to "Save &amp; push". Launches minimized to the tray at login (per-user, no admin). Waits 10s so LibreHardwareMonitor can start first.</span></span>
+            </label>
+          </div>
+        </section>
+
+        <!-- SENSORS --------------------------------------------------- -->
+        <section class="page" data-page="sensors">
+          <div class="page-header">
+            <h1 class="page-h1">Sensors</h1>
+            <p class="page-lede">Pick which readings to send to the device (up to 20). CPU / RAM / Disk work out of the box; temps, fans, GPU and power need LibreHardwareMonitor.</p>
+          </div>
+          <div class="note" id="sourceBanner">Reading sensors...</div>
+          <div class="card">
+            <h2 class="card-title">Available sensors <span class="tag" id="sensorCount">Selected: 0 / 20</span></h2>
+            <div class="field-label">Selected (sent to device)<span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--dim)"> &mdash; <b style="color:var(--ok)">green</b> = shown on the device screen, <b style="color:var(--accent-d)">accent</b> = sent but not placed yet</span></div>
+            <div class="chip-tray" id="selectedTray"></div>
+            <div class="page-actions" style="margin-top:0;margin-bottom:14px">
+              <button type="button" class="btn" id="rescanBtn">↻ Rescan sensors</button>
+              <input type="text" id="sensorSearch" placeholder="Filter sensors..." style="max-width:260px" autocomplete="off">
+            </div>
+            <div class="check-list" id="sensorList"></div>
+          </div>
+        </section>
+
+        <!-- LAYOUT + PREVIEW (the cfgForm) ---------------------------- -->
+        <section class="page" data-page="layout">
+          <div class="page-header">
+            <h1 class="page-h1">Layout &amp; preview</h1>
+            <p class="page-lede">Drag your selected metrics onto the screen. The preview matches the device 1:1. Click a chip then a slot, or drag. Click a filled slot to clear it.</p>
+          </div>
+          <div class="page-actions" style="margin-top:0;margin-bottom:18px;flex-wrap:wrap;align-items:center">
+            <div class="select-wrap" style="max-width:210px"><select id="templateSel">
+              <option value="compact">Template: Compact (paired)</option>
+              <option value="bars">Template: Progress bars</option>
+              <option value="big">Template: Large text</option>
+              <option value="everything">Template: One per slot</option>
+            </select></div>
+            <button type="button" class="btn" id="applyTemplateBtn">Apply template</button>
+            <button type="button" class="btn" id="pullBtn">Pull layout from device</button>
+            <span class="field-hint" id="pullResult" style="align-self:center"></span>
+          </div>
+          <form id="cfgForm">
+            <div class="card">
+              <h2 class="card-title">Screen layout</h2>
+              <div class="grid-2">
+                <div class="field">
+                  <label class="field-label" for="rowMode">Row mode</label>
+                  <div class="select-wrap"><select id="rowMode" name="rowMode">
+                    <option value="0">5 rows x 2 columns</option>
+                    <option value="1">6 rows x 2 columns</option>
+                    <option value="2">Large (2 rows)</option>
+                    <option value="3">Large (3 rows)</option>
+                  </select></div>
+                </div>
+                <div class="field">
+                  <label class="field-label" for="clockPosition">Clock position</label>
+                  <div class="select-wrap"><select id="clockPosition" name="clockPosition">
+                    <option value="0">Center (own row)</option>
+                    <option value="1">Top-left</option>
+                    <option value="2">Top-right</option>
+                  </select></div>
+                </div>
+              </div>
+              <div class="grid-2" style="margin-top:14px;align-items:start">
+                <div>
+                  <label class="check-row standalone">
+                    <input type="checkbox" id="showClock" name="showClock"><span class="check-box"></span>
+                    <span class="check-text"><strong>Show clock on the stats screen</strong>
+                      <span class="ct-hint">Overlays the time alongside your metrics.</span></span>
+                  </label>
+                  <div class="field" style="margin-top:16px;margin-bottom:0">
+                    <label class="field-label" for="clockOffset">Clock horizontal offset (px)</label>
+                    <div class="range-row">
+                      <input type="range" id="clockOffset" name="clockOffset" min="-20" max="20" step="1" value="0" data-div="1" data-fixed="0">
+                      <span class="range-val" data-for="clockOffset">0</span>
+                    </div>
+                    <p class="field-hint">Nudge the clock left/right (only when the clock is shown).</p>
+                  </div>
+                </div>
+                <div>
+                  <div class="field-label">Number formats</div>
+                  <label class="check-row standalone">
+                    <input type="checkbox" id="netMBFormat" name="netMBFormat"><span class="check-box"></span>
+                    <span class="check-text"><strong>Network speed in MB/s</strong>
+                      <span class="ct-hint">Show network throughput as MB/s instead of KB/s (e.g. 1.2M).</span></span>
+                  </label>
+                  <label class="check-row standalone" style="margin-top:12px">
+                    <input type="checkbox" id="rpmKFormat" name="rpmKFormat"><span class="check-box"></span>
+                    <span class="check-text"><strong>Fan / pump RPM in thousands (K)</strong>
+                      <span class="ct-hint">Show RPM at or above 1000 as e.g. 1.2K to save space.</span></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="card crt oled-preview">
+              <div class="oled-pv-head"><span class="ttl">Live preview</span><span class="meta" id="oledMeta">128x64</span></div>
+              <div class="oled-stage" id="oledStage">
+                <canvas id="oledCanvas" width="128" height="64"></canvas>
+                <div class="drop-cells" id="dropCells"></div>
+              </div>
+            </div>
+            <div class="card">
+              <h2 class="card-title">Metrics on screen</h2>
+              <div class="note plain" style="max-width:none"><span class="note-k">Tip</span>Add <code>^</code> to a label to pad it - each <code>^</code> becomes a space that shifts the value right (max 10) to align columns, e.g. <code>CPU^^</code>.</div>
+              <div class="chip-tray" id="chipTray"></div>
+              <div id="metricsList"></div>
+            </div>
+          </form>
+        </section>
+
+        <!-- BACKUP ---------------------------------------------------- -->
+        <section class="page" data-page="backup">
+          <div class="page-header">
+            <h1 class="page-h1">Backup &amp; restore</h1>
+            <p class="page-lede">Export your full configuration (connection, selected metrics, labels and layout) to a JSON file as a backup, or import one to restore/recover it.</p>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Configuration file</h2>
+            <div class="page-actions" style="margin-top:0">
+              <button type="button" class="btn" id="exportBtn"><span class="gl"></span>Export config</button>
+              <button type="button" class="btn" id="importBtn">Import config</button>
+              <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+            </div>
+            <div class="note plain"><span class="note-k">Note</span>Importing replaces your current selection and layout, then reloads the window.</div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <div class="save-bar">
+    <div class="save-bar-inner">
+      <div class="save-meta clean" id="saveMeta"><span class="dot"></span><span class="txt">All saved</span></div>
+      <button type="submit" form="cfgForm" class="btn btn-accent btn-lg" id="saveBtn"><span class="gl"></span>Save &amp; push to device</button>
+    </div>
+  </div>
+</div>
+<script src="/portal.js"></script>
+</body>
+
+</html>
