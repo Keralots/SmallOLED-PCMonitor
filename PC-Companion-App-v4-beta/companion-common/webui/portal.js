@@ -506,21 +506,33 @@ setTimeout(function () { window.location.href = '/'; }, 3000);
 })
 .catch(function (err) { btn.disabled = false; btn.textContent = orig; alert('Error saving settings: ' + err); });
 });
+// pywebview bridge (present only inside the native window); browser uses fallbacks.
+function nativeApi() { return (window.pywebview && window.pywebview.api) ? window.pywebview.api : null; }
+function browserDownload(text, name) {
+var blob = new Blob([text], { type: 'application/json' });
+var url = URL.createObjectURL(blob);
+var a = document.createElement('a'); a.href = url; a.download = name;
+document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
 $('#exportBtn').addEventListener('click', function () {
 fetch('/api/export').then(function (r) { return r.json(); }).then(function (data) {
-var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-var url = URL.createObjectURL(blob);
-var a = document.createElement('a'); a.href = url; a.download = 'pcmonitor-config.json';
-document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+var text = JSON.stringify(data, null, 2);
+var api = nativeApi();
+// A Blob <a download> is a no-op in the embedded WebView2, so use the native
+// save dialog when running in the pywebview window.
+if (api && api.save_text) {
+api.save_text(text, 'pcmonitor-config.json').then(function (r) {
+if (r && r.ok) markClean('Exported to ' + r.path);
+else if (r && r.error) alert('Could not save: ' + r.error);
+});
+} else {
+browserDownload(text, 'pcmonitor-config.json');
+}
 }).catch(function (err) { alert('Error exporting configuration: ' + err); });
 });
-$('#importBtn').addEventListener('click', function () { $('#importFile').click(); });
-$('#importFile').addEventListener('change', function (ev) {
-var file = ev.target.files[0]; if (!file) return;
-var reader = new FileReader();
-reader.onload = function (e) {
+function doImport(cfgText) {
 var cfg;
-try { cfg = JSON.parse(e.target.result); } catch (err) { alert('Invalid configuration file: ' + err); return; }
+try { cfg = JSON.parse(cfgText); } catch (err) { alert('Invalid configuration file: ' + err); return; }
 fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) })
 .then(function (r) { return r.json(); })
 .then(function (d) {
@@ -528,9 +540,28 @@ if (d.success) { alert('Configuration imported. Reloading...'); location.reload(
 else { alert('Error importing configuration: ' + d.message); }
 })
 .catch(function (err) { alert('Error importing configuration: ' + err); });
-};
+}
+$('#importBtn').addEventListener('click', function () {
+var api = nativeApi();
+if (api && api.open_text) {
+api.open_text().then(function (r) { if (r && r.ok) doImport(r.text); else if (r && r.error) alert('Could not open: ' + r.error); });
+} else { $('#importFile').click(); }
+});
+$('#importFile').addEventListener('change', function (ev) {
+var file = ev.target.files[0]; if (!file) return;
+var reader = new FileReader();
+reader.onload = function (e) { doImport(e.target.result); };
 reader.readAsText(file);
 });
+// ---- PC companion: revert unsaved changes -------------------------------
+var revertBtn = $('#revertBtn');
+if (revertBtn) revertBtn.addEventListener('click', function () {
+if (!confirm('Discard unsaved changes and reload the last saved configuration?')) return;
+fetch('/api/revert', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (d) {
+if (d.success) reloadMetrics(true).then(function () { loadSensors(false); markClean('Reverted to saved'); refreshStatus(); });
+}).catch(function (err) { alert('Revert failed: ' + err); });
+});
+
 // ---- PC companion: pull layout from device ------------------------------
 var pullBtn = $('#pullBtn');
 if (pullBtn) pullBtn.addEventListener('click', function () {
@@ -664,7 +695,7 @@ function postSelection() {
 return fetch('/api/select', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keys: selectedKeys() }) })
 .then(function (r) { return r.json(); })
 .then(function () { return reloadMetrics(); })
-.then(function () { markClean('Selection updated'); refreshStatus(); });
+.then(function () { markDirty(); refreshStatus(); });  // deferred - persists on Save & push
 }
 function applySensorFilter() {
 var q = (($('#sensorSearch') || {}).value || '').toLowerCase();

@@ -92,16 +92,29 @@ def flatten_sensors(core, selected_keys, placed_keys=None):
 
 
 def placed_sensor_keys(config):
-    """Keys of the selected sensors that currently occupy a slot on the device
-    screen (layout position != 255)."""
+    """Keys of sensors actually visible on the device screen: those with a slot
+    (position != 255) AND those shown as a companion of a placed metric (companions
+    have no slot of their own but still render next to their primary)."""
     _rm, layout, _sc, _cp, _r, _n, _co = resolve_layout(config)
     by_id = {m["id"]: m for m in config.get("metrics", [])}
+
+    def keyof(mid):
+        m = by_id.get(mid)
+        if not m:
+            return None
+        return m.get("wmi_identifier") or "%s_%s" % (m.get("source", ""), m.get("display_name", ""))
+
     keys = set()
     for mid, e in layout.items():
         if e.get("position", 255) != 255:
-            m = by_id.get(mid)
-            if m:
-                keys.add(m.get("wmi_identifier") or "%s_%s" % (m.get("source", ""), m.get("display_name", "")))
+            k = keyof(mid)
+            if k:
+                keys.add(k)
+            comp = e.get("companionId", 0)  # the companion is visible too
+            if comp:
+                ck = keyof(comp)
+                if ck:
+                    keys.add(ck)
     return keys
 
 
@@ -215,7 +228,8 @@ def apply_select(core, state, keys):
             m["custom_label"] = lbl[:10]
         metrics.append(m)
     config["metrics"] = metrics
-    core.save_config(config)
+    # In-memory only (the monitor reflects it live for the preview); persisted to
+    # disk on Save & push, or discarded by Revert. Avoids surprise auto-saves.
     state.set_config(config)
     return {"success": True, "count": len(metrics)}
 
@@ -338,6 +352,14 @@ def do_test(core, state, form):
     if reachable:
         return {"reachable": True, "message": "Reachable at %s (web port 80 responded; UDP probe sent to %d)." % (ip, port)}
     return {"reachable": False, "message": "Could not reach %s on port 80. %s Check power, network/subnet, and the IP." % (ip, detail)}
+
+
+def apply_revert(core, state):
+    """Discard unsaved in-memory changes by reloading the last-saved config from
+    disk (or defaults if none)."""
+    cfg = core.load_config() or dict(core.DEFAULT_CONFIG)
+    state.set_config(cfg)
+    return {"success": True}
 
 
 def apply_pull(core, state):
@@ -509,6 +531,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._json(apply_import(core, state, self._jsonbody()))
             if path == "/api/pull":
                 return self._json(apply_pull(core, state))
+            if path == "/api/revert":
+                return self._json(apply_revert(core, state))
             if path == "/api/template":
                 return self._json(apply_template(core, state, self._form().get("key", ["compact"])[0]))
             if path == "/api/autostart":

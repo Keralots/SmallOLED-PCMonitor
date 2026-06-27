@@ -74,6 +74,41 @@ def gui_quit():
 
 
 # ---------------------------------------------------------------------------
+# JS bridge: native save/open dialogs (a Blob <a download> is a no-op inside the
+# embedded WebView2, so Export/Import in the window go through here; the browser
+# fallback in portal.js handles plain-browser mode).
+# ---------------------------------------------------------------------------
+_FILE_TYPES = ('JSON files (*.json)', 'All files (*.*)')
+
+
+class _JsApi:
+    def save_text(self, text, name):
+        try:
+            res = _window.create_file_dialog(
+                webview.SAVE_DIALOG, save_filename=(name or "config.json"), file_types=_FILE_TYPES)
+            if not res:
+                return {"ok": False, "cancelled": True}
+            path = res if isinstance(res, str) else res[0]
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(text or "")
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def open_text(self):
+        try:
+            res = _window.create_file_dialog(
+                webview.OPEN_DIALOG, allow_multiple=False, file_types=_FILE_TYPES)
+            if not res:
+                return {"ok": False, "cancelled": True}
+            path = res[0] if isinstance(res, (list, tuple)) else res
+            with open(path, "r", encoding="utf-8") as f:
+                return {"ok": True, "text": f.read(), "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
 # Sensor source detection (for the monitor) - REST first, then WMI
 # ---------------------------------------------------------------------------
 def _detect_source():
@@ -255,7 +290,8 @@ def run(core, start_hidden=False, notify_startup=False):
     tray_icon = _make_tray()
     _window = webview.create_window(
         "SmallOLED PC Companion", url,
-        width=1180, height=820, min_size=(900, 600), hidden=start_hidden)
+        width=1180, height=820, min_size=(900, 600), hidden=start_hidden,
+        js_api=_JsApi())
 
     def on_closing():
         # Hide to tray instead of quitting, unless a real Quit is in progress.
