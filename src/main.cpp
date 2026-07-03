@@ -298,6 +298,11 @@ void setup() {
   }
 #endif
 
+  // Keep the radio awake: WiFi modem sleep delays inbound ACKs to the beacon
+  // interval, which stalls large web-page transfers for seconds. Power draw
+  // is irrelevant next to the LED matrix.
+  WiFi.setSleep(false);
+
   // Initialize NTP
   initNTP();
 

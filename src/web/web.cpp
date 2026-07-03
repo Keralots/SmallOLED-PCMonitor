@@ -19,6 +19,9 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <esp_ota_ops.h>
+#include <esp_task_wdt.h>
+#include <lwip/sockets.h>
+#include <errno.h>
 
 // True when the device is still on the original 4 MB partition table, whose OTA
 // app slot is 0x140000 (1,310,720 B). Repartitioned devices have a larger slot
@@ -513,34 +516,93 @@ static bool resolvePlaceholder(const char* n, String& out) {
   return false;
 }
 
+// ---- Guarded response streaming ----
+// WiFiClient::write() blocks in 1s select retries when the peer stops reading
+// (TCP zero window) and keeps the connection alive on EAGAIN, so a stalled
+// browser used to hold loop() inside one handleClient() call until the 15s
+// task watchdog rebooted the device mid page load. These helpers write to the
+// socket non-blocking instead, wait for drain in short slices that keep the
+// watchdog fed, and drop a client that stops draining. A healthy client is
+// never cut off: the idle limit only trips when NO bytes move at all.
+static const uint32_t STREAM_IDLE_LIMIT_MS = 4000;   // no bytes drained -> stalled
+static const uint32_t STREAM_TOTAL_LIMIT_MS = 30000; // hard cap per response
+
+static bool writeAllGuarded(int sock, const char* data, size_t len, uint32_t totalDeadline) {
+  uint32_t idleDeadline = millis() + STREAM_IDLE_LIMIT_MS;
+  while (len > 0) {
+    uint32_t now = millis();
+    if ((int32_t)(now - totalDeadline) >= 0 || (int32_t)(now - idleDeadline) >= 0) {
+      return false; // client stalled
+    }
+    esp_task_wdt_reset();
+    int sent = send(sock, data, len, MSG_DONTWAIT);
+    if (sent > 0) {
+      data += sent;
+      len -= (size_t)sent;
+      idleDeadline = millis() + STREAM_IDLE_LIMIT_MS;
+      continue;
+    }
+    if (sent < 0 && errno != EAGAIN) return false; // client gone
+    // Send buffer full - wait for the client to drain it (200ms slices so the
+    // watchdog stays fed while we wait).
+    fd_set wset;
+    FD_ZERO(&wset);
+    FD_SET(sock, &wset);
+    struct timeval tv = {0, 200000};
+    if (select(sock + 1, nullptr, &wset, nullptr, &tv) < 0) return false;
+  }
+  return true;
+}
+
+// sendContent() stand-in for the chunked template stream: same chunk framing,
+// bounded blocking. The whole chunk (size line + payload + trailer) goes out
+// as ONE send so the wire sees full segments - writing the tiny framing
+// pieces separately triggered Nagle/delayed-ACK ping-pong that made page
+// loads erratic. frame points at the buffer start; the payload must sit at
+// frame+6 and leave two spare bytes after it (see streamTemplate's malloc).
+static bool sendChunkGuarded(char* frame, size_t payloadLen, uint32_t totalDeadline) {
+  if (payloadLen == 0) return true;
+  WiFiClient client = server.client();
+  int sock = client.fd();
+  if (sock < 0 || !client.connected()) return false;
+  char head[8];
+  snprintf(head, sizeof(head), "%04x\r\n", (unsigned)payloadLen); // leading zeros are valid HEXDIG
+  memcpy(frame, head, 6);
+  frame[6 + payloadLen] = '\r';
+  frame[6 + payloadLen + 1] = '\n';
+  return writeAllGuarded(sock, frame, payloadLen + 8, totalDeadline);
+}
+
 // Stream PAGE_HTML from flash, resolving %TOKEN% placeholders on the fly.
 // Literal HTML and resolved values flow through one fixed buffer that is
 // flushed to the client only when full (HTTP chunked transfer).
 static void streamTemplate(const char* tmpl, size_t tmplLen) {
-  static const size_t BUF_SIZE = 2048;
-  char* buf = (char*)malloc(BUF_SIZE + 1);
+  static const size_t BUF_SIZE = 4096;
+  // Chunk frame layout: [6B size line][payload, up to BUF_SIZE][2B trailer].
+  // sendChunkGuarded() fills the framing in place around the payload.
+  char* buf = (char*)malloc(6 + BUF_SIZE + 2);
   if (!buf) {
     server.send(503, "text/plain", "Out of memory");
     return;
   }
+  char* payload = buf + 6;
   size_t bufLen = 0;
 
   server.setContentLength(CONTENT_LENGTH_UNKNOWN);
   server.send(200, "text/html", "");
+  const uint32_t deadline = millis() + STREAM_TOTAL_LIMIT_MS;
+  bool clientOk = true;
 
   auto flush = [&]() {
-    if (bufLen > 0) {
-      buf[bufLen] = '\0';
-      server.sendContent(buf);
-      bufLen = 0;
-    }
+    if (clientOk && bufLen > 0) clientOk = sendChunkGuarded(buf, bufLen, deadline);
+    bufLen = 0;
   };
 
   auto emit = [&](const char* data, size_t len) {
-    while (len > 0) {
+    while (len > 0 && clientOk) {
       size_t space = BUF_SIZE - bufLen;
       size_t take = len < space ? len : space;
-      memcpy(buf + bufLen, data, take);
+      memcpy(payload + bufLen, data, take);
       bufLen += take;
       data += take;
       len -= take;
@@ -553,7 +615,7 @@ static void streamTemplate(const char* tmpl, size_t tmplLen) {
   const char* pos = tmpl;
   const char* literalStart = tmpl;
 
-  while (pos < end) {
+  while (pos < end && clientOk) {
     if (*pos != '%') { pos++; continue; }
     if (pos + 1 >= end || !(pos[1] >= 'A' && pos[1] <= 'Z')) { pos++; continue; }
 
@@ -584,9 +646,15 @@ static void streamTemplate(const char* tmpl, size_t tmplLen) {
     }
   }
 
-  if (end > literalStart) emit(literalStart, end - literalStart);
-  flush();
-  server.sendContent("");
+  if (clientOk) {
+    if (end > literalStart) emit(literalStart, end - literalStart);
+    flush();
+  }
+  if (clientOk) {
+    server.sendContent(""); // terminating 0-length chunk
+  } else {
+    server.client().stop(); // stalled client - drop it, keep the clock alive
+  }
   free(buf);
 }
 
@@ -600,19 +668,13 @@ static void streamStatic(const char* data, size_t len, const char* contentType) 
   server.sendHeader("Cache-Control", "public, max-age=31536000, immutable");
   server.setContentLength(len);
   server.send(200, contentType, "");
-  static const size_t CHUNK = 1024;
-  char* buf = (char*)malloc(CHUNK + 1);
-  if (!buf) { server.sendContent(""); return; }
-  size_t pos = 0;
-  while (pos < len) {
-    size_t take = (len - pos < CHUNK) ? (len - pos) : CHUNK;
-    memcpy(buf, data + pos, take); // PROGMEM is memory-mapped on ESP32
-    buf[take] = '\0';
-    server.sendContent(buf, take);
-    pos += take;
+  // PROGMEM is memory-mapped on ESP32, so it can feed send() directly.
+  WiFiClient client = server.client();
+  int sock = client.fd();
+  if (sock < 0 ||
+      !writeAllGuarded(sock, data, len, millis() + STREAM_TOTAL_LIMIT_MS)) {
+    client.stop(); // stalled client - drop it, keep the clock alive
   }
-  free(buf);
-  server.sendContent("");
 }
 
 void handlePortalCss() {
@@ -1257,7 +1319,14 @@ void handleExportConfig() {
  json += "}";
 
  server.sendHeader("Access-Control-Allow-Origin", "*");
- server.send(200, "application/json", json);
+ server.setContentLength(json.length());
+ server.send(200, "application/json", "");
+ WiFiClient client = server.client();
+ int sock = client.fd();
+ if (sock < 0 ||
+     !writeAllGuarded(sock, json.c_str(), json.length(), millis() + STREAM_TOTAL_LIMIT_MS)) {
+  client.stop();
+ }
 }
 
 // Import configuration from JSON
