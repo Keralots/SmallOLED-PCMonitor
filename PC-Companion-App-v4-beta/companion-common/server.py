@@ -496,7 +496,10 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/api/status":
                 return self._json(state.status())
             if path == "/api/info":
-                return self._json({"version": "4.0", "ip": state.get_config().get("esp32_ip", "")})
+                c = state.get_config()
+                return self._json({"version": "4.0", "ip": c.get("esp32_ip", ""),
+                                   "udp_port": c.get("udp_port", 4210),
+                                   "update_interval": c.get("update_interval", 3)})
             if path == "/api/sensors":
                 ensure_discovered(core, rescan=("rescan" in qs))
                 state.set_source_text(source_text(core))

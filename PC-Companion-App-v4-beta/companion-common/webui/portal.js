@@ -602,6 +602,15 @@ setText('srCount', (d.metricCount || 0) + ' metric' + (d.metricCount === 1 ? '' 
 }
 
 // ---- PC companion: connection settings ----------------------------------
+// Fill the connection fields from the saved config so they reflect what is
+// actually in use (otherwise they show the static HTML defaults on every open).
+function hydrateConnection() {
+fetch('/api/info').then(function (r) { return r.json(); }).then(function (d) {
+var ip = $('#esp32_ip'); if (ip && d.ip) ip.value = d.ip;
+var port = $('#udp_port'); if (port && d.udp_port != null) port.value = d.udp_port;
+var iv = $('#update_interval'); if (iv && d.update_interval != null) iv.value = d.update_interval;
+}).catch(function () {});
+}
 var connResult = $('#connResult');
 function setConnResult(msg, ok) {
 if (!connResult) return;
@@ -762,6 +771,7 @@ if (sensorSearch) sensorSearch.addEventListener('input', applySensorFilter);
 var sensorsNav = document.querySelector('.nav-item[data-nav="sensors"]');
 if (sensorsNav) sensorsNav.addEventListener('click', function () { loadSensors(false); });
 
+hydrateConnection();
 refreshStatus();
 refreshAutostart();
 loadSensors(false);
