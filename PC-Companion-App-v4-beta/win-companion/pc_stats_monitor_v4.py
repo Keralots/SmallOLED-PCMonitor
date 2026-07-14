@@ -3169,15 +3169,20 @@ def build_wmi_snapshot():
     """
     Enumerate all LibreHardwareMonitor WMI sensors ONCE and return
     {Identifier: float_value}, or None on failure. Caches a per-thread connection.
+
+    Uses late-bound COM (ExecQuery) rather than the `wmi` module's Sensor():
+    that wrapper builds a full property-introspected object per instance, which
+    costs ~1.5s for ~300 sensors and made the real send period `work + interval`
+    instead of `interval`. Selecting only the two fields we read keeps it ~90ms.
     """
     try:
-        import wmi
+        import win32com.client
         conn = getattr(_wmi_tls, "connection", None)
         if conn is None:
-            conn = wmi.WMI(namespace="root\\LibreHardwareMonitor")
+            conn = win32com.client.GetObject("winmgmts:root\\LibreHardwareMonitor")
             _wmi_tls.connection = conn
         snapshot = {}
-        for sensor in conn.Sensor():
+        for sensor in conn.ExecQuery("SELECT Identifier,Value FROM Sensor"):
             try:
                 snapshot[sensor.Identifier] = float(sensor.Value)
             except Exception:

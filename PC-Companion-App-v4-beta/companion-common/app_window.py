@@ -182,7 +182,13 @@ def _monitor_loop():
             except OSError:
                 _state.set_reachable(False)
 
-        _stop.wait(max(0.2, float(cfg.get("update_interval", 3))))
+        # Pace on a deadline, not a fixed sleep: sleeping the full interval after
+        # the work made the real period `work + interval` (a 1s setting sent every
+        # ~2.5s once the sensor sweep is counted). Subtract the elapsed work so the
+        # period is the interval, falling back to a small floor when a cycle
+        # overruns so a slow sensor source can't spin us into a tight send loop.
+        interval = max(0.2, float(cfg.get("update_interval", 3)))
+        _stop.wait(max(0.05, interval - (time.time() - now)))
 
     try:
         sock.close()
