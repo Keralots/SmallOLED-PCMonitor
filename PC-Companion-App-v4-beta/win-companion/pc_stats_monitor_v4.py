@@ -182,6 +182,7 @@ DEFAULT_CONFIG = {
     "esp32_ip": "192.168.0.163",
     "udp_port": 4210,
     "update_interval": 3,
+    "sensor_source": "auto",
     "metrics": []
 }
 
@@ -218,7 +219,29 @@ discovered_wmi_namespace = "root\\LibreHardwareMonitor"  # Default
 # Global variables for REST API (alternative to WMI for LHM 0.9.5+)
 rest_api_host = "localhost"
 rest_api_port = 8085
-use_rest_api = False  # Auto-detected; True when WMI fails but REST API works
+use_rest_api = False  # Resolved from the sensor_source preference; see resolve_source()
+
+# This core can read sensors two ways, so the UI may offer the choice. The Linux
+# core reads sensors directly (no LHM) and sets this False, which is how the
+# shared web UI knows to hide the control.
+SUPPORTS_SOURCE_SELECT = True
+SENSOR_SOURCES = ("auto", "rest", "wmi")
+
+# Serialises source resolution + discovery: the HTTP server is threaded, so two
+# requests can otherwise interleave a multi-step rescan.
+_source_lock = threading.RLock()
+
+
+class Snapshot(dict):
+    """A sensor snapshot that remembers which source produced it.
+
+    REST yields display strings ("53.0 C") and WMI yields floats, so a reader
+    must know which it holds. Carrying that on the snapshot means a source switch
+    mid-cycle can't cause the values to be misread.
+    """
+    def __init__(self, data, is_rest):
+        super().__init__(data)
+        self.is_rest = is_rest
 
 
 class LHMHealthMonitor:
@@ -1011,10 +1034,14 @@ def _is_gpu_sensor(identifier):
     return "gpu" in device or "nvidia" in device or "amd" in device
 
 
-def check_wmi_connectivity():
+def check_wmi_connectivity(allow_rest_fallback=True):
     """
     Diagnostics: Check if LibreHardwareMonitor WMI namespace is accessible
     Returns: (success, error_message, suggestion)
+
+    allow_rest_fallback=False keeps this from switching to REST when WMI looks
+    broken, so an explicit "wmi" preference stays honoured (the auto preference
+    is what opts into falling back).
     """
     print("\n" + "-" * 60)
     print("DIAGNOSTICS: Checking LibreHardwareMonitor connectivity...")
@@ -1096,10 +1123,17 @@ def check_wmi_connectivity():
         # Auto-discovery failed - likely LibreHardwareMonitor 0.9.5+ with broken WMI
         # Try REST API fallback before giving up (LHM 0.9.5+ workaround)
         print(f"\n  ⚠ No working WMI namespace found (LHM 0.9.5+ issue)")
+
+        global use_rest_api
+        if not allow_rest_fallback:
+            return False, "No working WMI namespace found", (
+                "WMI is unavailable and the sensor source is pinned to WMI.\n\n"
+                "Set the source back to Auto to use the REST API instead."
+            )
+
         print(f"  → Trying REST API fallback...")
         print(f"  → Checking http://{rest_api_host}:{rest_api_port}/data.json")
 
-        global use_rest_api
         rest_success, rest_count, rest_error = check_rest_api_connectivity(rest_api_host, rest_api_port)
 
         # Debug: print REST API check result
@@ -1139,6 +1173,12 @@ def check_wmi_connectivity():
         if len(sensors) == 0:
             # CRITICAL: Namespace exists but no sensors found
             # Try REST API fallback before giving up (LHM 0.9.5+ workaround)
+            if not allow_rest_fallback:
+                return False, "WMI namespace accessible but contains 0 sensors!", (
+                    "WMI exposes no sensors and the sensor source is pinned to WMI.\n\n"
+                    "Set the source back to Auto to use the REST API instead."
+                )
+
             print(f"  ⚠ WMI returned 0 sensors - trying REST API fallback...")
             print(f"  → Checking http://{rest_api_host}:{rest_api_port}/data.json")
 
@@ -1263,18 +1303,22 @@ def discover_sensors():
     # Discover LibreHardwareMonitor sensors
     print("\n[2/2] Discovering hardware sensors (LibreHardwareMonitor)...")
 
-    # Run diagnostics first to provide helpful error messages
-    success, error_msg, suggestion = check_wmi_connectivity()
+    # The source preference is already resolved (see ensure_discovered), so only
+    # probe WMI when that's where we actually landed. check_wmi_connectivity can
+    # still flip us to REST from here, which is the LHM 0.9.5 broken-WMI path.
+    if not use_rest_api:
+        success, error_msg, suggestion = check_wmi_connectivity(
+            allow_rest_fallback=source_preference() != "wmi")
 
-    if not success:
-        print_troubleshooting_header(error_msg)
-        print(suggestion)
-        print_troubleshooting_footer()
-        print("\n⚠ WARNING: Hardware sensors will NOT be available.")
-        print("  Only system metrics (CPU, RAM, Disk) can be monitored.")
-        print("\n  Press Enter to continue with system metrics only...")
-        pause()
-        return
+        if not success:
+            print_troubleshooting_header(error_msg)
+            print(suggestion)
+            print_troubleshooting_footer()
+            print("\n⚠ WARNING: Hardware sensors will NOT be available.")
+            print("  Only system metrics (CPU, RAM, Disk) can be monitored.")
+            print("\n  Press Enter to continue with system metrics only...")
+            pause()
+            return
 
     # Check if we should use REST API instead of WMI (LHM 0.9.5+ workaround)
     if use_rest_api:
@@ -3107,10 +3151,14 @@ def _parse_rest_value(value_str, is_throughput):
     Returns 0 if the string holds no number.
     """
     try:
-        match = re.search(r'[-+]?\d*\.?\d+', value_str)
+        match = re.search(r'[-+]?\d*[.,]?\d+', value_str)
         if not match:
             return 0
-        value = float(match.group())
+        # LHM formats through the .NET current culture, so a de/pl/fr machine
+        # emits "12,3 MB/s". It never groups thousands (en-US gives "2044 RPM",
+        # not "2,044"), so a comma here is always the decimal point -- without
+        # this the regex stopped at the comma and silently dropped the decimal.
+        value = float(match.group().replace(',', '.'))
         if is_throughput:
             value_upper = value_str.upper()
             if "GB/S" in value_upper:
@@ -3150,7 +3198,7 @@ def build_rest_snapshot(host, port):
                 if sid:
                     snapshot[sid] = str(sensor.get("Value", "0"))
             lhm_health_monitor.record_success()
-            return snapshot
+            return Snapshot(snapshot, is_rest=True)
     except Exception:
         lhm_health_monitor.record_failure()
         return None
@@ -3196,7 +3244,7 @@ def build_wmi_snapshot(identifiers=None):
         if identifiers is not None:
             wanted = sorted(set(identifiers))
             if not wanted:
-                return {}
+                return Snapshot({}, is_rest=False)
             query += " WHERE " + " OR ".join(
                 "Identifier='%s'" % _wql_literal(i) for i in wanted)
         snapshot = {}
@@ -3205,7 +3253,7 @@ def build_wmi_snapshot(identifiers=None):
                 snapshot[sensor.Identifier] = float(sensor.Value)
             except Exception:
                 pass
-        return snapshot
+        return Snapshot(snapshot, is_rest=False)
     except Exception:
         _wmi_tls.connection = None  # Force reconnect next cycle (this thread)
         return None
@@ -3242,7 +3290,12 @@ def get_metric_value(metric_config, snapshot=None):
         if snapshot is None:
             return None  # Source unavailable this cycle -> use cached value
 
-        if use_rest_api:
+        # Trust the snapshot's own provenance, not the live global: the source
+        # can be switched from the web-UI thread between build_snapshot() picking
+        # a source and this interpreting the result, which would otherwise parse
+        # REST strings as WMI floats (or vice versa). Plain dicts (older callers,
+        # tests) fall back to the global.
+        if getattr(snapshot, "is_rest", use_rest_api):
             sensor_id = metric_config.get("wmi_identifier", "")
             if sensor_id and sensor_id in snapshot:
                 is_throughput = metric_config.get("unit", "") == "KB/s"
@@ -3270,6 +3323,41 @@ STATUS_API_ERROR = 2
 STATUS_LHM_NOT_RUNNING = 3
 STATUS_LHM_STARTING = 4
 STATUS_UNKNOWN_ERROR = 5
+
+
+def source_preference(config=None):
+    """The configured sensor_source, defaulting to auto.
+
+    Configs written before this setting existed simply lack the key (load_config
+    does not merge DEFAULT_CONFIG), so always read it defensively.
+    """
+    if config is None:
+        config = load_config() or {}
+    pref = str(config.get("sensor_source", "auto")).lower()
+    return pref if pref in SENSOR_SOURCES else "auto"
+
+
+def resolve_source(pref="auto"):
+    """Point `use_rest_api` at the source `pref` asks for. Returns the resolved
+    source name ("rest" / "wmi").
+
+    auto -> REST when its server answers, else WMI. REST is preferred because it
+            is cheaper (~0.26ms vs ~2.9ms CPU per sweep) and fresher (WMI lags
+            LHM by about one refresh). WMI stays the fallback since LHM's Remote
+            Web Server is off by default.
+    rest / wmi -> forced, no fallback, so the choice is predictable. `auto` is
+            there for anyone who wants the fallback.
+    """
+    global use_rest_api
+    with _source_lock:
+        if pref == "wmi":
+            use_rest_api = False
+        elif pref == "rest":
+            use_rest_api = True
+        else:
+            ok, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
+            use_rest_api = bool(ok and count > 0)
+        return "rest" if use_rest_api else "wmi"
 
 
 def build_snapshot(config, force=False):
@@ -3807,52 +3895,55 @@ def source_banner():
 
 def ensure_discovered(rescan=False):
     """Populate sensor_database lazily / on rescan (WMI needs COM on this thread)."""
-    global use_rest_api, _SUPPRESS_PAUSE
-    if any(sensor_database[k] for k in sensor_database) and not rescan:
-        return
-    if PYTHONCOM_AVAILABLE:
-        try:
-            pythoncom.CoInitialize()
-        except Exception:
-            pass
-    try:
-        for k in list(sensor_database.keys()):
-            sensor_database[k] = []
-        use_rest_api = False
-        _SUPPRESS_PAUSE = True
-        try:
-            discover_sensors()
-        except Exception as e:
-            print("Discovery error: %s" % e)
-        finally:
-            _SUPPRESS_PAUSE = False
-    finally:
+    global _SUPPRESS_PAUSE
+    with _source_lock:
+        if any(sensor_database[k] for k in sensor_database) and not rescan:
+            return
         if PYTHONCOM_AVAILABLE:
             try:
-                pythoncom.CoUninitialize()
+                pythoncom.CoInitialize()
             except Exception:
                 pass
+        try:
+            for k in list(sensor_database.keys()):
+                sensor_database[k] = []
+            # Resolve the configured preference. This used to hard-reset to WMI,
+            # which silently undid the REST detection detect_source() had already
+            # done -- discovery runs later (the web UI hits /api/sensors on load),
+            # so WMI always won and REST was unreachable while WMI worked.
+            resolve_source(source_preference())
+            _SUPPRESS_PAUSE = True
+            try:
+                discover_sensors()
+            except Exception as e:
+                print("Discovery error: %s" % e)
+            finally:
+                _SUPPRESS_PAUSE = False
+        finally:
+            if PYTHONCOM_AVAILABLE:
+                try:
+                    pythoncom.CoUninitialize()
+                except Exception:
+                    pass
 
 
 def detect_source(state):
-    """Probe the sensor source for the monitor (REST first, then WMI), then set
-    the status text. Runs once at startup on a worker thread."""
-    global use_rest_api
+    """Resolve the configured sensor source for the monitor, then set the status
+    text. Runs once at startup on a worker thread."""
     if PYTHONCOM_AVAILABLE:
         try:
             pythoncom.CoInitialize()
         except Exception:
             pass
     try:
-        if not use_rest_api:
-            ok, count, _ = check_rest_api_connectivity(rest_api_host, rest_api_port)
-            if ok and count > 0:
-                use_rest_api = True
-            else:
-                try:
-                    check_wmi_connectivity()  # may set use_rest_api as a fallback
-                except Exception:
-                    pass
+        pref = source_preference()
+        if resolve_source(pref) == "wmi":
+            try:
+                # May fall back to REST when WMI is broken (LHM 0.9.5+), unless
+                # the user pinned WMI.
+                check_wmi_connectivity(allow_rest_fallback=pref != "wmi")
+            except Exception:
+                pass
         state.set_source_text(source_text())
     finally:
         if PYTHONCOM_AVAILABLE:

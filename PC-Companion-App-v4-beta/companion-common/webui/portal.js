@@ -609,6 +609,9 @@ fetch('/api/info').then(function (r) { return r.json(); }).then(function (d) {
 var ip = $('#esp32_ip'); if (ip && d.ip) ip.value = d.ip;
 var port = $('#udp_port'); if (port && d.udp_port != null) port.value = d.udp_port;
 var iv = $('#update_interval'); if (iv && d.update_interval != null) iv.value = d.update_interval;
+// Only the Windows core has two sensor sources to choose between.
+var sf = $('#sourceField'); if (sf) sf.style.display = d.source_select ? '' : 'none';
+var ss = $('#sensor_source'); if (ss && d.sensor_source) ss.value = d.sensor_source;
 }).catch(function () {});
 }
 var connResult = $('#connResult');
@@ -624,11 +627,20 @@ var body = new URLSearchParams();
 body.set('esp32_ip', ($('#esp32_ip') || {}).value || '');
 body.set('udp_port', ($('#udp_port') || {}).value || '');
 body.set('update_interval', ($('#update_interval') || {}).value || '');
+var srcSel = $('#sensor_source');
+if (srcSel) body.set('sensor_source', srcSel.value || 'auto');
 saveConnBtn.disabled = true;
 fetch('/api/connection', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
 .then(function (r) { return r.json(); }).then(function (d) {
 saveConnBtn.disabled = false;
-if (d.success) { markClean('Connection saved'); setConnResult('Saved. Device set to ' + d.esp32_ip + ':' + d.udp_port + ', every ' + d.update_interval + 's.', true); refreshStatus(); }
+if (d.success) {
+markClean('Connection saved');
+var msg = 'Saved. Device set to ' + d.esp32_ip + ':' + d.udp_port + ', every ' + d.update_interval + 's.';
+// Say which source we landed on: "auto" resolves at save time, and a forced
+// choice that can't be honoured is worth surfacing rather than hiding.
+if (d.resolved_source) msg += ' Reading sensors via ' + d.resolved_source.toUpperCase() + '.';
+setConnResult(msg, true); refreshStatus();
+}
 else { setConnResult(d.message || 'Could not save connection settings.', false); }
 }).catch(function (err) { saveConnBtn.disabled = false; setConnResult('Error: ' + err, false); });
 });

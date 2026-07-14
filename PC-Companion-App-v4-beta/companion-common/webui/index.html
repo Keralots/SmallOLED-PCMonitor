@@ -109,6 +109,17 @@
               <input type="number" id="update_interval" name="update_interval" value="3" min="0.5" step="0.5">
               <p class="field-hint">How often to push fresh values. 3s is a good balance; lower is snappier but busier.</p>
             </div>
+            <div class="field" id="sourceField" style="display:none">
+              <label class="field-label" for="sensor_source">Sensor source</label>
+              <select id="sensor_source" name="sensor_source">
+                <option value="auto">Auto - prefer REST, fall back to WMI</option>
+                <option value="rest">REST API only</option>
+                <option value="wmi">WMI only</option>
+              </select>
+              <p class="field-hint">Where LibreHardwareMonitor readings come from. Auto suits almost everyone: REST is
+                lighter and fresher, and WMI covers you when Remote Web Server is off. Pick WMI only if you want exact
+                network throughput - REST rounds it for display. The two forced modes never fall back.</p>
+            </div>
             <div class="page-actions">
               <button type="button" class="btn btn-accent" id="saveConnBtn"><span class="gl"></span>Save connection</button>
               <button type="button" class="btn" id="testConnBtn">Test connection</button>

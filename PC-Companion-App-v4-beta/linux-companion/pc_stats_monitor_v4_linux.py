@@ -47,6 +47,9 @@ except Exception:
 PYTHONCOM_AVAILABLE = False
 use_rest_api = False  # Linux reads sensors directly; no LHM REST fallback.
 
+# There is only one sensor source here, so the shared web UI hides the picker.
+SUPPORTS_SOURCE_SELECT = False
+
 # ---------------------------------------------------------------------------
 # Paths / config
 # ---------------------------------------------------------------------------

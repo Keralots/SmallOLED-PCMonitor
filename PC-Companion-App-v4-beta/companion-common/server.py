@@ -305,24 +305,44 @@ def apply_connection(core, state, form):
         v = form.get(name)
         return v[0] if isinstance(v, list) and v else default
     ip = f("esp32_ip", "").strip()
+    supports_source = bool(getattr(core, "SUPPORTS_SOURCE_SELECT", False))
+    sources = tuple(getattr(core, "SENSOR_SOURCES", ("auto",)))
     try:
         port = int(f("udp_port", "4210"))
         interval = float(f("update_interval", "3"))
+        source = f("sensor_source", "auto").lower()
         if not ip:
             raise ValueError("Device IP cannot be empty.")
         if port < 1 or port > 65535:
             raise ValueError("Port must be 1-65535.")
         if interval < 0.5:
             raise ValueError("Update interval must be at least 0.5 seconds.")
+        if supports_source and source not in sources:
+            raise ValueError("Sensor source must be one of: %s." % ", ".join(sources))
     except ValueError as e:
         return {"success": False, "message": str(e)}
     config = state.get_config()
     config["esp32_ip"] = ip
     config["udp_port"] = port
     config["update_interval"] = interval
+    resolved = None
+    if supports_source:
+        config["sensor_source"] = source
     core.save_config(config)
     state.set_config(config)
-    return {"success": True, "esp32_ip": ip, "udp_port": port, "update_interval": interval}
+    if supports_source:
+        # Saving alone would leave the running monitor on the old source until a
+        # rescan or restart, so apply it now. The platform core owns the how.
+        try:
+            resolved = core.resolve_source(source)
+            state.set_source_text(core.source_text())
+        except Exception as e:
+            print("source switch failed: %s" % e)
+    out = {"success": True, "esp32_ip": ip, "udp_port": port, "update_interval": interval}
+    if resolved:
+        out["sensor_source"] = source
+        out["resolved_source"] = resolved
+    return out
 
 
 def do_test(core, state, form):
@@ -499,7 +519,11 @@ class _Handler(BaseHTTPRequestHandler):
                 c = state.get_config()
                 return self._json({"version": "4.0", "ip": c.get("esp32_ip", ""),
                                    "udp_port": c.get("udp_port", 4210),
-                                   "update_interval": c.get("update_interval", 3)})
+                                   "update_interval": c.get("update_interval", 3),
+                                   # Linux reads sensors directly, so it has no
+                                   # source to choose and the UI hides the control.
+                                   "source_select": bool(getattr(core, "SUPPORTS_SOURCE_SELECT", False)),
+                                   "sensor_source": c.get("sensor_source", "auto")})
             if path == "/api/sensors":
                 ensure_discovered(core, rescan=("rescan" in qs))
                 state.set_source_text(source_text(core))
