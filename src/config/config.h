@@ -363,6 +363,10 @@ extern unsigned long wifiDisconnectTime;
 extern unsigned long nextDisplayUpdate;
 extern bool wifiConnected;  // WiFi connection status for icon display
 
+// Why the device last booted, as a stable short string for /api/info. Lets a
+// user tell "it restarted" apart from "the display misbehaved" after the fact.
+const char* getResetReasonName();
+
 // Mario clock globals
 extern MarioState mario_state;
 extern float mario_x;

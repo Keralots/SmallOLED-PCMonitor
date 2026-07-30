@@ -12,8 +12,11 @@
 
 // Track last applied brightness to avoid unnecessary updates
 static uint8_t lastAppliedBrightness = 255;
-static unsigned long lastBrightnessCheck = 0;
 const unsigned long BRIGHTNESS_CHECK_INTERVAL = 60000; // Check every minute
+// Short retry when the schedule could not be evaluated (NTP not synced yet).
+// Without this a failed check costs a full BRIGHTNESS_CHECK_INTERVAL, which is
+// how a reboot inside a lights-out window left the panel lit for a whole minute.
+const unsigned long BRIGHTNESS_RETRY_INTERVAL = 2000;
 
 // Runtime override: when true, the panel is held off (e.g. via HTTP /api/display/off).
 // Scheduled dimming and brightness re-applies are suppressed so they don't turn it back on.
@@ -61,8 +64,14 @@ static void applyBrightnessLevel(uint8_t brightness) {
   lastAppliedBrightness = brightness;
 }
 
-static bool resolveScheduledBrightnessTarget(uint8_t &targetBrightness) {
+// Resolve the brightness the schedule currently calls for. Reports the window
+// verdict separately from the resolved value: the two brightness levels may be
+// equal, so the value alone cannot tell a caller whether dimming is in effect.
+// Returns false when there is no valid time to evaluate against.
+static bool resolveScheduledBrightness(uint8_t &targetBrightness,
+                                       bool &isDimPeriod) {
   targetBrightness = sanitizeBrightnessValue(settings.displayBrightness);
+  isDimPeriod = false;
 
   if (!settings.enableScheduledDimming) {
     return true;
@@ -74,7 +83,6 @@ static bool resolveScheduledBrightnessTarget(uint8_t &targetBrightness) {
   }
 
   const uint8_t currentHour = timeinfo.tm_hour;
-  bool isDimPeriod = false;
 
   if (settings.dimStartHour == settings.dimEndHour) {
     isDimPeriod = false;
@@ -89,6 +97,11 @@ static bool resolveScheduledBrightnessTarget(uint8_t &targetBrightness) {
   targetBrightness = sanitizeBrightnessValue(
       isDimPeriod ? settings.dimBrightness : settings.displayBrightness);
   return true;
+}
+
+static bool resolveScheduledBrightnessTarget(uint8_t &targetBrightness) {
+  bool isDimPeriod = false;
+  return resolveScheduledBrightness(targetBrightness, isDimPeriod);
 }
 
 // Initialize display - returns true on success
@@ -148,26 +161,27 @@ void applyDisplayBrightness() {
   applyBrightnessLevel(settings.displayBrightness);
 }
 
-void refreshDisplayBrightnessNow() {
+bool refreshDisplayBrightnessNow() {
 #if TOUCH_BUTTON_ENABLED
   if (temporaryWakeActive) {
-    return;
+    return true;
   }
 #endif
 
   if (displayForcedOff) {
-    return;
+    return true;
   }
 
   uint8_t targetBrightness = settings.displayBrightness;
   if (settings.enableScheduledDimming &&
       !resolveScheduledBrightnessTarget(targetBrightness)) {
-    return;
+    return false;
   }
 
   if (lastAppliedBrightness != targetBrightness) {
     applyBrightnessLevel(targetBrightness);
   }
+  return true;
 }
 
 // Check and apply time-based brightness (scheduled dimming)
@@ -182,14 +196,35 @@ void checkScheduledBrightness() {
     return;
   }
 
-  // Only check every minute to avoid unnecessary updates
-  unsigned long currentTime = millis();
-  if (currentTime - lastBrightnessCheck < BRIGHTNESS_CHECK_INTERVAL) {
+  // The first check runs immediately - waiting a full interval after boot is
+  // what left the panel lit for a minute when the device restarted inside a
+  // scheduled-off window. Afterwards check once a minute, or retry quickly
+  // while the time is still unavailable.
+  static bool firstCheckDone = false;
+  static unsigned long nextBrightnessCheck = 0;
+
+  if (firstCheckDone && (long)(millis() - nextBrightnessCheck) < 0) {
     return;
   }
-  lastBrightnessCheck = currentTime;
+  firstCheckDone = true;
 
-  refreshDisplayBrightnessNow();
+  bool resolved = refreshDisplayBrightnessNow();
+  nextBrightnessCheck =
+      millis() + (resolved ? BRIGHTNESS_CHECK_INTERVAL : BRIGHTNESS_RETRY_INTERVAL);
+}
+
+// True only when the time is valid and the schedule calls for a dark panel.
+bool scheduledDisplayIsOff() {
+  uint8_t targetBrightness = 0;
+  bool isDimPeriod = false;
+  if (!resolveScheduledBrightness(targetBrightness, isDimPeriod)) {
+    return false;  // unknown time - never blank on a guess
+  }
+  return targetBrightness == 0;
+}
+
+uint8_t getLastAppliedBrightness() {
+  return lastAppliedBrightness;
 }
 
 // ---- Runtime display power / brightness control (HTTP API) ----

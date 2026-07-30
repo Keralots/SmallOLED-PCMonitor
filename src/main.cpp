@@ -35,6 +35,7 @@
 #endif
 #include <ArduinoJson.h>
 #include <Update.h>
+#include <esp_system.h>
 #include <esp_task_wdt.h>
 #include <time.h>
 
@@ -112,6 +113,22 @@ int getOptimalRefreshRate();
 
 // ========== Helper Functions ==========
 
+const char* getResetReasonName() {
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON:  return "POWERON";
+    case ESP_RST_EXT:      return "EXT";
+    case ESP_RST_SW:       return "SW";
+    case ESP_RST_PANIC:    return "PANIC";
+    case ESP_RST_INT_WDT:  return "INT_WDT";
+    case ESP_RST_TASK_WDT: return "TASK_WDT";
+    case ESP_RST_WDT:      return "WDT";
+    case ESP_RST_DEEPSLEEP:return "DEEPSLEEP";
+    case ESP_RST_BROWNOUT: return "BROWNOUT";
+    case ESP_RST_SDIO:     return "SDIO";
+    default:               return "UNKNOWN";
+  }
+}
+
 // Helper function to get time with short timeout
 bool getTimeWithTimeout(struct tm *timeinfo, unsigned long timeout_ms) {
   if (!ntpSynced) {
@@ -184,6 +201,13 @@ int lastMinuteBlock = -1;
 int currentScreen = 0;
 bool firstTimeSynced = false;
 
+// Animated clocks fire their minute-change animation at :56 and it runs on into
+// the next minute, so switching screens the instant the 5-minute block rolls
+// over clipped the animation every single time. Hold the switch back a few
+// seconds and let it land first.
+const int CYCLE_MIN_SEC = 10;  // grace for the outgoing animation to finish
+const int CYCLE_MAX_SEC = 30;  // cap so a stuck override can never wedge the cycle
+
 void cycleClockScreens() {
     struct tm timeinfo;
 
@@ -200,8 +224,13 @@ void cycleClockScreens() {
             firstTimeSynced = true;
         }
 
-        // After that, normal cycling
-        if (minuteBlock != lastMinuteBlock) {
+        // After that, normal cycling. The block change is not consumed until
+        // the switch actually happens, so the condition simply stays true until
+        // the grace window opens. time_overridden covers every animated style
+        // except Pong, whose transition is long finished by CYCLE_MIN_SEC.
+        if (minuteBlock != lastMinuteBlock &&
+            timeinfo.tm_sec >= CYCLE_MIN_SEC &&
+            (!time_overridden || timeinfo.tm_sec >= CYCLE_MAX_SEC)) {
             lastMinuteBlock = minuteBlock;
             currentScreen = (currentScreen + 1) % 10; // Cycle through all 10 clock styles
             resetClockAnimationState(); // Reset animation state when changing screens
@@ -227,6 +256,8 @@ void cycleClockScreens() {
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
+  Serial.printf("Boot reason: %s\n", getResetReasonName());
 
   // Load settings from flash
   loadSettings();
@@ -306,6 +337,12 @@ void setup() {
   // Initialize NTP
   initNTP();
 
+  // Apply the dimming schedule as soon as there is a clock to evaluate it
+  // against. Boot brightness above is applied before WiFi/NTP, so without this
+  // a restart inside a scheduled-off window lit the panel until the first
+  // periodic check a minute later.
+  refreshDisplayBrightnessNow();
+
   // Initialize WiFi connection status flag
   wifiConnected = (WiFi.status() == WL_CONNECTED);
 
@@ -327,8 +364,10 @@ void setup() {
   initTouchButton();
 #endif
 
-  // Show IP address for 5 seconds (configurable via web interface)
-  if (displayAvailable && settings.showIPAtBoot) {
+  // Show IP address for 5 seconds (configurable via web interface). Skipped
+  // when the schedule wants the panel dark, so a restart at night does not
+  // light the room for five seconds.
+  if (displayAvailable && settings.showIPAtBoot && !scheduledDisplayIsOff()) {
     displayConnected();
     delay(5000);
   }
@@ -442,6 +481,9 @@ void loop() {
     if (getLocalTime(&now_tm, 10)) {
       syncDisplayedTime(&now_tm);
     }
+    // Time just became usable - settle the dimming schedule now rather than
+    // waiting for the next periodic check.
+    refreshDisplayBrightnessNow();
   }
   prevNtpSynced = ntpSynced;
 

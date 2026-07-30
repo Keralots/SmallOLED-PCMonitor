@@ -53,8 +53,16 @@
 // Initialize display - returns true on success
 bool initDisplay();
 void applyDisplayBrightness();
-void refreshDisplayBrightnessNow();
+// Returns false when the scheduled target could not be resolved (no valid time).
+bool refreshDisplayBrightnessNow();
 void checkScheduledBrightness();
+
+// True only when the time is valid AND the schedule resolves to a dark panel.
+// Unknown time reports false, so callers never blank the display on a guess.
+bool scheduledDisplayIsOff();
+
+// Brightness actually pushed to the panel (0 = powered off), for status reporting.
+uint8_t getLastAppliedBrightness();
 
 // Runtime display control (HTTP API) - not persisted to flash
 void setDisplayForcedOff(bool off);
