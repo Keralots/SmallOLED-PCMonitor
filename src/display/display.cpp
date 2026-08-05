@@ -78,7 +78,10 @@ static bool resolveScheduledBrightness(uint8_t &targetBrightness,
   }
 
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) {
+  // Timeout 0: read the clock once and report. The default is a 5-second
+  // blocking wait for time to become valid, which would stall the loop on
+  // every 2s retry while NTP is still unsynced.
+  if (!getLocalTime(&timeinfo, 0)) {
     return false;
   }
 
