@@ -1,7 +1,8 @@
-# PyInstaller build artifacts.
-# Note: dist/ is intentionally NOT ignored - the prebuilt
-# pc_stats_monitor_v4.exe is tracked so it ships/syncs with the repo.
+# PyInstaller build artifacts. The built exe is NOT tracked in git (43 MB per
+# rebuild bloats the repo) - it ships as an asset on the GitHub Release instead:
+#   gh release upload <tag> dist/pc_stats_monitor_v4.exe
 build/
+dist/
 *.spec
 
 # Python cache

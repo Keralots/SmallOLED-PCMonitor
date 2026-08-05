@@ -60,7 +60,7 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
   - Large 2-row and 3-row modes for readability at a distance
   - Progress bars for visual representation
   - Clock styles and animation settings
-  - Automatic timezone with DST support (~50 regions)
+  - Automatic timezone with DST support (56 regions)
   - Display brightness control and scheduled night dimming
   - Export/Import configuration
   - OTA firmware updates
@@ -77,12 +77,12 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 1. **Flash ESP32** - Open the [SmallOLED Web Flasher](https://keralots.github.io/SmallOLED-PCMonitor/) in desktop Chrome or Edge, pick your OLED, and click Install (no installation needed!)
 2. **Connect ESP32 to WiFi** - Right after flashing, use the flasher's **Configure WiFi** step to send your network to the device over USB. (No web flasher? Join the "PCMonitor-Setup" network and open 192.168.4.1.)
 3. **Install LibreHardwareMonitor** (Windows only) - Download from [GitHub](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases), run as Admin (needed for temps/fans/GPU/power)
-4. **Get the companion app (v4 beta - recommended on both Windows and Linux):**
-   - **Windows (easiest):** download `pc_stats_monitor_v4.exe` from [`PC-Companion-App-v4-beta/win-companion/dist/`](PC-Companion-App-v4-beta/win-companion/) and double-click it - no Python needed. v4 gives a polished **web-style config window** (1:1 device preview, drag-and-drop layout, sensor picker, number formats, quick templates) that lives in the system tray.
-   - **Linux:** `cd PC-Companion-App-v4-beta/linux-companion`, then `python3 -m pip install -r requirements.txt` and `python3 pc_stats_monitor_v4_linux.py` (no build step). Same UI; opens a native window or your browser.
-   - **Classic scripts (legacy):** the older `pc_stats_monitor_v2.py` (Windows) / `pc_stats_monitor_v2_linux.py` (Linux) and the `PC-Companion-App-v3-beta` app still work if you prefer them.
+4. **Get the companion app (v4 - recommended on both Windows and Linux):**
+   - **Windows (easiest):** download `pc_stats_monitor_v4.exe` from the [latest release](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest) and double-click it - no Python needed. v4 gives a polished **web-style config window** (1:1 device preview, drag-and-drop layout, sensor picker, number formats, quick templates) that lives in the system tray.
+   - **Linux:** `cd PC-Companion-App-v4/linux-companion`, then `python3 -m pip install -r requirements.txt` and `python3 pc_stats_monitor_v4_linux.py` (no build step). Same UI; opens a native window or your browser.
+   - **Classic scripts (legacy):** the older `pc_stats_monitor_v2.py` (Windows) / `pc_stats_monitor_v2_linux.py` (Linux) still work if you prefer them.
 5. **Configure in GUI** - Enter ESP32 IP address, select the sensors you want, click "Save & Start"
-6. **Position metrics** - In the v3 beta app click **"Configure OLED screen"**; with the v2 script, open the ESP32 IP in a browser and drag metrics on the preview
+6. **Position metrics** - In the v4 app use the **Layout & preview** page; with the v2 script, open the ESP32 IP in a browser and drag metrics on the preview
 
 Done! Your PC stats will now appear on the OLED display.
 
@@ -166,13 +166,13 @@ A dedicated browser flasher that picks the right firmware for your OLED, install
 
 Prefer to flash the raw binary with your own tool? Download it from the latest release and flash the full image at `0x0`.
 
-**Download the latest release**: [v1.6.0](release/v1.6.0/)
+**Download the latest release**: [v1.6.2](release/v1.6.2/)
 
 **Generic web flasher (esptool-js):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
 2. Connect your ESP32-C3 via USB (use the BOOT/RESET trick above if it won't stay connected).
 3. Click **"Connect"** and select your port
-4. Click **"Choose File"** and select the full image for your display, e.g. `firmware-v1.6.0-OLED_0.96inch.bin`
+4. Click **"Choose File"** and select the full image for your display, e.g. `firmware-v1.6.2-OLED_0.96inch.bin`
 5. Make sure you pick firmware for correct OLED size version! It may initially work but you will get black screen after you reconnect device.
 6. Set **Flash Address** to `0x0`
 7. Click **"Program"** and wait ~30 seconds
@@ -181,7 +181,7 @@ Prefer to flash the raw binary with your own tool? Download it from the latest r
 **Other methods:**
 - **Windows**: Run `flash.bat` and follow prompts
 - **Linux/Mac**: Run `./flash.sh` and follow prompts
-- **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-v1.6.0-OLED_0.96inch.bin`
+- **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-v1.6.2-OLED_0.96inch.bin`
 
 #### Option C: Build from Source
 
@@ -224,7 +224,7 @@ Once connected to WiFi, access the full configuration page:
    - Enable progress bars for visual representation
    - Row 6 positions automatically hidden in 5-row mode
 4. **Timezone:**
-   - Select your region from ~50 timezone presets
+   - Select your region from 56 timezone presets
    - Automatic DST transitions (no manual toggle needed)
 5. **Visible metrics (custom labels & placement):**
    - Give each metric a custom label (max 10 chars) shown on the OLED - e.g. relabel a pump RPM sensor as "PUMP", "FAN" or "COOLER"
@@ -238,14 +238,14 @@ Once connected to WiFi, access the full configuration page:
 
 ### 2. PC Stats Sender
 
-> **Recommended (v4 beta, Windows + Linux):** the v4 companion gives a web-style
+> **Recommended (v4, Windows + Linux):** the v4 companion gives a web-style
 > config window that mirrors the device portal 1:1 - live OLED preview, drag-and-drop
 > layout, sensor picker, number formats, quick templates, pull/push and backup -
 > all from the desktop, hosted in a native window + system tray.
-> - **Windows:** prebuilt **`pc_stats_monitor_v4.exe`** in [`PC-Companion-App-v4-beta/win-companion/dist/`](PC-Companion-App-v4-beta/win-companion/) - no Python needed.
-> - **Linux:** run from source in [`PC-Companion-App-v4-beta/linux-companion/`](PC-Companion-App-v4-beta/linux-companion/) (`pip install -r requirements.txt` then `python3 pc_stats_monitor_v4_linux.py`).
+> - **Windows:** prebuilt **`pc_stats_monitor_v4.exe`** on the [latest release page](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest) - no Python needed. Source lives in [`PC-Companion-App-v4/win-companion/`](PC-Companion-App-v4/win-companion/).
+> - **Linux:** run from source in [`PC-Companion-App-v4/linux-companion/`](PC-Companion-App-v4/linux-companion/) (`pip install -r requirements.txt` then `python3 pc_stats_monitor_v4_linux.py`).
 >
-> **Legacy:** the `PC-Companion-App-v3-beta` app and the classic **`pc_stats_monitor_v2.py`** /
+> **Legacy:** the classic **`pc_stats_monitor_v2.py`** /
 > **`pc_stats_monitor_v2_linux.py`** scripts below still work if you prefer them.
 
 #### Prerequisites (v2 script)

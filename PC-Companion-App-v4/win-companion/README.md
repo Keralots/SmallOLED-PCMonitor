@@ -1,4 +1,4 @@
-# PC Companion App v4 (Windows) - BETA
+# PC Companion App v4 (Windows)
 
 Sends your PC's sensor readings to a SmallOLED-PCMonitor device over your local
 network (UDP), and gives you a **web-based configuration window** that mirrors the
@@ -8,15 +8,16 @@ a drag-and-drop layout editor.
 v4 is a single always-running app: the config UI is a native window (Microsoft
 Edge **WebView2**, via [pywebview](https://pywebview.flowrl.com/)) backed by a
 tiny `127.0.0.1` web server. Closing the window hides it to the system tray; the
-monitor keeps sending in the background. It is derived from v3 (left untouched in
-`../PC-Companion-App-v3-beta/`) and reuses the same sensor discovery, UDP
-protocol, autostart and single-instance machinery.
+monitor keeps sending in the background. It is derived from v3 and reuses the same
+sensor discovery, UDP protocol, autostart and single-instance machinery.
 
 ---
 
 ## For end users (using the .exe)
 
-1. Double-click `pc_stats_monitor_v4.exe`.
+1. Download `pc_stats_monitor_v4.exe` from the
+   [latest release](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest)
+   and double-click it.
    - First time only, Windows SmartScreen may say *"Windows protected your PC"*.
      Click **More info -> Run anyway**. This is normal for unsigned tools.
    - Requires the **WebView2 runtime** (preinstalled on Windows 11; on Windows 10
@@ -81,6 +82,16 @@ build_exe.bat
 
 Output: `dist\pc_stats_monitor_v4.exe` (single self-contained file). The build
 bundles the `webui/` folder and the pywebview WebView2 backend.
+
+`dist/` is git-ignored - the exe is ~43 MB, so it is published as a GitHub Release
+asset instead of being committed:
+
+```bat
+gh release upload <tag> dist\pc_stats_monitor_v4.exe
+```
+
+Rebuild and re-upload whenever `webui/` or any companion source changes, otherwise
+the published exe ships a stale UI.
 
 ### How the web UI is built
 `webui/portal.css` and `webui/portal.js` are extracted from the firmware's
