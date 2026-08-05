@@ -78,7 +78,7 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 2. **Connect ESP32 to WiFi** - Right after flashing, use the flasher's **Configure WiFi** step to send your network to the device over USB. (No web flasher? Join the "PCMonitor-Setup" network and open 192.168.4.1.)
 3. **Install LibreHardwareMonitor** (Windows only) - Download from [GitHub](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases), run as Admin (needed for temps/fans/GPU/power)
 4. **Get the companion app (v4 - recommended on both Windows and Linux):**
-   - **Windows (easiest):** download `pc_stats_monitor_v4.exe` from the [latest release](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest) and double-click it - no Python needed. v4 gives a polished **web-style config window** (1:1 device preview, drag-and-drop layout, sensor picker, number formats, quick templates) that lives in the system tray.
+   - **Windows (easiest):** download `pc_stats_monitor_v4.exe` from the [latest release](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest) and double-click it - no Python needed. v4 gives a polished **web-style config window** (1:1 device preview, drag-and-drop layout, sensor picker, number formats, quick templates) that lives in the system tray. On the first run Windows SmartScreen may say *"Windows protected your PC"* - the exe is unsigned, so click **More info -> Run anyway**. This is normal for small unsigned tools.
    - **Linux:** `cd PC-Companion-App-v4/linux-companion`, then `python3 -m pip install -r requirements.txt` and `python3 pc_stats_monitor_v4_linux.py` (no build step). Same UI; opens a native window or your browser.
    - **Classic scripts (legacy):** the older `pc_stats_monitor_v2.py` (Windows) / `pc_stats_monitor_v2_linux.py` (Linux) still work if you prefer them.
 5. **Configure in GUI** - Enter ESP32 IP address, select the sensors you want, click "Save & Start"
@@ -242,7 +242,7 @@ Once connected to WiFi, access the full configuration page:
 > config window that mirrors the device portal 1:1 - live OLED preview, drag-and-drop
 > layout, sensor picker, number formats, quick templates, pull/push and backup -
 > all from the desktop, hosted in a native window + system tray.
-> - **Windows:** prebuilt **`pc_stats_monitor_v4.exe`** on the [latest release page](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest) - no Python needed. Source lives in [`PC-Companion-App-v4/win-companion/`](PC-Companion-App-v4/win-companion/).
+> - **Windows:** prebuilt **`pc_stats_monitor_v4.exe`** on the [latest release page](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest) - no Python needed. First run may trip Windows SmartScreen (unsigned exe): **More info -> Run anyway**. Source and the full guide live in [`PC-Companion-App-v4/win-companion/`](PC-Companion-App-v4/win-companion/).
 > - **Linux:** run from source in [`PC-Companion-App-v4/linux-companion/`](PC-Companion-App-v4/linux-companion/) (`pip install -r requirements.txt` then `python3 pc_stats_monitor_v4_linux.py`).
 >
 > **Legacy:** the classic **`pc_stats_monitor_v2.py`** /
