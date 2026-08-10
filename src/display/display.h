@@ -57,12 +57,19 @@ void applyDisplayBrightness();
 bool refreshDisplayBrightnessNow();
 void checkScheduledBrightness();
 
-// True only when the time is valid AND the schedule resolves to a dark panel.
-// Unknown time reports false, so callers never blank the display on a guess.
+// True when the schedule resolves to a dark panel, or when the boot hold is
+// keeping it dark because there is no clock yet to evaluate the schedule with.
 bool scheduledDisplayIsOff();
+
+// Force the panel readable for provisioning screens and keep scheduled dimming
+// off its back until the next reboot.
+void ensureDisplayVisible();
 
 // Brightness actually pushed to the panel (0 = powered off), for status reporting.
 uint8_t getLastAppliedBrightness();
+
+// Wake-ups discarded by the schedule confirmation step, for status reporting.
+uint16_t getSuppressedScheduleWakeCount();
 
 // Runtime display control (HTTP API) - not persisted to flash
 void setDisplayForcedOff(bool off);

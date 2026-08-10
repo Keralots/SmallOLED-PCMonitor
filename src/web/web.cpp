@@ -185,6 +185,9 @@ void handleStatus() {
  doc["brightness"] = (settings.displayBrightness * 100) / 255; // percent
  doc["clockStyle"] = settings.clockStyle;
  doc["pcOnline"] = pcOnline;
+ // Wake-ups the dim schedule refused to act on because a second check
+ // disagreed. Non-zero means the device is being handed a wrong time (#59).
+ doc["dimWakesIgnored"] = getSuppressedScheduleWakeCount();
 
  String json;
  serializeJson(doc, json);

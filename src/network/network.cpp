@@ -30,6 +30,9 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   Serial.println(WiFi.softAPIP());
 
   if (displayAvailable) {
+    // The setup screen has to be readable even if a dim schedule (or the boot
+    // hold that assumes night while there is no clock) has the panel dark.
+    ensureDisplayVisible();
 #if QR_SETUP_ENABLED
     displayQRCodeSetup();
 #else
