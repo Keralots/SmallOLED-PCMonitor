@@ -364,7 +364,14 @@ static bool resolvePlaceholder(const char* n, String& out) {
     for (size_t i = 0; i < tzCount; i++) {
       bool isSelected = (settings.timezoneIndex < 255) ? (i == settings.timezoneIndex)
                                                        : (strcmp(settings.timezoneString, regions[i].posixString) == 0);
-      out += "<option value=\"" + String(i) + "\"" + (isSelected ? " selected" : "") + ">" + String(regions[i].name) + "</option>\n";
+      // Prefix each option with its UTC offset so users can find their zone by
+      // number (e.g. "(UTC+03:30) Iran ..."). Display only - the option value
+      // stays the array index, so saved timezoneIndex values are unaffected.
+      int off = regions[i].gmtOffsetMinutes;
+      int absOff = off < 0 ? -off : off;
+      char pfx[16];
+      snprintf(pfx, sizeof(pfx), "(UTC%c%02d:%02d) ", off < 0 ? '-' : '+', absOff / 60, absOff % 60);
+      out += "<option value=\"" + String(i) + "\"" + (isSelected ? " selected" : "") + ">" + String(pfx) + String(regions[i].name) + "</option>\n";
     }
     return true;
   }
