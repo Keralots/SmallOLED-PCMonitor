@@ -29,6 +29,11 @@ void configModeCallback(WiFiManager *myWiFiManager) {
   Serial.println("Config mode entered");
   Serial.println(WiFi.softAPIP());
 
+  // Cap the setup AP's TX power. On mis-tuned ESP32-C3 clones full power makes
+  // the AP beacons undecodable (invisible SSID) and can brownout the board;
+  // the portal is close-range anyway, so this only helps (see user_config.h).
+  WiFi.setTxPower(WIFI_AP_TX_POWER);
+
   if (displayAvailable) {
     // The setup screen has to be readable even if a dim schedule (or the boot
     // hold that assumes night while there is no clock) has the panel dark.
@@ -215,8 +220,9 @@ void initNetwork() {
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 
-  // Set WiFi TX power to maximum for better range
-  WiFi.setTxPower(WIFI_POWER_19_5dBm);
+  // Set WiFi TX power for connected operation (full range by default; lower via
+  // WIFI_STA_TX_POWER in user_config.h if a clone board brownouts/drops STA).
+  WiFi.setTxPower(WIFI_STA_TX_POWER);
 
   // Start UDP listener
   udp.begin(UDP_PORT);

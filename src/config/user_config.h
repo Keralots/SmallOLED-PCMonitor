@@ -143,4 +143,27 @@
 #define IMPROV_SETUP_ENABLED 1           // 1 = Improv-Serial WiFi push, 0 = AP portal only
 #define IMPROV_SETUP_WINDOW_MS 180000    // 3-min Improv listen window on first boot
 
+// ========== WiFi TX Power ==========
+// Many cheap ESP32-C3 "SuperMini" clone boards ship with a mis-tuned ceramic
+// antenna (too little clearance, crystal shielding RF) and/or a weak 3.3V
+// regulator that cannot supply the ~500mA current peaks the radio draws at full
+// TX power. At the default 19.5 dBm this causes brownout resets, dropped
+// connections, and - most visibly - a config-portal AP whose beacons never
+// decode, so the "PCMonitor-Setup" network is invisible even at arm's length
+// (github issue #61). Capping TX power to 8.5 dBm is the community-established
+// software fix (see the ESP32-C3 SuperMini WiFi-fix write-ups).
+//
+// Policy: the setup AP is close-range by definition, so it is ALWAYS capped -
+// zero range downside, and it un-strands users on affected boards. Normal STA
+// operation keeps full power for range on healthy boards (the DevKitM this
+// project targets is fine). If your board still drops its STA connection or
+// brownouts during normal use, lower WIFI_STA_TX_POWER to WIFI_POWER_8_5dBm too
+// and reflash.
+//
+// Valid values: WIFI_POWER_19_5dBm, WIFI_POWER_18_5dBm, WIFI_POWER_17dBm,
+// WIFI_POWER_15dBm, WIFI_POWER_13dBm, WIFI_POWER_11dBm, WIFI_POWER_8_5dBm,
+// WIFI_POWER_7dBm, WIFI_POWER_5dBm, WIFI_POWER_2dBm, WIFI_POWER_MINUS_1dBm.
+#define WIFI_AP_TX_POWER  WIFI_POWER_8_5dBm    // Setup/config-portal AP power (capped)
+#define WIFI_STA_TX_POWER WIFI_POWER_19_5dBm   // Normal connected-station power (full range)
+
 #endif // USER_CONFIG_H
