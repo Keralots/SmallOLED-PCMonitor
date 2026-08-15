@@ -82,6 +82,13 @@ static const TimezoneRegion timezoneDatabase[] = {
   // Appended after release - keep at the end so existing saved timezone
   // indices (settings.timezoneIndex) continue to map to the same regions.
   {"US Arizona (Phoenix - no DST)", "MST7", -420},
+
+  // Half/quarter-hour offset zones (appended - keep at end for index stability)
+  {"Iran (Tehran - no DST)", "<+0330>-3:30", 210},
+  {"Afghanistan (Kabul - no DST)", "<+0430>-4:30", 270},
+  {"Nepal (Kathmandu - no DST)", "<+0545>-5:45", 345},
+  {"Myanmar (Yangon - no DST)", "<+0630>-6:30", 390},
+  {"Newfoundland (St. John's)", "NST3:30NDT,M3.2.0,M11.1.0", -210},
 };
 
 // Total number of timezones in database
