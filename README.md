@@ -48,13 +48,13 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 - **Dual Display Modes:**
   - **PC Online**: Real-time stats with customizable metrics and positions
   - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, Standard, or Large styles, plus a Cycle All mode)
-- **v2.0 Python GUI**:
-  - Easy graphical configuration - no more editing files!
-  - Select from all available sensors on your system
-  - Support for up to 20 metrics
-  - Custom labels (max 10 characters)
-  - Autostart configuration built-in
-  - Windows and Linux support
+- **PC Companion App (v4, Windows + Linux)**:
+  - Web-style config window that mirrors the device portal 1:1
+  - Live 1:1 OLED preview with drag-and-drop layout
+  - Sensor picker with live values, up to 20 metrics
+  - Custom labels (max 10 characters), number formats, quick templates
+  - Runs in a native window + system tray; **Start with Windows** autostart
+  - Windows prebuilt exe (no Python) or Linux from source
 - **Web Configuration Portal**: Customize all settings via browser
   - 5-row (spacious) or 6-row (compact) display modes
   - Large 2-row and 3-row modes for readability at a distance
@@ -166,13 +166,13 @@ A dedicated browser flasher that picks the right firmware for your OLED, install
 
 Prefer to flash the raw binary with your own tool? Download it from the latest release and flash the full image at `0x0`.
 
-**Download the latest release**: [v1.6.2](release/v1.6.2/)
+**Download the latest release**: grab the full image for your OLED size from the [Releases tab](https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest).
 
 **Generic web flasher (esptool-js):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
 2. Connect your ESP32-C3 via USB (use the BOOT/RESET trick above if it won't stay connected).
 3. Click **"Connect"** and select your port
-4. Click **"Choose File"** and select the full image for your display, e.g. `firmware-v1.6.2-OLED_0.96inch.bin`
+4. Click **"Choose File"** and select the full image for your display, e.g. `firmware-<version>-OLED_0.96inch.bin`
 5. Make sure you pick firmware for correct OLED size version! It may initially work but you will get black screen after you reconnect device.
 6. Set **Flash Address** to `0x0`
 7. Click **"Program"** and wait ~30 seconds
@@ -181,7 +181,7 @@ Prefer to flash the raw binary with your own tool? Download it from the latest r
 **Other methods:**
 - **Windows**: Run `flash.bat` and follow prompts
 - **Linux/Mac**: Run `./flash.sh` and follow prompts
-- **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-v1.6.2-OLED_0.96inch.bin`
+- **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-<version>-OLED_0.96inch.bin`
 
 #### Option C: Build from Source
 
@@ -248,7 +248,7 @@ Once connected to WiFi, access the full configuration page:
 > **Legacy:** the classic **`pc_stats_monitor_v2.py`** /
 > **`pc_stats_monitor_v2_linux.py`** scripts below still work if you prefer them.
 
-#### Prerequisites (v2 script)
+#### Prerequisites (legacy v2 script)
 - **Python 3.7+**
 - **LibreHardwareMonitor** (for hardware sensor monitoring)
 - **Note:** LibreHardwareMonitor 0.9.5+ changed its WMI backend. The Python script automatically detects this and falls back to the REST API. If using 0.9.5+, enable "Options > Remote Web Server > Run" in LibreHardwareMonitor.
@@ -272,64 +272,62 @@ For version 0.9.5 and above check Web server option:
 ![lhw-webserver](img/LHW-WEBSERVER.png)
 
 
-#### Python Script Setup (v2.0 - New GUI Version!)
+#### Set up the companion app
 
-The v2.0 script now includes a **graphical interface** that makes configuration easy - no more editing files manually!
+The recommended **v4 companion** (Windows exe or Linux from source, see above) opens its config window automatically and also lives in the system tray - right-click the tray icon to reopen it or quit.
 
-##### Step 1: Install Python Dependencies
+![System tray icon](img/v4-tray.png)
 
-**For Windows:**
-```bash
-pip install psutil pywin32 wmi pystray pillow
-```
+##### Step 1: Launch the app
 
-**For Linux:**
-```bash
-pip install psutil tk
-or (if above is not working)
-sudo apt install python3-pip -y
-sudo apt install python3-tk -y
-
-```
-
-##### Step 2: Run the Script for First Time
-
-**Windows:**
-```bash
-python pc_stats_monitor_v2.py
-```
+**Windows:** double-click `pc_stats_monitor_v4.exe`. First run may trip Windows SmartScreen (unsigned exe): **More info -> Run anyway**.
 
 **Linux:**
 ```bash
-python3 pc_stats_monitor_v2_linux.py
+cd PC-Companion-App-v4/linux-companion
+python3 -m pip install -r requirements.txt
+python3 pc_stats_monitor_v4_linux.py
 ```
 
-The GUI will automatically open if no configuration exists.
+<details>
+<summary>Legacy v2 script (optional)</summary>
 
-##### Step 3: Configure in the GUI
+**Windows:** `pip install psutil pywin32 wmi pystray pillow` then `python pc_stats_monitor_v2.py`
 
-![Python GUI Screenshot](img/pcmonitorGUI.png)
+**Linux:** `pip install psutil tk` (or `sudo apt install python3-pip python3-tk -y`) then `python3 pc_stats_monitor_v2_linux.py`
 
-The configuration window lets you:
+The v2 GUI opens automatically if no configuration exists.
+</details>
 
-1. **Enter ESP32 IP Address** - Find this on your OLED display after WiFi setup
-2. **Set UDP Port** (default: 4210) - Leave this unless you changed it
-3. **Update Interval** (default: 3 seconds) - How often to send stats
-4. **Select Metrics to Monitor**:
-   - Browse through categories: System, Temperatures, Fans, Loads, Clocks, Power, Network Data, Network Throughput
-   - Check the boxes next to sensors you want to monitor
-   - You can select up to 20 metrics
-   - **Current values are shown** to help you identify sensors
-   - Use the **Search** box to quickly find specific sensors
-5. **Custom Labels** (optional):
-   - Each sensor has a "Label" field
-   - Enter a custom name (max 10 characters) to display on ESP32
-   - Leave empty to use auto-generated names
-6. **Click "Save & Start Monitoring"** when done
+##### Step 2: Connect to your ESP32
+
+![Companion app - connection](img/v4-connection.png)
+
+On the **Connection** page:
+
+1. **Enter the ESP32 IP Address** - shown on the OLED at boot.
+2. **UDP Port** (default 4210) and **Update Interval** (default 3s) - leave unless you changed them.
+3. **Sensor source** - leave on **Auto** (prefers the REST API, falls back to WMI). Only force a mode if you have a reason to.
+4. Click **Test connection** to confirm the device answers, then **Save connection**.
+
+##### Step 3: Pick the sensors to display
+
+![Companion app - sensor picker](img/v4-sensor-picker.png)
+
+On the **Sensors** page:
+
+1. Make sure **LibreHardwareMonitor is running** (Windows) for temps, fans, GPU and power - CPU / RAM / Disk work out of the box. In **Auto** source mode the app reads LibreHardwareMonitor over its REST API and falls back to WMI, so 0.9.5+ (with broken WMI) works fine.
+2. Browse the categories: System, Temperatures, Fans, Loads, Clocks, Power, Network Data, Network Throughput. Hit **Rescan sensors** if something is missing.
+3. **Live current values** are shown next to each sensor so you can identify them.
+4. Tick the sensors you want - up to **20 metrics**.
+5. Give any sensor a **Custom label** (max 10 chars) to show on the OLED - e.g. relabel a pump RPM sensor "PUMP". Leave empty for the auto name.
+6. Click **Save & push to device**. The **Layout & preview** page then lets you drag each metric onto a 1:1 OLED preview.
 
 ##### Step 4: Position Metrics on ESP32 Display
 
-After the Python script starts sending data:
+![Companion app - layout and preview](img/v4-layout-preview.png)
+
+After the companion app starts sending data (arrange metrics in its **Layout & preview** page, or in the device's own web portal as below):
 
 1. Open your ESP32's IP address in a web browser
 2. Open the **Visible metrics** page
@@ -340,11 +338,13 @@ After the Python script starts sending data:
 
 **TIP:** Start with 1-2 metrics initially and slowly build entire layout.
 
-![ESP32 Web Portal - Metrics](img/ESP-WEBPortal3.png)
+![ESP32 Web Portal - Visible metrics](img/ESP-WEBPortal2.png)
 
 The display will update in real-time as you arrange metrics!
 
 ##### Step 5: Enable Autostart (Optional)
+
+> **v4 app (Windows):** tick **Start with Windows** on the **Connection** page - saved instantly, launches minimized to the tray at login (per-user, no admin) and waits 10s for LibreHardwareMonitor to start first. The commands below are for the legacy v2 script.
 
 **Windows:**
 ```bash
@@ -470,9 +470,9 @@ Change clock style anytime via the web portal or touch button!
    - give CPU, RAM, GPU, Disk metrics your own labels too
 4. Changes apply live in the preview; click **Save & apply** to keep them
 
-### Customizing Monitored Sensors (v2.0)
+### Customizing Monitored Sensors
 
-With the v2.0 GUI, you can easily select any sensors available on your system:
+The companion app lets you select any sensor available on your system:
 
 **Available Sensor Categories:**
 - **System Metrics**: CPU%, RAM%, Disk usage (using psutil)
@@ -485,13 +485,13 @@ With the v2.0 GUI, you can easily select any sensors available on your system:
 - **Network Throughput**: Current upload/download speeds (in KB/s or MB/s)
 
 **How to Select Sensors:**
-1. Make sure **LibreHardwareMonitor is running** (Windows only)
-2. Run `python pc_stats_monitor_v2.py --edit`
-3. Browse through sensor categories
-4. **Current values are displayed** next to each sensor to help you identify them
-5. Check boxes for sensors you want to monitor
+1. Make sure **LibreHardwareMonitor is running** (Windows) for temps/fans/GPU/power. The app falls back to its REST API on 0.9.5+.
+2. Open the companion app - double-click `pc_stats_monitor_v4.exe`, or right-click the tray icon and choose open. (Legacy: `python pc_stats_monitor_v2.py --edit`.)
+3. Go to the **Sensors** page and browse the categories
+4. **Live current values** are shown next to each sensor to help you identify them
+5. Tick the sensors you want to monitor (up to 20)
 6. Set custom labels if desired (max 10 characters)
-7. Save and start monitoring
+7. Click **Save & push to device** - the OLED updates live
 
 ![ESP32 Web Portal Example](img/ESP-WEBPortal1.png)
 
