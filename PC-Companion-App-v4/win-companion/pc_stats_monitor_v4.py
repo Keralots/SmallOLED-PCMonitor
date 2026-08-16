@@ -3437,8 +3437,12 @@ def collect_metrics(config, snapshot, last_good_values=None, status_code=STATUS_
             status_code = STATUS_API_ERROR
     payload["status"] = status_code
 
-    # Empty timestamp signals the ESP32 that data may be stale.
-    payload["timestamp"] = datetime.now().strftime('%H:%M') if has_fresh_data else ""
+    # Empty timestamp signals the ESP32 that data may be stale. Only stamp a
+    # time when data is fresh AND status is healthy: psutil (CPU/RAM/Disk) keeps
+    # returning fresh values while LHM is down, so gating on has_fresh_data alone
+    # would send the current time and make the OLED's "Last OK" track now.
+    payload["timestamp"] = (datetime.now().strftime('%H:%M')
+                            if has_fresh_data and status_code == STATUS_OK else "")
     return payload, values_by_id, has_fresh_data, last_good_values, stale_count
 
 

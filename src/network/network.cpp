@@ -403,11 +403,13 @@ void parseStatsV2(JsonDocument& doc) {
   metricData.status = newStatus;
 
   const char* ts = doc["timestamp"];
-  if (ts && strlen(ts) > 0) {
-    // Valid timestamp - update it
+  if (newStatus == STATUS_OK && ts && strlen(ts) > 0) {
+    // Only stamp "Last OK" when status is healthy. Otherwise psutil metrics
+    // (CPU/RAM/Disk) still send a fresh timestamp while LHM is down, which
+    // would make the error screen's "Last OK" track the current time.
     strncpy(metricData.timestamp, ts, 5);
     metricData.timestamp[5] = '\0';
-  } else {
+  } else if (!(ts && strlen(ts) > 0)) {
     // Empty timestamp signals stale data from Python script (LHM may be down)
     // Keep the previous timestamp - don't overwrite with empty
     Serial.println("Warning: Empty timestamp received (LHM may be recovering)");
