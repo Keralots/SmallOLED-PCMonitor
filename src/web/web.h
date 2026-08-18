@@ -33,6 +33,7 @@ void handleDeviceInfo();
 void handleRename();
 void handleExportConfig();
 void handleImportConfig();
+void handleNtpTest();
 
 // Runtime control API (display power, mode, brightness, clock style, reboot)
 void handleStatus();

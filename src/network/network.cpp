@@ -249,25 +249,33 @@ void initMDNS() {
 
 // ========== NTP Functions ==========
 void applyTimezone() {
+  // NTP servers: use configured values, falling back to compiled defaults when
+  // empty. Secondary is optional - pass nullptr so SNTP skips a blank slot.
+  const char* ntp1 = strlen(settings.ntpServer1) > 0 ? settings.ntpServer1
+                                                      : NTP_SERVER_PRIMARY;
+  const char* ntp2 = strlen(settings.ntpServer2) > 0 ? settings.ntpServer2
+                                                      : nullptr;
+
   // If timezone string is set, use automatic DST with configTzTime()
   if (strlen(settings.timezoneString) > 0) {
-    configTzTime(settings.timezoneString, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+    configTzTime(settings.timezoneString, ntp1, ntp2);
     Serial.printf("Timezone set (automatic DST): %s\n", settings.timezoneString);
   }
   else {
     // Fallback: Try to map old GMT offset to default timezone
     const char* defaultTz = getDefaultTimezoneForOffset(settings.gmtOffset);
     if (defaultTz != nullptr) {
-      configTzTime(defaultTz, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+      configTzTime(defaultTz, ntp1, ntp2);
       Serial.printf("Auto-detected timezone: %s\n", defaultTz);
     }
     else {
       // Ultimate fallback: Manual offset without DST
       int gmtOffset_sec = settings.gmtOffset * 60;
-      configTime(gmtOffset_sec, 0, NTP_SERVER_PRIMARY, NTP_SERVER_SECONDARY);
+      configTime(gmtOffset_sec, 0, ntp1, ntp2);
       Serial.printf("Manual offset (no DST): GMT%+d\n", settings.gmtOffset / 60);
     }
   }
+  Serial.printf("NTP servers: %s, %s\n", ntp1, ntp2 ? ntp2 : "(none)");
 }
 
 void initNTP() {

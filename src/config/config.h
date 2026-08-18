@@ -101,6 +101,8 @@ struct Settings {
   char subnet[16];
   char dns1[16];
   char dns2[16];
+  char ntpServer1[64];          // Primary NTP server (default: pool.ntp.org)
+  char ntpServer2[64];          // Secondary NTP server (default: time.nist.gov, may be empty)
 
   // Mario clock settings
   uint8_t marioBounceHeight;  // Tenths (40 = 4.0)

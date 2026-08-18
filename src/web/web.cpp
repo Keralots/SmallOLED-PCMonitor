@@ -18,6 +18,7 @@
 #include <Update.h>
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <WiFiUdp.h>
 #include <esp_ota_ops.h>
 #include <esp_task_wdt.h>
 #include <lwip/sockets.h>
@@ -52,6 +53,7 @@ void setupWebServer() {
  server.on("/api/export", HTTP_GET, handleExportConfig);
  server.on("/api/import", HTTP_POST, handleImportConfig);
  server.on("/api/rename", HTTP_POST, handleRename);
+ server.on("/api/ntptest", HTTP_GET, handleNtpTest);
 
  // Runtime control API (display power, mode, brightness, clock style, reboot)
  server.on("/api/status", HTTP_GET, handleStatus);
@@ -512,6 +514,8 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "V_SUBNET")) { out = String(settings.subnet); return true; }
   if (!strcmp(n, "V_DNS1")) { out = String(settings.dns1); return true; }
   if (!strcmp(n, "V_DNS2")) { out = String(settings.dns2); return true; }
+  if (!strcmp(n, "V_NTPSERVER1")) { out = String(settings.ntpServer1); return true; }
+  if (!strcmp(n, "V_NTPSERVER2")) { out = String(settings.ntpServer2); return true; }
   if (!strcmp(n, "CHK_SHOWIPATBOOT")) { out = String(settings.showIPAtBoot ? "checked" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKPOSITION_0")) { out = String(settings.clockPosition == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKPOSITION_1")) { out = String(settings.clockPosition == 1 ? "selected" : ""); return true; }
@@ -1024,6 +1028,17 @@ void handleSave() {
  Serial.println("WARNING: Invalid DNS2 format, ignoring");
  }
  }
+ // NTP servers accept hostname or IP; empty = fall back to compiled default.
+ if (server.hasArg("ntpServer1")) {
+ String s = server.arg("ntpServer1");
+ s.trim();
+ safeCopyString(settings.ntpServer1, s.c_str(), sizeof(settings.ntpServer1));
+ }
+ if (server.hasArg("ntpServer2")) {
+ String s = server.arg("ntpServer2");
+ s.trim();
+ safeCopyString(settings.ntpServer2, s.c_str(), sizeof(settings.ntpServer2));
+ }
 
  // Save custom labels
  for (int i = 0; i < MAX_METRICS; i++) {
@@ -1253,6 +1268,8 @@ void handleExportConfig() {
  json += "\"useNetworkMBFormat\":" + String(settings.useNetworkMBFormat ? "true" : "false") + ",";
  json += "\"deviceName\":\"" + String(settings.deviceName) + "\",";
  json += "\"showIPAtBoot\":" + String(settings.showIPAtBoot ? "true" : "false") + ",";
+ json += "\"ntpServer1\":\"" + String(settings.ntpServer1) + "\",";
+ json += "\"ntpServer2\":\"" + String(settings.ntpServer2) + "\",";
 
  // Metric labels
  json += "\"metricLabels\":[";
@@ -1344,6 +1361,65 @@ void handleExportConfig() {
 }
 
 // Import configuration from JSON
+// Probe an NTP server without disturbing the running clock: send a raw SNTP
+// request from a throwaway UDP socket and report whether it answers. Used by the
+// "Test" button next to the NTP server fields in the web UI.
+void handleNtpTest() {
+ String srv = server.arg("server");
+ srv.trim();
+ if (srv.length() == 0) srv = NTP_SERVER_PRIMARY;
+
+ IPAddress ip;
+ if (!WiFi.hostByName(srv.c_str(), ip)) {
+ server.send(200, "application/json", "{\"success\":false,\"error\":\"resolve\"}");
+ return;
+ }
+
+ WiFiUDP ntpUdp;
+ if (!ntpUdp.begin(2390)) {  // ephemeral local port, distinct from stats (4210)
+ server.send(200, "application/json", "{\"success\":false,\"error\":\"socket\"}");
+ return;
+ }
+
+ uint8_t pkt[48];
+ memset(pkt, 0, sizeof(pkt));
+ pkt[0] = 0x1B;  // LI=0, VN=3, Mode=3 (client)
+ ntpUdp.beginPacket(ip, 123);
+ ntpUdp.write(pkt, sizeof(pkt));
+ ntpUdp.endPacket();
+
+ bool got = false;
+ unsigned long start = millis();
+ while (millis() - start < 3000) {  // generous: public pool members can be slow
+ if (ntpUdp.parsePacket() >= 48) { got = true; break; }
+ delay(10);
+ }
+
+ if (!got) {
+ ntpUdp.stop();
+ server.send(200, "application/json", "{\"success\":false,\"error\":\"timeout\"}");
+ return;
+ }
+
+ ntpUdp.read(pkt, sizeof(pkt));
+ ntpUdp.stop();
+
+ // Transmit timestamp seconds (bytes 40..43), NTP epoch 1900 -> Unix epoch 1970.
+ uint32_t secs1900 = ((uint32_t)pkt[40] << 24) | ((uint32_t)pkt[41] << 16) |
+                     ((uint32_t)pkt[42] << 8) | (uint32_t)pkt[43];
+ if (secs1900 < 2208988800UL) {  // before 1970 => bogus reply
+ server.send(200, "application/json", "{\"success\":false,\"error\":\"badreply\"}");
+ return;
+ }
+ time_t t = (time_t)(secs1900 - 2208988800UL);
+ struct tm g;
+ gmtime_r(&t, &g);
+ char buf[16];
+ snprintf(buf, sizeof(buf), "%02d:%02d:%02d", g.tm_hour, g.tm_min, g.tm_sec);
+ server.send(200, "application/json",
+             String("{\"success\":true,\"time\":\"") + buf + "\"}");
+}
+
 void handleImportConfig() {
  if (server.hasArg("plain")) {
  String body = server.arg("plain");
@@ -1387,6 +1463,14 @@ void handleImportConfig() {
      strncpy(settings.deviceName, name, 31);
      settings.deviceName[31] = '\0';
    }
+ }
+ if (!doc["ntpServer1"].isNull()) {
+   const char* s = doc["ntpServer1"];
+   if (s) { strncpy(settings.ntpServer1, s, 63); settings.ntpServer1[63] = '\0'; }
+ }
+ if (!doc["ntpServer2"].isNull()) {
+   const char* s = doc["ntpServer2"];
+   if (s) { strncpy(settings.ntpServer2, s, 63); settings.ntpServer2[63] = '\0'; }
  }
 
  // Import metric labels

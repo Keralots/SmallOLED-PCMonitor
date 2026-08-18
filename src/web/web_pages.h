@@ -786,6 +786,19 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               <span class="check-text"><strong>Show IP at startup</strong><span class="ct-hint">Display the IP address on the OLED for 5 seconds after boot.</span></span>
             </label>
           </div>
+
+          <div class="card">
+            <h2 class="card-title">Time servers (NTP)</h2>
+            <div class="grid-2">
+              <div class="field" style="margin-bottom:0"><label class="field-label" for="ntpServer1">Primary NTP</label><input type="text" name="ntpServer1" id="ntpServer1" value="%V_NTPSERVER1%" maxlength="63" placeholder="pool.ntp.org"></div>
+              <div class="field" style="margin-bottom:0"><label class="field-label" for="ntpServer2">Secondary NTP</label><input type="text" name="ntpServer2" id="ntpServer2" value="%V_NTPSERVER2%" maxlength="63" placeholder="time.nist.gov"></div>
+            </div>
+            <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <button type="button" class="btn" id="ntpTestBtn">Test</button>
+              <span id="ntpTestResult" style="font-size:13px"></span>
+            </div>
+            <p class="field-hint">Hostname or IP of the time source. Leave a field blank to use the default. Secondary is optional. Test checks whether each configured server answers.</p>
+          </div>
         </section>
 
         <!-- TIMEZONE -->
@@ -1367,6 +1380,26 @@ var url = URL.createObjectURL(blob);
 var a = document.createElement('a'); a.href = url; a.download = 'smalloled-config.json';
 document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }).catch(function (err) { alert('Error exporting configuration: ' + err); });
+});
+var ntpBtn = $('#ntpTestBtn');
+if (ntpBtn) ntpBtn.addEventListener('click', function () {
+var res = $('#ntpTestResult');
+function esc(x) { return String(x).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+var jobs = [{ label: 'Primary', srv: ($('#ntpServer1').value || '').trim() || 'pool.ntp.org' }];
+var sec = ($('#ntpServer2').value || '').trim();
+if (sec) jobs.push({ label: 'Secondary', srv: sec });
+var lines = [];
+ntpBtn.disabled = true; res.style.color = ''; res.textContent = 'Testing...';
+function run(i) {
+if (i >= jobs.length) { res.innerHTML = lines.join('<br>'); ntpBtn.disabled = false; return; }
+var j = jobs[i];
+fetch('/api/ntptest?server=' + encodeURIComponent(j.srv)).then(function (r) { return r.json(); }).then(function (d) {
+if (d.success) lines.push('<span style="color:#3fb950">OK</span> ' + j.label + ' (' + esc(j.srv) + ') &middot; ' + esc(d.time) + ' UTC');
+else lines.push('<span style="color:#f85149">no response</span> ' + j.label + ' (' + esc(j.srv) + ')');
+}).catch(function () { lines.push('<span style="color:#f85149">test failed</span> ' + j.label + ' (' + esc(j.srv) + ')'); })
+.then(function () { run(i + 1); });
+}
+run(0);
 });
 $('#importBtn').addEventListener('click', function () { $('#importFile').click(); });
 $('#importFile').addEventListener('change', function (ev) {

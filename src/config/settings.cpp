@@ -382,6 +382,14 @@ void loadSettings() {
   strncpy(settings.dns2, loadedDNS2.c_str(), 15);
   settings.dns2[15] = '\0';
 
+  // NTP servers (custom, with defaults)
+  String loadedNtp1 = preferences.getString("ntpServer1", "pool.ntp.org");
+  String loadedNtp2 = preferences.getString("ntpServer2", "time.nist.gov");
+  strncpy(settings.ntpServer1, loadedNtp1.c_str(), 63);
+  settings.ntpServer1[63] = '\0';
+  strncpy(settings.ntpServer2, loadedNtp2.c_str(), 63);
+  settings.ntpServer2[63] = '\0';
+
   // Load metric display order
   size_t orderSize = preferences.getBytesLength("metricOrd");
   if (orderSize == MAX_METRICS) {
@@ -576,6 +584,8 @@ void saveSettings() {
   preferences.putString("subnet", settings.subnet);
   preferences.putString("dns1", settings.dns1);
   preferences.putString("dns2", settings.dns2);
+  preferences.putString("ntpServer1", settings.ntpServer1);
+  preferences.putString("ntpServer2", settings.ntpServer2);
 
   // Save metric display order
   preferences.putBytes("metricOrd", settings.metricOrder, MAX_METRICS);
