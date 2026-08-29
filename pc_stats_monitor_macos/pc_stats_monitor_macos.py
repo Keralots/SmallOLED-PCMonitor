@@ -281,6 +281,17 @@ def discover_sensors():
         "current_value": int(psutil.disk_usage('/').percent)
     })
 
+    sensor_database["system"].append({
+        "name": "LOAD1",
+        "display_name": "Load Average (1min)",
+        "source": "psutil_load",
+        "type": "load_avg",
+        "unit": "",
+        "psutil_method": "load_average_1min",
+        "custom_label": "",
+        "current_value": int(os.getloadavg()[0] * 100)
+    })
+
     print(f"  Found {len(sensor_database['system'])} system metrics")
 
     # Discover hardware sensors via ioreg
@@ -1016,6 +1027,12 @@ def get_metric_value(metric_config):
         elif method == "net_speed_up":
             net_stats = get_network_stats()
             return int(net_stats["upload_speed_bps"] / 1024)  # KB/s
+
+    elif source == "psutil_load":
+        method = metric_config.get("psutil_method", "")
+
+        if method == "load_average_1min":
+            return int(os.getloadavg()[0] * 100)  # x100 for .2f precision
 
     elif source == "ioreg":
         # Refresh ioreg sensors and find matching value

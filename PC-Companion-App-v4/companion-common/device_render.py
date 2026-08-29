@@ -131,11 +131,13 @@ def _write(fb, x, y, text, size, wrap):
     return cx, cy
 
 
-def build_metric_text(label, unit, value, rpm_k=False, net_mb=False):
+def build_metric_text(label, unit, value, rpm_k=False, net_mb=False, name=""):
     """Port of displayMetricCompact's text assembly (primary metric only).
 
     label: device label (custom label or name). value: int (KB/s pre-multiplied
-    x10, as sent over UDP). Returns the exact string the firmware prints.
+    x10, load average pre-multiplied x100, as sent over UDP). name: raw metric
+    name (e.g. "LOAD1"), used to detect load-average metrics. Returns the exact
+    string the firmware prints.
     """
     display_label = (label or "").replace("^", " ")  # convertCaretToSpaces
     stripped = display_label.rstrip(" ")
@@ -152,16 +154,20 @@ def build_metric_text(label, unit, value, rpm_k=False, net_mb=False):
         if net_mb:
             return "%s:%s%.1fM" % (display_label, spaces, actual / 1000.0)
         return "%s:%s%.1f%s" % (display_label, spaces, actual, unit)
+    if (name or "").startswith("LOAD"):
+        return "%s:%s%.2f" % (display_label, spaces, value / 100.0)
     return "%s:%s%d%s" % (display_label, spaces, value, unit)
 
 
-def build_companion_text(unit, value, net_mb=False):
+def build_companion_text(unit, value, net_mb=False, name=""):
     """Port of the companion snippet (leading space, value+unit only)."""
     if unit == "KB/s":
         cv = value / 10.0
         if net_mb:
             return " %.1fM" % (cv / 1000.0)
         return " %.1f%s" % (cv, unit)
+    if (name or "").startswith("LOAD"):
+        return " %.2f" % (value / 100.0)
     return " %d%s" % (value, unit)
 
 
@@ -188,9 +194,9 @@ def render_stats_frame(metrics_by_id, layout, row_mode, show_clock=False,
         m = metrics_by_id.get(mid, {})
         e = layout.get(mid, {})
         label = e.get("label") or m.get("label") or m.get("name") or ""
-        return label, m.get("unit", ""), int(m.get("value", 0) or 0)
+        return label, m.get("unit", ""), int(m.get("value", 0) or 0), m.get("name", "")
 
-    def draw_bar(x, y, e, value, unit):
+    def draw_bar(x, y, e, value, unit, name=""):
         actual_x = x + e.get("barOffsetX", 0)
         actual_w = e.get("barWidth", 60)
         if actual_x >= 128 or actual_x < 0:
@@ -204,7 +210,12 @@ def render_stats_frame(metrics_by_id, layout, row_mode, show_clock=False,
         rng = bmax - bmin
         if rng <= 0:
             rng = 100
-        dv = value // 10 if unit == "KB/s" else value
+        if unit == "KB/s":
+            dv = value // 10
+        elif (name or "").startswith("LOAD"):
+            dv = value // 100
+        else:
+            dv = value
         vir = max(bmin, min(dv, bmax)) - bmin
         fill_w = (vir * (actual_w - 2)) // rng
         bar_h = 16 if is_large else 8
@@ -213,17 +224,17 @@ def render_stats_frame(metrics_by_id, layout, row_mode, show_clock=False,
             fb.fill_rect(actual_x + 1, y + 1, fill_w, bar_h - 2, 255)
 
     def render_text_metric(x, y, e, size, wrap, large):
-        label, unit, val = meta(_id_of(e))
-        text = build_metric_text(label, unit, val, rpm_k, net_mb)
+        label, unit, val, name = meta(_id_of(e))
+        text = build_metric_text(label, unit, val, rpm_k, net_mb, name)
         comp_id = e.get("companionId", 0)
         has_comp = comp_id and comp_id in metrics_by_id
         if has_comp and not large:
-            _, cunit, cval = meta(comp_id)
-            text += build_companion_text(cunit, cval, net_mb)
+            _, cunit, cval, cname = meta(comp_id)
+            text += build_companion_text(cunit, cval, net_mb, cname)
         cx, cy = _write(fb, x, y, text, size, wrap)
         if has_comp and large:
-            _, cunit, cval = meta(comp_id)
-            comp = build_companion_text(cunit, cval, net_mb)[1:]  # drop leading space
+            _, cunit, cval, cname = meta(comp_id)
+            comp = build_companion_text(cunit, cval, net_mb, cname)[1:]  # drop leading space
             comp_x = 128 - len(comp) * 12
             if comp_x < cx + 4:
                 comp_x = cx + 4
@@ -262,8 +273,8 @@ def render_stats_frame(metrics_by_id, layout, row_mode, show_clock=False,
             bar = slot_bar(pos)
             if bar is not None:
                 mid, e = bar
-                _, unit, val = meta(mid)
-                draw_bar(0, y, e, val, unit)
+                _, unit, val, name = meta(mid)
+                draw_bar(0, y, e, val, unit, name)
                 continue
             e = slot_text(pos)
             if e is not None:
@@ -299,8 +310,8 @@ def render_stats_frame(metrics_by_id, layout, row_mode, show_clock=False,
                 bar = slot_bar(pos)
                 if bar is not None:
                     mid, e = bar
-                    _, unit, val = meta(mid)
-                    draw_bar(col_x, y, e, val, unit)
+                    _, unit, val, name = meta(mid)
+                    draw_bar(col_x, y, e, val, unit, name)
                     continue
                 e = slot_text(pos)
                 if e is not None:

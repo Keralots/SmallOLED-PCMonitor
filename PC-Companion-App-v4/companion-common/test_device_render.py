@@ -35,6 +35,11 @@ class TextBuilder(unittest.TestCase):
         self.assertEqual(d.build_companion_text("C", 55), " 55C")
         self.assertEqual(d.build_companion_text("KB/s", 14), " 1.4KB/s")
 
+    def test_load_average_decimal(self):
+        # value is x100 from Python -> /100, formatted with .2f
+        self.assertEqual(d.build_metric_text("LOAD1", "", 125, name="LOAD1"), "LOAD1:1.25")
+        self.assertEqual(d.build_companion_text("", 125, name="LOAD1"), " 1.25")
+
 
 class Overlap(unittest.TestCase):
     def test_long_left_label_exceeds_column(self):

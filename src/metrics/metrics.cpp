@@ -271,6 +271,9 @@ void displayMetricCompact(Metric* m) {
       // Show with 1 decimal: "DL: 1.5KB/s"
       snprintf(text, 40, "%s:%s%.1f%s", displayLabel, spaces, actualValue, m->unit);
     }
+  } else if (strncmp(m->name, "LOAD", 4) == 0) {
+    // Load average - value is x100 from Python for .2f precision
+    snprintf(text, 40, "%s:%s%.2f", displayLabel, spaces, m->value / 100.0);
   } else {
     // Normal: "CPU: 45%" or "FAN1: 1800RPM"
     snprintf(text, 40, "%s:%s%d%s", displayLabel, spaces, m->value, m->unit);
@@ -293,6 +296,8 @@ void displayMetricCompact(Metric* m) {
           } else {
             snprintf(companionText, 20, " %.1f%s", compValue, companion.unit);
           }
+        } else if (strncmp(companion.name, "LOAD", 4) == 0) {
+          snprintf(companionText, 20, " %.2f", companion.value / 100.0);
         } else {
           snprintf(companionText, 20, " %d%s", companion.value, companion.unit);
         }
@@ -348,6 +353,9 @@ void drawProgressBar(int x, int y, int width, Metric* m) {
   int displayValue = m->value;
   if (strcmp(m->unit, "KB/s") == 0) {
     displayValue = m->value / 10;
+  } else if (strncmp(m->name, "LOAD", 4) == 0) {
+    // Load average: value is x100, barMin/barMax are in real load units
+    displayValue = m->value / 100;
   }
 
   int valueInRange = constrain(displayValue, m->barMin, m->barMax) - m->barMin;

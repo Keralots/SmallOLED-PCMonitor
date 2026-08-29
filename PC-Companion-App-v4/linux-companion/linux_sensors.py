@@ -131,6 +131,17 @@ def discover_sensors():
         "current_value": int(psutil.disk_usage('/').percent)
     })
 
+    sensor_database["system"].append({
+        "name": "LOAD1",
+        "display_name": "Load Average (1min)",
+        "source": "psutil_load",
+        "type": "load_avg",
+        "unit": "",
+        "psutil_method": "load_average_1min",
+        "custom_label": "",
+        "current_value": int(os.getloadavg()[0] * 100)
+    })
+
     print(f"  Found {len(sensor_database['system'])} system metrics")
 
     # Discover hardware sensors (temperatures)
@@ -1731,6 +1742,12 @@ def get_metric_value(metric_config):
             return int(psutil.swap_memory().used / (1024**3))  # GB
         elif method == "disk_usage":
             return int(psutil.disk_usage('/').percent)
+
+    elif source == "psutil_load":
+        method = metric_config["psutil_method"]
+
+        if method == "load_average_1min":
+            return int(os.getloadavg()[0] * 100)  # x100 for .2f precision
 
     elif source == "psutil_temp":
         try:
