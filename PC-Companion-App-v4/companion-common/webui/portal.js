@@ -129,7 +129,7 @@ drawChar(fb, cx, cy, ch, size); cx += size * 6;
 }
 return [cx, cy];
 }
-function buildMetricText(label, unit, value, rpmK, netMB) {
+function buildMetricText(label, unit, value, rpmK, netMB, name) {
 var dl = (label || '').replace(/\^/g, ' ');
 var stripped = dl.replace(/ +$/, '');
 var trailing = dl.length - stripped.length; dl = stripped;
@@ -137,10 +137,12 @@ if (dl.charAt(dl.length - 1) === '%') dl = dl.slice(0, -1);
 var spaces = new Array(Math.min(trailing, 10) + 1).join(' ');
 if (rpmK && unit === 'RPM' && value >= 1000) return dl + ':' + spaces + (value / 1000).toFixed(1) + 'K';
 if (unit === 'KB/s') { var a = value / 10; if (netMB) return dl + ':' + spaces + (a / 1000).toFixed(1) + 'M'; return dl + ':' + spaces + a.toFixed(1) + unit; }
+if ((name || '').indexOf('LOAD') === 0) return dl + ':' + spaces + (value / 100).toFixed(2);
 return dl + ':' + spaces + value + unit;
 }
-function buildCompanionText(unit, value, netMB) {
+function buildCompanionText(unit, value, netMB, name) {
 if (unit === 'KB/s') { var cv = value / 10; if (netMB) return ' ' + (cv / 1000).toFixed(1) + 'M'; return ' ' + cv.toFixed(1) + unit; }
+if ((name || '').indexOf('LOAD') === 0) return ' ' + (value / 100).toFixed(2);
 return ' ' + value + unit;
 }
 function renderFrame() {
@@ -164,7 +166,9 @@ if (ax + aw > 128) aw = 128 - ax;
 if (aw <= 0) return;
 var bmin = mt.barMin | 0, bmax = (mt.barMax == null ? 100 : mt.barMax);
 var rng = bmax - bmin; if (rng <= 0) rng = 100;
-var dv = (mt.unit === 'KB/s') ? Math.floor(mt.value / 10) : mt.value;
+var dv = mt.value;
+if (mt.unit === 'KB/s') dv = Math.floor(mt.value / 10);
+else if ((mt.name || '').indexOf('LOAD') === 0) dv = Math.floor(mt.value / 100);
 var vir = Math.max(bmin, Math.min(dv, bmax)) - bmin;
 var fillW = Math.floor(vir * (aw - 2) / rng);
 var barH = large ? 16 : 8;
@@ -172,12 +176,12 @@ fb.drawRect(ax, y, aw, barH, 255);
 if (fillW > 0) fb.fillRect(ax + 1, y + 1, fillW, barH - 2, 255);
 }
 function drawText(x, y, mt, size, wrap, large) {
-var text = buildMetricText(lblOf(mt), mt.unit, mt.value | 0, rpmK, netMB);
+var text = buildMetricText(lblOf(mt), mt.unit, mt.value | 0, rpmK, netMB, mt.name);
 var comp = (mt.companionId > 0) ? byId(mt.companionId) : null;
-if (comp && !large) text += buildCompanionText(comp.unit, comp.value | 0, netMB);
+if (comp && !large) text += buildCompanionText(comp.unit, comp.value | 0, netMB, comp.name);
 var cc = write(fb, x, y, text, size, wrap);
 if (comp && large) {
-var ct = buildCompanionText(comp.unit, comp.value | 0, netMB).slice(1);
+var ct = buildCompanionText(comp.unit, comp.value | 0, netMB, comp.name).slice(1);
 var cxp = 128 - ct.length * 12; if (cxp < cc[0] + 4) cxp = cc[0] + 4;
 write(fb, cxp, y, ct, size, wrap);
 }
