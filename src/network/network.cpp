@@ -8,6 +8,7 @@
 #include "../display/display.h"
 #include "../utils/utils.h"
 #include "../timezones.h"
+#include "../viz/visualizer.h"
 #include "improv_setup.h"
 #include <Preferences.h>
 
@@ -370,6 +371,16 @@ void handleUDP() {
     int len = udp.read(buffer, sizeof(buffer) - 1);
     if (len > 0) {
       buffer[len] = '\0';
+
+      // Binary spectrum packets ("FFT1" + 32 bands, optionally + 128 waveform
+      // samples) arrive at ~25 Hz - take the fast path with no JSON parse and
+      // no serial logging. Returning here is not an optimisation: lastReceived
+      // below is stamped unconditionally, so falling through would keep
+      // metricData.online true for as long as music is playing, and the device
+      // would show stale stats long after the PC went away.
+      if (vizIngest((const uint8_t *)buffer, len)) {
+        return;
+      }
 
       Serial.print("UDP packet: ");
       Serial.print(packetSize);

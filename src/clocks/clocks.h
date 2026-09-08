@@ -13,6 +13,8 @@
 
 // Get time with timeout (defined in main.cpp)
 bool getTimeWithTimeout(struct tm* timeinfo, unsigned long timeout_ms = 100);
+// Single non-blocking read - use in render paths instead of a 0ms timeout.
+bool peekLocalTime(struct tm* info);
 
 // Animation detection for adaptive refresh rate
 bool isAnimationActive();
@@ -119,6 +121,11 @@ bool tetrisIsAnimating();
 // ========== Asteroids Clock ==========
 void displayClockWithAsteroids();
 void resetAsteroidsAnimation();
+
+// ========== TRON Clock ==========
+void displayClockWithTron();
+void resetTronAnimation();
+bool tronIsAnimating();
 
 // ========== Dino Runner Clock ==========
 void displayClockWithDino();

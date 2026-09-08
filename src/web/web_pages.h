@@ -58,6 +58,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
         <div class="nav-label">Configuration</div>
         <button type="button" class="nav-item active" data-nav="clock">Clock</button>
         <button type="button" class="nav-item" data-nav="display">Display</button>
+        <button type="button" class="nav-item" data-nav="viz">Audio visualizer</button>
         <button type="button" class="nav-item" data-nav="layout">Display layout<span class="nv-tag">PC</span></button>
         <button type="button" class="nav-item" data-nav="metrics">Visible metrics<span class="nv-tag">PC</span></button>
       </div>
@@ -123,6 +124,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                   <option value="8" %SEL_CLOCKSTYLE_8%>Tetris</option>
                   <option value="10" %SEL_CLOCKSTYLE_10%>Asteroids</option>
                   <option value="11" %SEL_CLOCKSTYLE_11%>Dino Runner</option>
+                  <option value="16" %SEL_CLOCKSTYLE_16%>TRON</option>
                   <option value="9" %SEL_CLOCKSTYLE_9%>Cycle All Styles (each 5m)</option>
                 </select>
               </div>
@@ -485,6 +487,25 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               </label>
             </div>
 
+            <!-- TRON (style 16) -->
+            <div class="subcard" id="tronSettings" style="display:%DSP_CLOCKSTYLE_16%">
+              <div class="field" style="margin-bottom:0">
+                <label class="field-label" for="tronBikeStyle">Light cycle sprite</label>
+                <div class="select-wrap">
+                  <select name="tronBikeStyle" id="tronBikeStyle">
+                    <option value="0" %SEL_TRONBIKESTYLE_0%>Side profile</option>
+                    <option value="1" %SEL_TRONBIKESTYLE_1%>Overhead</option>
+                  </select>
+                </div>
+                <p class="field-hint">Side profile shows a rider; overhead is a narrower top-down cycle. Default Side profile.</p>
+              </div>
+              <label class="check-row standalone" style="margin-top:16px">
+                <input type="checkbox" name="tronShowGrid" id="tronShowGrid" %CHK_TRONSHOWGRID%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Arena grid</strong><span class="ct-hint">Dots on the arena floor. On a 1-bit panel they are as bright as the trails, so turn this off if it looks busy. Default on.</span></span>
+              </label>
+            </div>
+
             <!-- Dino Runner (style 11) -->
             <div class="subcard" id="dinoSettings" style="display:%DSP_CLOCKSTYLE_11%">
               <div class="grid-2">
@@ -544,6 +565,103 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                   </select>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- AUDIO VISUALIZER -->
+        <section class="page" data-page="viz">
+          <div class="page-header">
+            <h1 class="page-h1">Audio visualizer</h1>
+            <p class="page-lede">Spectrum bars and an oscilloscope driven by the PC companion's audio stream. This is a forced mode, not a clock style: it needs live audio, so it is switched on from the companion (or the button below) rather than picked as an idle screen.</p>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">Style</h2>
+            <div class="grid-2" id="vizStyleGrid">
+              <div class="field" style="margin-bottom:0">
+                <label class="field-label" for="vizStyle">Visualizer</label>
+                <div class="select-wrap">
+                  <select name="vizStyle" id="vizStyle">
+                    <option value="0" %SEL_VIZSTYLE_0%>Classic EQ</option>
+                    <option value="1" %SEL_VIZSTYLE_1%>Oscilloscope</option>
+                    <option value="2" %SEL_VIZSTYLE_2%>Mirror EQ</option>
+                  </select>
+                </div>
+                <p class="field-hint">Classic EQ is 32 bars rising from the bottom. Mirror EQ splits them around a centre line.</p>
+              </div>
+              <div class="field" id="vizBarTexField" style="margin-bottom:0">
+                <label class="field-label" for="vizBarStyle">Bar texture</label>
+                <div class="select-wrap">
+                  <select name="vizBarStyle" id="vizBarStyle">
+                    <option value="0" %SEL_VIZBARSTYLE_0%>Solid</option>
+                    <option value="1" %SEL_VIZBARSTYLE_1%>Segmented</option>
+                    <option value="2" %SEL_VIZBARSTYLE_2%>Outline</option>
+                  </select>
+                </div>
+                <p class="field-hint">Segmented leaves a dark row every third row, which reads as an LED ladder. Default Segmented.</p>
+              </div>
+            </div>
+            <div class="field" style="margin-top:16px;margin-bottom:0">
+              <label class="field-label" for="vizRefreshHz">Frame rate</label>
+              <div class="range-row">
+                <input type="range" name="vizRefreshHz" id="vizRefreshHz" min="15" max="60" step="1" value="%V_VIZREFRESHHZ%">
+                <span class="range-val" data-for="vizRefreshHz">%V_VIZREFRESHHZ%</span>
+              </div>
+              <p class="field-hint">These panels have no double buffering, so drawing faster than the panel scans itself out shows as tearing or flicker. Raise until it flickers, then come back down. Default 30.</p>
+            </div>
+            <label class="check-row standalone" id="vizPeakRow" style="margin-top:16px">
+              <input type="checkbox" name="vizPeakDots" id="vizPeakDots" %CHK_VIZPEAKDOTS%>
+              <span class="check-box" aria-hidden="true"></span>
+              <span class="check-text"><strong>Peak hold</strong><span class="ct-hint">A marker that hangs at each band's last peak and falls back under gravity. Hidden while it would touch the bar. Default on.</span></span>
+            </label>
+            <label class="check-row standalone" id="vizClockRow" style="margin-top:12px">
+              <input type="checkbox" name="vizShowClock" id="vizShowClock" %CHK_VIZSHOWCLOCK%>
+              <span class="check-box" aria-hidden="true"></span>
+              <span class="check-text"><strong>Corner clock</strong><span class="ct-hint">Small HH:MM in the top right. Costs the top 12 rows. Default on.</span></span>
+            </label>
+          </div>
+
+          <div class="card" id="scopeCard">
+            <h2 class="card-title">Oscilloscope</h2>
+            <div class="grid-2">
+              <div class="field" style="margin-bottom:0">
+                <label class="field-label" for="scopeGain">Vertical gain</label>
+                <div class="range-row">
+                  <input type="range" name="scopeGain" id="scopeGain" min="50" max="200" step="5" value="%V_SCOPEGAIN%">
+                  <span class="range-val" data-for="scopeGain">%V_SCOPEGAIN%</span>
+                </div>
+                <p class="field-hint">Trace height as a percentage. Above 100 the loud parts clip flat against the edges. Default 100.</p>
+              </div>
+              <div class="field" style="margin-bottom:0">
+                <label class="field-label" for="scopeTrail">Ghost trace</label>
+                <div class="select-wrap">
+                  <select name="scopeTrail" id="scopeTrail">
+                    <option value="0" %SEL_SCOPETRAIL_0%>Off</option>
+                    <option value="1" %SEL_SCOPETRAIL_1%>On</option>
+                  </select>
+                </div>
+                <p class="field-hint">Dotted echo of the previous waveform. A 1-bit panel cannot dim it, so it is drawn sparse instead of faded. Default on.</p>
+              </div>
+            </div>
+            <label class="check-row standalone" style="margin-top:16px">
+              <input type="checkbox" name="scopeGrid" id="scopeGrid" %CHK_SCOPEGRID%>
+              <span class="check-box" aria-hidden="true"></span>
+              <span class="check-text"><strong>Graticule</strong><span class="ct-hint">Dotted grid and centre axis. Same white as the trace, so it competes with it. Default off.</span></span>
+            </label>
+            <label class="check-row standalone" style="margin-top:12px">
+              <input type="checkbox" name="scopeFill" id="scopeFill" %CHK_SCOPEFILL%>
+              <span class="check-box" aria-hidden="true"></span>
+              <span class="check-text"><strong>Fill to centre</strong><span class="ct-hint">Fills between the trace and the centre line. Turns into a solid block when loud. Default off.</span></span>
+            </label>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">Try it</h2>
+            <p class="field-hint" style="margin-top:0">The panel shows "No audio data" until the companion streams audio. Enable the visualizer in the companion app, then start playing something.</p>
+            <div class="btn-row" style="margin-top:12px">
+              <button type="button" class="btn" id="vizStart">Show visualizer</button>
+              <button type="button" class="btn btn-ghost" id="vizAuto">Back to auto</button>
             </div>
           </div>
         </section>
@@ -977,8 +1095,8 @@ var refSel = $('#refreshRateMode');
 if (refSel) { var fr = function () { toggle($('#refreshRateFields'), refSel.value === '1'); }; refSel.addEventListener('change', fr); fr(); }
 var marioEnc = $('#marioIdleEncounters');
 if (marioEnc) { var fe = function () { toggle($('#marioEncFields'), marioEnc.checked); }; marioEnc.addEventListener('change', fe); fe(); }
-var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','10':'asteroidsSettings','11':'dinoSettings' };
-var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings'];
+var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','10':'asteroidsSettings','11':'dinoSettings','16':'tronSettings' };
+var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings','tronSettings'];
 var clockStyle = $('#clockStyle');
 function syncClockPanels() {
 ALL_PANELS.forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
@@ -1381,6 +1499,25 @@ var a = document.createElement('a'); a.href = url; a.download = 'smalloled-confi
 document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }).catch(function (err) { alert('Error exporting configuration: ' + err); });
 });
+// Audio visualizer: bar texture and peak hold are read only by the EQ renderer
+// and the scope card only by the scope one, so each style shows just its own
+// controls. Hidden fields stay in the form, so the style that is not on screen
+// keeps its saved values. The mode buttons hit the companion's auto-start endpoints.
+var vizStyleSel = $('#vizStyle'), scopeCard = $('#scopeCard'), vizStyleGrid = $('#vizStyleGrid'),
+vizBarTexField = $('#vizBarTexField'), vizPeakRow = $('#vizPeakRow'), vizClockRow = $('#vizClockRow');
+function syncVizPanels() {
+if (!vizStyleSel) return;
+var scope = vizStyleSel.value === '1';
+if (scopeCard) scopeCard.style.display = scope ? '' : 'none';
+if (vizBarTexField) vizBarTexField.style.display = scope ? 'none' : '';
+if (vizStyleGrid) vizStyleGrid.style.gridTemplateColumns = scope ? '1fr' : '';
+if (vizPeakRow) vizPeakRow.style.display = scope ? 'none' : '';
+if (vizClockRow) vizClockRow.style.marginTop = scope ? '16px' : '12px';
+}
+if (vizStyleSel) { vizStyleSel.addEventListener('change', syncVizPanels); syncVizPanels(); }
+var vizStartBtn = $('#vizStart'), vizAutoBtn = $('#vizAuto');
+if (vizStartBtn) vizStartBtn.addEventListener('click', function () { fetch('/api/mode/viz'); });
+if (vizAutoBtn) vizAutoBtn.addEventListener('click', function () { fetch('/api/mode/auto'); });
 var ntpBtn = $('#ntpTestBtn');
 if (ntpBtn) ntpBtn.addEventListener('click', function () {
 var res = $('#ntpTestResult');

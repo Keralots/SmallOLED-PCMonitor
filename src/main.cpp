@@ -43,6 +43,7 @@
 #include "config/config.h"
 #include "utils/utils.h"
 #include "timezones.h"
+#include "viz/visualizer.h"
 
 // ========== External Objects ==========
 extern WiFiUDP udp;              // Defined in network.cpp
@@ -55,7 +56,7 @@ extern Preferences preferences;  // Defined in settings.cpp
   #if DISPLAY_INTERFACE == 1
     Adafruit_CH1116 display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, SPI_DC_PIN, SPI_RST_PIN, SPI_CS_PIN);
   #else
-    Adafruit_CH1116 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+    Adafruit_CH1116 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1, DISPLAY_I2C_CLOCK);
   #endif
   #define DISPLAY_WHITE SH110X_WHITE
   #define DISPLAY_BLACK SH110X_BLACK
@@ -64,7 +65,7 @@ extern Preferences preferences;  // Defined in settings.cpp
   #if DISPLAY_INTERFACE == 1
     Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, SPI_DC_PIN, SPI_RST_PIN, SPI_CS_PIN);
   #else
-    Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+    Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1, DISPLAY_I2C_CLOCK);
   #endif
   #define DISPLAY_WHITE SH110X_WHITE
   #define DISPLAY_BLACK SH110X_BLACK
@@ -73,7 +74,7 @@ extern Preferences preferences;  // Defined in settings.cpp
   #if DISPLAY_INTERFACE == 1
     Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &SPI, SPI_DC_PIN, SPI_RST_PIN, SPI_CS_PIN);
   #else
-    Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+    Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1, DISPLAY_I2C_CLOCK);
   #endif
   #define DISPLAY_WHITE SSD1306_WHITE
   #define DISPLAY_BLACK SSD1306_BLACK
@@ -90,6 +91,10 @@ unsigned long wifiDisconnectTime = 0;
 unsigned long nextDisplayUpdate = 0;
 bool wifiConnected = false;  // WiFi connection status for icon display
 bool httpForceClock = false;  // HTTP override to force clock mode (via /api/mode/clock)
+bool httpForceViz = false;    // HTTP override to force the audio visualizer (via /api/mode/viz)
+#if VIZ_DEBUG_FB
+float measuredFps = 0.0f;     // Frames/s actually pushed to the panel (debug builds only)
+#endif
 
 #if TOUCH_BUTTON_ENABLED
 bool manualClockMode = false;  // Manual override to force clock mode when PC is online
@@ -129,6 +134,17 @@ const char* getResetReasonName() {
   }
 }
 
+// One non-blocking read of the system clock. getLocalTime(info, 0) cannot be
+// used for this: it stamps millis(), then loops while elapsed <= budget, so a
+// millisecond tick landing in between skips every attempt and reports failure.
+// In a render loop that shows up as content vanishing for single frames.
+bool peekLocalTime(struct tm *info) {
+  time_t now;
+  time(&now);
+  localtime_r(&now, info);
+  return info->tm_year > 120;
+}
+
 // Helper function to get time with short timeout
 bool getTimeWithTimeout(struct tm *timeinfo, unsigned long timeout_ms) {
   if (!ntpSynced) {
@@ -146,8 +162,49 @@ bool getTimeWithTimeout(struct tm *timeinfo, unsigned long timeout_ms) {
   return getLocalTime(timeinfo, timeout_ms);
 }
 
+// Selectable clock styles, in the order the touch button walks them. Ids match
+// AnimatedPixelClock so a style ported later keeps the same number on both
+// devices; 4 is a legacy alias for 3 and 12-15 are that project's styles we
+// have not ported, so neither appears here.
+const uint8_t CLOCK_STYLES[] = {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 16};
+const uint8_t CLOCK_STYLE_COUNT = sizeof(CLOCK_STYLES) / sizeof(CLOCK_STYLES[0]);
+
+bool isValidClockStyle(uint8_t id) {
+  if (id == 4) return true;  // legacy alias for Space Invaders
+  for (uint8_t i = 0; i < CLOCK_STYLE_COUNT; i++) if (CLOCK_STYLES[i] == id) return true;
+  return false;
+}
+
+uint8_t nextClockStyle(uint8_t current) {
+  for (uint8_t i = 0; i < CLOCK_STYLE_COUNT; i++)
+    if (CLOCK_STYLES[i] == current) return CLOCK_STYLES[(i + 1) % CLOCK_STYLE_COUNT];
+  return CLOCK_STYLES[0];
+}
+
+// Single source of truth for mode precedence. The visualizer outranks both
+// stats and clock: it is only ever on because something explicitly asked for
+// it, and it stops asking on its own once the stream dies.
+DisplayMode currentDisplayMode() {
+  if (httpForceViz && vizShouldDisplay()) return MODE_VIZ;
+#if TOUCH_BUTTON_ENABLED
+  if (metricData.online && !manualClockMode && !httpForceClock) return MODE_METRICS;
+#else
+  if (metricData.online && !httpForceClock) return MODE_METRICS;
+#endif
+  return MODE_CLOCK;
+}
+
 // Returns optimal refresh rate in Hz based on current display mode
 int getOptimalRefreshRate() {
+  // Checked before the manual-rate override: the visualizer is a transient,
+  // explicitly requested mode, and a manual 2 Hz parked for burn-in reasons
+  // should not freeze the bars. Capped rather than free-running - these
+  // controllers have no double buffering, so pushing frames faster than the
+  // panel scans them out shows up as tearing.
+  if (currentDisplayMode() == MODE_VIZ) {
+    return settings.vizRefreshHz;
+  }
+
   if (settings.refreshRateMode == 1) {
     // Manual mode - use user-specified rate
     return settings.refreshRateHz;
@@ -168,7 +225,8 @@ int getOptimalRefreshRate() {
          settings.clockStyle == 4 || settings.clockStyle == 5 ||
          settings.clockStyle == 6 || settings.clockStyle == 7 ||
          settings.clockStyle == 8 || settings.clockStyle == 9 ||
-         settings.clockStyle == 10 || settings.clockStyle == 11)) {
+         settings.clockStyle == 10 || settings.clockStyle == 11 ||
+         settings.clockStyle == 16)) {
       return 60; // Instant boost for smooth manual clock mode
     }
 #endif
@@ -183,7 +241,8 @@ int getOptimalRefreshRate() {
         settings.clockStyle == 4 || settings.clockStyle == 5 ||
         settings.clockStyle == 6 || settings.clockStyle == 7 ||
         settings.clockStyle == 8 || settings.clockStyle == 9 ||
-        settings.clockStyle == 10 || settings.clockStyle == 11) {
+        settings.clockStyle == 10 || settings.clockStyle == 11 ||
+        settings.clockStyle == 16) {
       // Animated clocks (Mario, Space Invaders, Space Ship, Pong, Pac-Man, Snake, Tetris, Cycle, Asteroids, Dino)
       return 20; // 20 Hz keeps character movement smooth
     } else {
@@ -232,7 +291,7 @@ void cycleClockScreens() {
             timeinfo.tm_sec >= CYCLE_MIN_SEC &&
             (!time_overridden || timeinfo.tm_sec >= CYCLE_MAX_SEC)) {
             lastMinuteBlock = minuteBlock;
-            currentScreen = (currentScreen + 1) % 10; // Cycle through all 10 clock styles
+            currentScreen = (currentScreen + 1) % 11; // Cycle through all 11 clock styles
             resetClockAnimationState(); // Reset animation state when changing screens
         }
     }
@@ -249,6 +308,7 @@ void cycleClockScreens() {
         case 7: displayClockWithTetris(); break;
         case 8: displayClockWithAsteroids(); break;
         case 9: displayClockWithDino(); break;
+        case 10: displayClockWithTron(); break;
     }
 }
 
@@ -399,7 +459,17 @@ void loop() {
   // Regular short press (mode toggle / clock style cycle)
   if (checkTouchButtonPressed()) {
     if (!handleTemporaryDisplayWake()) {
-      if (manualClockMode) {
+      // The visualizer joins the tap cycle only while audio is actually
+      // arriving - otherwise a tap would land on a "No audio data" screen the
+      // user cannot do anything about. One more tap always leaves it.
+      if (httpForceViz) {
+        httpForceViz = false;
+        Serial.println("Touch button: Leaving visualizer");
+      } else if (vizRecentEnough(10000)) {
+        httpForceViz = true;
+        vizNoteForced();
+        Serial.println("Touch button: Entering visualizer (audio streaming)");
+      } else if (manualClockMode) {
         // Check if PC is currently online (UDP is always processed, so status is accurate)
         if (metricData.online) {
           // PC is online - exit manual clock mode to show PC metrics
@@ -407,9 +477,7 @@ void loop() {
           Serial.println("Touch button: Exiting manual clock mode (PC is online)");
         } else {
           // PC is offline (timeout triggered) - cycle through clock styles
-          settings.clockStyle = (settings.clockStyle + 1) % 12;
-          // Skip reserved clock style 4
-          if (settings.clockStyle == 4) settings.clockStyle = 5;
+          settings.clockStyle = nextClockStyle(settings.clockStyle);
           resetClockAnimationState();
           Serial.print("Touch button: PC offline, cycling clock style -> ");
           Serial.println(settings.clockStyle);
@@ -420,9 +488,7 @@ void loop() {
         Serial.println("Touch button: Entering manual clock mode (PC is online)");
       } else {
         // PC is offline - cycle through clock styles
-        settings.clockStyle = (settings.clockStyle + 1) % 12;
-        // Skip reserved clock style 4
-        if (settings.clockStyle == 4) settings.clockStyle = 5;
+        settings.clockStyle = nextClockStyle(settings.clockStyle);
         resetClockAnimationState();
         Serial.print("Touch button: Clock style -> ");
         Serial.println(settings.clockStyle);
@@ -496,14 +562,13 @@ void loop() {
 
     display.clearDisplay();
 
-#if TOUCH_BUTTON_ENABLED
-    bool showStats = metricData.online && !manualClockMode && !httpForceClock;
-#else
-    bool showStats = metricData.online && !httpForceClock;
-#endif
+    DisplayMode mode = currentDisplayMode();
+    bool showStats = mode == MODE_METRICS;
 
     // Show error status if PC is connected but LHM has issues
-    if (showStats && metricData.status != STATUS_OK && metricData.status != 0) {
+    if (mode == MODE_VIZ) {
+      displayVisualizer();
+    } else if (showStats && metricData.status != STATUS_OK && metricData.status != 0) {
       displayErrorStatus(metricData.status);
     } else if (showStats) {
       displayStats();
@@ -543,6 +608,9 @@ void loop() {
       case 11:
         displayClockWithDino();
         break;
+      case 16:
+        displayClockWithTron();
+        break;
       default:
         displayStandardClock();
         break;
@@ -550,6 +618,23 @@ void loop() {
     }
 
     display.display();
+
+#if VIZ_DEBUG_FB
+    // Frames actually pushed to the panel over the last second. The frame loop
+    // is bus-limited, so the configured refresh rate is an upper bound and not
+    // a promise - this is the only honest way to know what the panel does.
+    {
+      static unsigned long fpsWindowStart = 0;
+      static uint16_t fpsFrames = 0;
+      fpsFrames++;
+      unsigned long nowMs = millis();
+      if (nowMs - fpsWindowStart >= 1000) {
+        measuredFps = fpsFrames * 1000.0f / (nowMs - fpsWindowStart);
+        fpsFrames = 0;
+        fpsWindowStart = nowMs;
+      }
+    }
+#endif
   }
 
   // WiFi reconnection handling

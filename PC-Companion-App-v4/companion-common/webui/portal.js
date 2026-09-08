@@ -602,8 +602,27 @@ if (title) title.textContent = (d.deviceReachable ? 'Device online' : 'Device of
 setText('srDevice', d.deviceIp || '-');
 setText('srSource', d.source || '-');
 setText('srCount', (d.metricCount || 0) + ' metric' + (d.metricCount === 1 ? '' : 's'));
+var avChk = $('#audio_viz'), avState = $('#audioVizState');
+// Only adopt the live value until the field has been hydrated once, so a poll
+// cannot overwrite an unsaved edit.
+if (avChk && !avHydrated && d.audioVizEnabled !== undefined) { avChk.checked = !!d.audioVizEnabled; avHydrated = true; }
+if (avState && d.audioVizAvailable !== undefined) {
+if (!d.audioVizAvailable) avState.textContent = 'Not available: install the audio packages first (pip install soundcard numpy).';
+else if (d.audioVizEnabled) avState.textContent = d.audioVizSending ? 'Streaming the sound spectrum to the display.' : 'Enabled - waiting for audio playback...';
+else avState.textContent = '';
+}
+var aaState = $('#audioVizAutoState');
+if (aaState && d.audioVizAvailable !== undefined) {
+if (!d.audioVizAvailable) aaState.textContent = '';
+else if (!d.audioVizEnabled) aaState.textContent = 'Turn on the stream above to use auto-start.';
+else if (!d.audioVizAuto) aaState.textContent = 'Auto-start off - switch the display from its Audio visualizer page.';
+else aaState.textContent = (d.audioVizForced ? 'Visualizer running (started by playback). ' : 'Waiting for playback. ')
++ 'Current level: ' + (d.audioVizLevel != null ? d.audioVizLevel : '?') + ' dB.'
++ (d.audioVizAutoError ? ' Last switch failed: ' + d.audioVizAutoError : '');
+}
 }).catch(function () {});
 }
+var avHydrated = false;
 
 // ---- PC companion: connection settings ----------------------------------
 // Fill the connection fields from the saved config so they reflect what is
@@ -613,6 +632,11 @@ fetch('/api/info').then(function (r) { return r.json(); }).then(function (d) {
 var ip = $('#esp32_ip'); if (ip && d.ip) ip.value = d.ip;
 var port = $('#udp_port'); if (port && d.udp_port != null) port.value = d.udp_port;
 var iv = $('#update_interval'); if (iv && d.update_interval != null) iv.value = d.update_interval;
+var av = $('#audio_viz'); if (av && d.audio_viz != null) { av.checked = !!d.audio_viz; avHydrated = true; }
+var aa = $('#audio_viz_auto'); if (aa && d.audio_viz_auto != null) aa.checked = !!d.audio_viz_auto;
+var th = $('#audio_viz_threshold'); if (th && d.audio_viz_threshold != null) th.value = d.audio_viz_threshold;
+var sd = $('#audio_viz_start_delay'); if (sd && d.audio_viz_start_delay != null) sd.value = d.audio_viz_start_delay;
+var qd = $('#audio_viz_stop_delay'); if (qd && d.audio_viz_stop_delay != null) qd.value = d.audio_viz_stop_delay;
 // Only the Windows core has two sensor sources to choose between.
 var sf = $('#sourceField'); if (sf) sf.style.display = d.source_select ? '' : 'none';
 var ss = $('#sensor_source'); if (ss && d.sensor_source) ss.value = d.sensor_source;
@@ -633,6 +657,11 @@ body.set('udp_port', ($('#udp_port') || {}).value || '');
 body.set('update_interval', ($('#update_interval') || {}).value || '');
 var srcSel = $('#sensor_source');
 if (srcSel) body.set('sensor_source', srcSel.value || 'auto');
+body.set('audio_viz', ($('#audio_viz') || {}).checked ? '1' : '0');
+body.set('audio_viz_auto', ($('#audio_viz_auto') || {}).checked ? '1' : '0');
+body.set('audio_viz_threshold', ($('#audio_viz_threshold') || {}).value || '-45');
+body.set('audio_viz_start_delay', ($('#audio_viz_start_delay') || {}).value || '3');
+body.set('audio_viz_stop_delay', ($('#audio_viz_stop_delay') || {}).value || '20');
 saveConnBtn.disabled = true;
 fetch('/api/connection', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
 .then(function (r) { return r.json(); }).then(function (d) {

@@ -47,12 +47,14 @@ A real-time PC monitoring system that displays CPU, RAM, GPU, and disk stats on 
 
 - **Dual Display Modes:**
   - **PC Online**: Real-time stats with customizable metrics and positions
-  - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, Standard, or Large styles, plus a Cycle All mode)
+  - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, TRON, Standard, or Large styles, plus a Cycle All mode)
+- **Audio Visualizer**: Live spectrum bars or an oscilloscope driven by whatever your PC is playing, streamed by the companion app
 - **PC Companion App (v4, Windows + Linux)**:
   - Web-style config window that mirrors the device portal 1:1
   - Live 1:1 OLED preview with drag-and-drop layout
   - Sensor picker with live values, up to 20 metrics
   - Custom labels (max 10 characters), number formats, quick templates
+  - Optional audio visualizer stream, with auto-switch when music starts
   - Runs in a native window + system tray; **Start with Windows** autostart
   - Windows prebuilt exe (no Python) or Linux from source
 - **Web Configuration Portal**: Customize all settings via browser
@@ -454,6 +456,7 @@ The OLED will display:
 - **Tetris Clock**: Block-grid digits sit low on the screen with the occasional tumbling tetromino. On each minute change the changed digits are rebuilt one at a time, either as drop-in slabs or as falling dots. Optional date row at the top or bottom.
 - **Asteroids Clock**: A wireframe vector clock - the ship drifts with inertia and splits tumbling rocks while idle, then aims at and shoots each changed digit into spinning line shards at the minute change. Optional date row.
 - **Dino Runner Clock**: A Chrome T-Rex homage - the dino runs and auto-jumps cacti over a scrolling ground with parallax clouds; at the minute change a pterodactyl swoops in, carries off the old digit, and the new one drops in from above. Optional clouds and date row.
+- **TRON Clock**: Two light cycles duel around the digits, leaving trails behind them (one solid, one dotted, so you can tell them apart). At the minute change one cycle is dispatched to retrace the changed digit stroke by stroke. Optional arena grid and a choice of side-profile or overhead bike sprite.
 - **Standard Clock**: Simple centered clock with date and day of week
 - **Large Clock**: Extra-large time display with date
 - **Cycle All Styles**: Rotates through every clock style automatically, switching every 5 minutes.
@@ -502,6 +505,69 @@ The companion app lets you select any sensor available on your system:
 - You can select up to 20 different metrics
 - Labels set in Python GUI will override default names on ESP32
 
+## Audio Visualizer
+
+The display can show what your PC is playing: 32 spectrum bars or an
+oscilloscope trace, updated about 25 times a second.
+
+This is a **forced mode**, not a clock style. It needs a live audio stream, so
+it is switched on deliberately rather than sitting in the clock rotation, and it
+drops back to your normal screen about 10 seconds after the audio stops.
+
+### Turning it on
+
+1. **In the companion app** (Connection page), tick **Audio visualizer stream**.
+   The companion captures whatever your PC is playing (WASAPI loopback on
+   Windows, PulseAudio monitor on Linux) and sends it to the same UDP port the
+   stats already use.
+   - Windows: no extra setup.
+   - Linux / running from source: needs `soundcard` and `numpy`
+     (`pip install soundcard numpy`). The app tells you if they are missing.
+2. **Show it on the device**, in any of three ways:
+   - Tick **Start the visualizer when music plays** in the companion, and it
+     switches the display for you once sound has been playing for the start
+     delay, then hands the display back after the quiet period.
+   - Press **Show visualizer** on the device's *Audio visualizer* page.
+   - Tap the touch button while audio is playing. Tap again to leave.
+
+If the panel says *"No audio data..."*, the device is in visualizer mode but no
+stream is arriving - check the companion is running with the stream enabled.
+
+### Settings (device web portal, *Audio visualizer* page)
+
+| Setting | What it does |
+|---|---|
+| **Visualizer** | Classic EQ (bars from the bottom), Oscilloscope, or Mirror EQ (bars split around a centre line) |
+| **Bar texture** | Solid, Segmented (a dark row every third row - reads as an LED ladder), or Outline |
+| **Frame rate** | 15-60. See the note below |
+| **Peak hold** | A marker that hangs at each band's last peak and falls back under gravity |
+| **Corner clock** | Small HH:MM in the top right; costs the top 12 rows |
+| **Vertical gain** | Oscilloscope trace height, 50-200% |
+| **Ghost trace** | Dotted echo of the previous waveform |
+| **Graticule** | Oscilloscope grid. Off by default - it is the same white as the trace, so it competes with it |
+| **Fill to centre** | Fills between trace and centre line; goes solid when loud |
+
+**About the frame rate.** These OLED controllers have no double buffering: the
+firmware writes straight into the panel's memory while the panel is scanning it
+out. Drawing faster than the panel can show it does not look smoother, it looks
+torn. The whole 1024-byte framebuffer also has to cross the I2C bus every frame,
+which on the stock 400 kHz bus measures **37 fps on a 0.96" SSD1306** and
+**33 fps on a 1.3" SH1106** - so those are the real ceilings, whatever the
+setting says. The 30 fps default sits comfortably below both. Raise it if you
+want; if the picture tears, come back down.
+
+Advanced users can raise the bus itself with `DISPLAY_I2C_CLOCK` in
+`src/config/user_config.h` (default `400000`). 800 kHz roughly halves the
+transfer time, but it is above what these controllers are specified for and
+some panels or longer wiring will corrupt the image rather than fail cleanly.
+Change it only if you can watch the panel while you test.
+
+### Oscilloscope needs a recent companion
+
+The waveform is an extra 128 bytes appended to each packet. An older companion
+sends only the spectrum, and the oscilloscope will say *"Update PC companion
+for the waveform"*. The bar styles work with either.
+
 ## HTTP Control API
 
 The firmware exposes a small set of HTTP endpoints for remote control and home automation (e.g. Home Assistant, Node-RED, or a simple `curl` from a script). This is handy for **turning the display off while you're away to extend OLED lifetime**, forcing the clock display, dimming on your own schedule, or rebooting the device remotely.
@@ -522,10 +588,14 @@ Replace `smalloled.local` in the examples with your device's mDNS name (configur
 | GET | `/api/display/brightness?value=0-100` | Set display brightness (percent) |
 | GET | `/api/mode/clock` | Force the animated clock, even when the PC is online |
 | GET | `/api/mode/auto` | Resume automatic mode (PC stats when online, clock when offline) |
-| GET | `/api/clock/style?id=0-11` | Switch the clock animation |
+| GET | `/api/clock/style?id=<id>` | Switch the clock animation |
+| GET | `/api/mode/viz` | Show the audio visualizer (needs the companion's audio stream) |
+| GET | `/api/viz/style?id=0-2` | Switch the visualizer style |
 | GET | `/api/reboot` | Soft-restart the device (does **not** erase settings) |
 
-**Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man, `7` = Snake, `8` = Tetris, `9` = Cycle All Styles, `10` = Asteroids, `11` = Dino Runner.
+**Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man, `7` = Snake, `8` = Tetris, `9` = Cycle All Styles, `10` = Asteroids, `11` = Dino Runner, `16` = TRON. (The ids are a fixed set, not a range - the gaps are reserved so style numbers stay aligned with the sister project.)
+
+**Visualizer style IDs:** `0` = Classic EQ, `1` = Oscilloscope, `2` = Mirror EQ.
 
 ### Examples
 
@@ -543,6 +613,10 @@ curl http://smalloled.local/api/mode/auto
 
 # Switch to the Pac-Man clock
 curl "http://smalloled.local/api/clock/style?id=6"
+
+# Show the audio visualizer, then pick the oscilloscope
+curl http://smalloled.local/api/mode/viz
+curl "http://smalloled.local/api/viz/style?id=1"
 
 # Check current state
 curl http://smalloled.local/api/status

@@ -35,6 +35,23 @@
 // I2C Address (typically 0x3C, some displays use 0x3D)
 #define DISPLAY_I2C_ADDRESS 0x3C
 
+// I2C bus speed used while pushing the framebuffer, in Hz.
+//
+// The whole 1024-byte framebuffer crosses the bus every frame, so this is what
+// caps the refresh rate. Measured on the reference panels at the 400 kHz
+// default: 37 fps on a 0.96" SSD1306, 33 fps on a 1.3" SH1106 (the SH1106
+// driver spends more transactions per frame). 800 kHz roughly halves the
+// transfer time.
+//
+// 400000 is the value both controllers are specified for and the safe default.
+// Most SSD1306 modules also run at 800 kHz or 1 MHz; SH1106 usually tolerates
+// it but is not specified for it. Long or unshielded wiring fails first, and
+// the failure looks like a torn or speckled panel rather than an error, so
+// raise this only if you can watch the panel while you test it.
+#ifndef DISPLAY_I2C_CLOCK
+#define DISPLAY_I2C_CLOCK 400000
+#endif
+
 // ========== Display Interface ==========
 // Interface type:
 //   0 = I2C (default, uses SDA/SCL pins above)

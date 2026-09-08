@@ -42,6 +42,11 @@ void handleDisplayOff();
 void handleSetBrightness();
 void handleModeClock();
 void handleModeAuto();
+void handleModeViz();
+void handleSetVizStyle();
+#if VIZ_DEBUG_FB
+void handleDebugFramebuffer();
+#endif
 void handleSetClockStyle();
 void handleReboot();
 

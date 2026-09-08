@@ -334,6 +334,20 @@ void loadSettings() {
       preferences.getBool("astDate", false); // Default: hidden (centred clock)
   settings.asteroidsTransparent =
       preferences.getBool("astTransp", true); // Default: transparent digits
+  settings.tronBikeStyle = preferences.getUChar("tronBike", 0);
+  settings.tronShowGrid = preferences.getBool("tronGrid", true);
+
+  // Audio visualizer (NVS keys are <=15 chars)
+  settings.vizStyle = preferences.getUChar("vizStyle", 0);      // Classic EQ
+  settings.vizRefreshHz = preferences.getUChar("vizHz", 30);
+  settings.vizBarStyle = preferences.getUChar("vizBarStyle", 1); // Segmented
+  settings.vizPeakDots = preferences.getBool("vizPeak", true);
+  settings.vizShowClock = preferences.getBool("vizClock", true);
+  settings.scopeGrid = preferences.getBool("scopeGrid", false);
+  settings.scopeFill = preferences.getBool("scopeFill", false);
+  settings.scopeTrail = preferences.getUChar("scopeTrail", 1);
+  settings.scopeGain = preferences.getUChar("scopeGain", 100);
+
   settings.dinoSpeed =
       preferences.getUChar("dinoSpeed", 12); // Default: 1.2
   settings.dinoCactusFreq =
@@ -570,6 +584,19 @@ void saveSettings() {
   preferences.putUChar("astRockSpd", settings.asteroidsRockSpeed);
   preferences.putBool("astDate", settings.asteroidsShowDate);
   preferences.putBool("astTransp", settings.asteroidsTransparent);
+  preferences.putUChar("tronBike", settings.tronBikeStyle);
+  preferences.putBool("tronGrid", settings.tronShowGrid);
+
+  preferences.putUChar("vizStyle", settings.vizStyle);
+  preferences.putUChar("vizHz", settings.vizRefreshHz);
+  preferences.putUChar("vizBarStyle", settings.vizBarStyle);
+  preferences.putBool("vizPeak", settings.vizPeakDots);
+  preferences.putBool("vizClock", settings.vizShowClock);
+  preferences.putBool("scopeGrid", settings.scopeGrid);
+  preferences.putBool("scopeFill", settings.scopeFill);
+  preferences.putUChar("scopeTrail", settings.scopeTrail);
+  preferences.putUChar("scopeGain", settings.scopeGain);
+
   preferences.putUChar("dinoSpeed", settings.dinoSpeed);
   preferences.putUChar("dinoCactus", settings.dinoCactusFreq);
   preferences.putBool("dinoClouds", settings.dinoShowClouds);

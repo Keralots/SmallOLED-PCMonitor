@@ -20,6 +20,7 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+import audio_spectrum
 from constants import MAX_METRICS
 from layout_engine import (
     auto_layout,
@@ -311,6 +312,9 @@ def apply_connection(core, state, form):
         port = int(f("udp_port", "4210"))
         interval = float(f("update_interval", "3"))
         source = f("sensor_source", "auto").lower()
+        threshold = float(f("audio_viz_threshold", audio_spectrum.AUTO_THRESHOLD_DB))
+        start_delay = float(f("audio_viz_start_delay", audio_spectrum.AUTO_START_DELAY))
+        stop_delay = float(f("audio_viz_stop_delay", audio_spectrum.AUTO_STOP_DELAY))
         if not ip:
             raise ValueError("Device IP cannot be empty.")
         if port < 1 or port > 65535:
@@ -319,12 +323,23 @@ def apply_connection(core, state, form):
             raise ValueError("Update interval must be at least 0.5 seconds.")
         if supports_source and source not in sources:
             raise ValueError("Sensor source must be one of: %s." % ", ".join(sources))
+        if not -80.0 <= threshold <= -10.0:
+            raise ValueError("Sound threshold must be -80 to -10 dB.")
+        if not 0.0 <= start_delay <= 60.0:
+            raise ValueError("Start delay must be 0-60 seconds.")
+        if not 1.0 <= stop_delay <= 3600.0:
+            raise ValueError("Stop delay must be 1-3600 seconds.")
     except ValueError as e:
         return {"success": False, "message": str(e)}
     config = state.get_config()
     config["esp32_ip"] = ip
     config["udp_port"] = port
     config["update_interval"] = interval
+    config["audio_viz"] = f("audio_viz", "0") == "1"
+    config["audio_viz_auto"] = f("audio_viz_auto", "0") == "1"
+    config["audio_viz_threshold"] = threshold
+    config["audio_viz_start_delay"] = start_delay
+    config["audio_viz_stop_delay"] = stop_delay
     resolved = None
     if supports_source:
         config["sensor_source"] = source
@@ -338,7 +353,9 @@ def apply_connection(core, state, form):
             state.set_source_text(core.source_text())
         except Exception as e:
             print("source switch failed: %s" % e)
-    out = {"success": True, "esp32_ip": ip, "udp_port": port, "update_interval": interval}
+    audio_spectrum.ensure(config)
+    out = {"success": True, "esp32_ip": ip, "udp_port": port, "update_interval": interval,
+           "audio_viz": config["audio_viz"], "audio_viz_auto": config["audio_viz_auto"]}
     if resolved:
         out["sensor_source"] = source
         out["resolved_source"] = resolved
@@ -437,6 +454,14 @@ def apply_import(core, state, cfg):
         "esp32_ip": cfg.get("esp32_ip", config.get("esp32_ip", "")),
         "udp_port": int(cfg.get("udp_port", config.get("udp_port", 4210))),
         "update_interval": float(cfg.get("update_interval", config.get("update_interval", 3))),
+        "audio_viz": bool(cfg.get("audio_viz", config.get("audio_viz", False))),
+        "audio_viz_auto": bool(cfg.get("audio_viz_auto", config.get("audio_viz_auto", False))),
+        "audio_viz_threshold": float(cfg.get("audio_viz_threshold",
+                                             config.get("audio_viz_threshold", audio_spectrum.AUTO_THRESHOLD_DB))),
+        "audio_viz_start_delay": float(cfg.get("audio_viz_start_delay",
+                                               config.get("audio_viz_start_delay", audio_spectrum.AUTO_START_DELAY))),
+        "audio_viz_stop_delay": float(cfg.get("audio_viz_stop_delay",
+                                              config.get("audio_viz_stop_delay", audio_spectrum.AUTO_STOP_DELAY))),
         "metrics": cfg.get("metrics", []),
     }
     # Re-number ids 1..N so the layout binds cleanly.
@@ -447,6 +472,7 @@ def apply_import(core, state, cfg):
         out["layout"] = cfg["layout"]
     core.save_config(out)
     state.set_config(out)
+    audio_spectrum.ensure(out)
     return {"success": True, "message": "Configuration imported."}
 
 
@@ -514,7 +540,9 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/metrics":
                 return self._json(metrics_payload(core, state))
             if path == "/api/status":
-                return self._json(state.status())
+                st = state.status()
+                st.update(audio_spectrum.status())
+                return self._json(st)
             if path == "/api/info":
                 c = state.get_config()
                 return self._json({"version": "4.0", "ip": c.get("esp32_ip", ""),
@@ -523,7 +551,12 @@ class _Handler(BaseHTTPRequestHandler):
                                    # Linux reads sensors directly, so it has no
                                    # source to choose and the UI hides the control.
                                    "source_select": bool(getattr(core, "SUPPORTS_SOURCE_SELECT", False)),
-                                   "sensor_source": c.get("sensor_source", "auto")})
+                                   "sensor_source": c.get("sensor_source", "auto"),
+                                   "audio_viz": bool(c.get("audio_viz", False)),
+                                   "audio_viz_auto": bool(c.get("audio_viz_auto", False)),
+                                   "audio_viz_threshold": c.get("audio_viz_threshold", audio_spectrum.AUTO_THRESHOLD_DB),
+                                   "audio_viz_start_delay": c.get("audio_viz_start_delay", audio_spectrum.AUTO_START_DELAY),
+                                   "audio_viz_stop_delay": c.get("audio_viz_stop_delay", audio_spectrum.AUTO_STOP_DELAY)})
             if path == "/api/sensors":
                 ensure_discovered(core, rescan=("rescan" in qs))
                 state.set_source_text(source_text(core))

@@ -68,6 +68,11 @@ bool isAnimationActive() {
     return true;
   }
 
+  // TRON clock (clockStyle == 16) - the light cycles never stop
+  if (settings.clockStyle == 16) {
+    return true;
+  }
+
   // Standard and Large clocks (clockStyle 1 & 2) have no animations
   return false;
 }

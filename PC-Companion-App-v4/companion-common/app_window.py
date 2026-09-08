@@ -14,6 +14,7 @@ import threading
 import time
 import webbrowser
 
+import audio_spectrum
 from app_state import AppState
 import server as srv
 
@@ -61,6 +62,7 @@ def gui_quit():
     global _quitting
     _quitting = True
     _stop.set()
+    audio_spectrum.stop_all()
     if _httpd is not None:
         try:
             _httpd.shutdown()
@@ -270,6 +272,7 @@ def run(core, start_hidden=False, notify_startup=False):
 
     config = core.load_config() or dict(core.DEFAULT_CONFIG)
     _state = AppState(config)
+    audio_spectrum.ensure(config)  # resume spectrum streaming if enabled
 
     _httpd, port = srv.make_server(core, _state)
     srv.serve(_httpd)

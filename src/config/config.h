@@ -160,6 +160,21 @@ struct Settings {
   bool asteroidsShowDate;       // Show date row (off = centred clock)
   bool asteroidsTransparent;    // No mask behind digits, ship flies through (default: true)
 
+  // TRON clock settings
+  uint8_t tronBikeStyle;        // 0=Side profile, 1=Overhead
+  bool tronShowGrid;            // Arena floor grid dots
+
+  // Audio visualizer settings (forced mode, not a clock style)
+  uint8_t vizStyle;             // 0=Classic EQ, 1=Oscilloscope, 2=Mirror EQ
+  uint8_t vizRefreshHz;         // Frame rate cap while the visualizer is up (15-60)
+  uint8_t vizBarStyle;          // 0=Solid, 1=Segmented, 2=Outline
+  bool vizPeakDots;             // Peak-hold marker above each bar
+  bool vizShowClock;            // Small HH:MM overlay in the top-right corner
+  bool scopeGrid;               // Oscilloscope: draw the graticule
+  bool scopeFill;               // Oscilloscope: fill to the centre line
+  uint8_t scopeTrail;           // Oscilloscope: ghost trace (0=off, 1=on)
+  uint8_t scopeGain;            // Oscilloscope: trace height percent (50-200)
+
   // Dino Runner clock settings
   uint8_t dinoSpeed;            // World scroll speed, tenths (12 = 1.2)
   uint8_t dinoCactusFreq;       // 0=Rare, 1=Normal, 2=Frequent
@@ -178,6 +193,22 @@ struct Settings {
   int metricBarWidths[MAX_METRICS];
   int metricBarOffsets[MAX_METRICS];
 };
+
+// ========== Display Mode ==========
+// What the panel is showing right now. Rendering and /api/status must agree,
+// so the precedence lives in exactly one place (currentDisplayMode() in
+// main.cpp) instead of being spelled out at each call site.
+enum DisplayMode {
+  MODE_VIZ,      // Audio visualizer (forced, and actually fed or in grace)
+  MODE_METRICS,  // PC stats
+  MODE_CLOCK,    // Clock / screensaver
+};
+
+DisplayMode currentDisplayMode();
+
+// Selectable clock style ids (sparse - see CLOCK_STYLES in main.cpp).
+bool isValidClockStyle(uint8_t id);
+uint8_t nextClockStyle(uint8_t current);
 
 // ========== Mario Clock Types ==========
 enum MarioState {

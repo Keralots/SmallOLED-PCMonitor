@@ -120,6 +120,37 @@
                 lighter and fresher, and WMI covers you when Remote Web Server is off. Pick WMI only if you want exact
                 network throughput - REST rounds it for display. The two forced modes never fall back.</p>
             </div>
+            <label class="check-row standalone">
+              <input type="checkbox" id="audio_viz" name="audio_viz">
+              <span class="check-box" aria-hidden="true"></span>
+              <span class="check-text"><strong>Audio visualizer stream</strong><span class="ct-hint">Sends your PC's sound spectrum to the display (~25 small packets/s). Show it from the device's Audio visualizer page, or with the touch button while audio is playing.</span></span>
+            </label>
+            <p class="field-hint" id="audioVizState"></p>
+            <div class="subcard">
+              <label class="check-row standalone">
+                <input type="checkbox" id="audio_viz_auto" name="audio_viz_auto">
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Start the visualizer when music plays</strong><span class="ct-hint">Switches the display into visualizer mode once sound keeps playing, and back to its normal mode after the quiet period. Needs the stream above.</span></span>
+              </label>
+              <div class="grid-2" style="margin-top:16px">
+                <div class="field">
+                  <label class="field-label" for="audio_viz_start_delay">Start delay (seconds)</label>
+                  <input type="number" id="audio_viz_start_delay" name="audio_viz_start_delay" value="3" min="0" max="60" step="0.5">
+                  <p class="field-hint">Sound must keep playing this long before the display switches, so short sounds (Windows pops, chat notifications) are ignored.</p>
+                </div>
+                <div class="field">
+                  <label class="field-label" for="audio_viz_stop_delay">Stop delay (seconds)</label>
+                  <input type="number" id="audio_viz_stop_delay" name="audio_viz_stop_delay" value="20" min="1" max="3600" step="1">
+                  <p class="field-hint">Quiet for this long hands the display back to PC stats or the clock.</p>
+                </div>
+              </div>
+              <div class="field">
+                <label class="field-label" for="audio_viz_threshold">Sound threshold (dB)</label>
+                <input type="number" id="audio_viz_threshold" name="audio_viz_threshold" value="-45" min="-80" max="-10" step="1">
+                <p class="field-hint">Anything quieter counts as silence. -45 fits normal listening; go lower (-55) if quiet music is missed, higher (-35) if background sounds trigger it.</p>
+              </div>
+              <p class="field-hint" id="audioVizAutoState"></p>
+            </div>
             <div class="page-actions">
               <button type="button" class="btn btn-accent" id="saveConnBtn"><span class="gl"></span>Save connection</button>
               <button type="button" class="btn" id="testConnBtn">Test connection</button>
