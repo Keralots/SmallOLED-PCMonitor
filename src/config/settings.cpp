@@ -398,6 +398,8 @@ void loadSettings() {
   settings.dns2[15] = '\0';
 
   // NTP servers (custom, with defaults)
+  settings.udpPort = preferences.getUShort("udpPort", UDP_PORT);
+  if (settings.udpPort < 1024 || settings.udpPort == 80) settings.udpPort = UDP_PORT;
   String loadedNtp1 = preferences.getString("ntpServer1", "pool.ntp.org");
   String loadedNtp2 = preferences.getString("ntpServer2", "time.nist.gov");
   strncpy(settings.ntpServer1, loadedNtp1.c_str(), 63);
@@ -613,6 +615,7 @@ void saveSettings() {
   preferences.putString("subnet", settings.subnet);
   preferences.putString("dns1", settings.dns1);
   preferences.putString("dns2", settings.dns2);
+  preferences.putUShort("udpPort", settings.udpPort);
   preferences.putString("ntpServer1", settings.ntpServer1);
   preferences.putString("ntpServer2", settings.ntpServer2);
 

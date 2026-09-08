@@ -610,6 +610,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "V_SUBNET")) { out = String(settings.subnet); return true; }
   if (!strcmp(n, "V_DNS1")) { out = String(settings.dns1); return true; }
   if (!strcmp(n, "V_DNS2")) { out = String(settings.dns2); return true; }
+  if (!strcmp(n, "V_UDPPORT")) { out = String(settings.udpPort); return true; }
   if (!strcmp(n, "V_NTPSERVER1")) { out = String(settings.ntpServer1); return true; }
   if (!strcmp(n, "V_NTPSERVER2")) { out = String(settings.ntpServer2); return true; }
   if (!strcmp(n, "CHK_SHOWIPATBOOT")) { out = String(settings.showIPAtBoot ? "checked" : ""); return true; }
@@ -1175,6 +1176,15 @@ void handleSave() {
    }
  }
  settings.showIPAtBoot = server.hasArg("showIPAtBoot");
+ bool udpPortChanged = false;
+ if (server.hasArg("udpPort")) {
+   long p = server.arg("udpPort").toInt();
+   // 1024+ stays clear of the well-known range; 80 is this web server.
+   if (p >= 1024 && p <= 65535 && (uint16_t)p != settings.udpPort) {
+     settings.udpPort = (uint16_t)p;
+     udpPortChanged = true;
+   }
+ }
  bool previousStaticIPSetting = settings.useStaticIP;
  if (server.hasArg("useStaticIP")) {
  settings.useStaticIP = server.arg("useStaticIP").toInt() == 1;
@@ -1368,6 +1378,9 @@ void handleSave() {
  // residue).
  resetClockAnimationState();
 
+ // The stats socket rebinds in place; no restart needed for it.
+ if (udpPortChanged) beginStatsUdp();
+
  // Check if network settings changed - if so, restart is required
  bool networkChanged = (previousStaticIPSetting != settings.useStaticIP);
 
@@ -1422,6 +1435,7 @@ void handleExportConfig() {
  json += "\"useNetworkMBFormat\":" + String(settings.useNetworkMBFormat ? "true" : "false") + ",";
  json += "\"deviceName\":\"" + String(settings.deviceName) + "\",";
  json += "\"showIPAtBoot\":" + String(settings.showIPAtBoot ? "true" : "false") + ",";
+ json += "\"udpPort\":" + String(settings.udpPort) + ",";
  json += "\"ntpServer1\":\"" + String(settings.ntpServer1) + "\",";
  json += "\"ntpServer2\":\"" + String(settings.ntpServer2) + "\",";
 
@@ -1682,6 +1696,10 @@ void handleImportConfig() {
  if (!doc["useRpmKFormat"].isNull()) settings.useRpmKFormat = doc["useRpmKFormat"];
  if (!doc["useNetworkMBFormat"].isNull()) settings.useNetworkMBFormat = doc["useNetworkMBFormat"];
  if (!doc["showIPAtBoot"].isNull()) settings.showIPAtBoot = doc["showIPAtBoot"];
+ if (!doc["udpPort"].isNull()) {
+   long p = doc["udpPort"];
+   if (p >= 1024 && p <= 65535) settings.udpPort = (uint16_t)p;
+ }
  if (!doc["deviceName"].isNull()) {
    const char* name = doc["deviceName"];
    if (name && strlen(name) > 0 && strlen(name) <= 31) {
@@ -1875,6 +1893,7 @@ void handleImportConfig() {
  // Save imported settings
  saveSettings();
  applyTimezone();
+ beginStatsUdp();   // Imported config can move the stats port
  ntpSynced = false; // Force NTP resync after config import
 
  // Imported config can change clockStyle. Reset every clock's animation

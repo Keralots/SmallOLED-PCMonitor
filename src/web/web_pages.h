@@ -903,6 +903,11 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               <span class="note-k">restart</span>
               <div>Switching to a static IP reboots the device. Make sure the address doesn't clash with anything else on your network.</div>
             </div>
+            <div class="field" style="margin-top:18px;margin-bottom:0">
+              <label class="field-label" for="udpPort">Stats UDP port</label>
+              <input type="number" name="udpPort" id="udpPort" min="1024" max="65535" step="1" value="%V_UDPPORT%">
+              <p class="field-hint">Port this device listens on for the companion app's stats packets. It must match the <strong>UDP port</strong> in the companion. Change it only if something else on your network already uses 4210. Applies immediately, no restart. Default 4210.</p>
+            </div>
             <label class="check-row standalone" style="margin-top:16px">
               <input type="checkbox" name="showIPAtBoot" id="showIPAtBoot" value="1" %CHK_SHOWIPATBOOT%>
               <span class="check-box" aria-hidden="true"></span>

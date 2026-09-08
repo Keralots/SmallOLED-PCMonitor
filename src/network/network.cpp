@@ -226,9 +226,7 @@ void initNetwork() {
   WiFi.setTxPower(WIFI_STA_TX_POWER);
 
   // Start UDP listener
-  udp.begin(UDP_PORT);
-  Serial.print("UDP listening on port ");
-  Serial.println(UDP_PORT);
+  beginStatsUdp();
 
   // Start mDNS for app discovery
   initMDNS();
@@ -347,14 +345,20 @@ void handleWiFiReconnection() {
       wifiDisconnectTime = 0;
       ntpSynced = false;  // Force NTP resync after reconnection
       applyTimezone();    // Restart SNTP client and reapply timezone
-      udp.stop();         // Re-initialize UDP socket (old fd is stale)
-      udp.begin(UDP_PORT);
+      beginStatsUdp();    // Re-initialize UDP socket (old fd is stale)
       initMDNS();         // Re-register mDNS after reconnection
     }
   }
 }
 
 // ========== UDP Packet Handling ==========
+void beginStatsUdp() {
+  udp.stop();
+  udp.begin(settings.udpPort);
+  Serial.print("UDP listening on port ");
+  Serial.println(settings.udpPort);
+}
+
 void handleUDP() {
   int packetSize = udp.parsePacket();
   if (packetSize) {

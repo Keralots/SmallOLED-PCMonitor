@@ -38,6 +38,9 @@ void applyTimezone();
 // Handle UDP packet reception
 void handleUDP();
 
+// Bind (or rebind) the stats listener to settings.udpPort.
+void beginStatsUdp();
+
 // Parse incoming stats JSON
 void parseStats(const char* json);
 void parseStatsV2(JsonDocument& doc);
