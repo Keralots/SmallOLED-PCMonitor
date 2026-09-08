@@ -456,7 +456,7 @@ The OLED will display:
 - **Tetris Clock**: Block-grid digits sit low on the screen with the occasional tumbling tetromino. On each minute change the changed digits are rebuilt one at a time, either as drop-in slabs or as falling dots. Optional date row at the top or bottom.
 - **Asteroids Clock**: A wireframe vector clock - the ship drifts with inertia and splits tumbling rocks while idle, then aims at and shoots each changed digit into spinning line shards at the minute change. Optional date row.
 - **Dino Runner Clock**: A Chrome T-Rex homage - the dino runs and auto-jumps cacti over a scrolling ground with parallax clouds; at the minute change a pterodactyl swoops in, carries off the old digit, and the new one drops in from above. Optional clouds and date row.
-- **TRON Clock**: Two light cycles duel around the digits, leaving trails behind them (one solid, one dotted, so you can tell them apart). At the minute change one cycle is dispatched to retrace the changed digit stroke by stroke. Optional arena grid and a choice of side-profile or overhead bike sprite.
+- **TRON Clock**: Two light cycles duel around the digits, leaving trails behind them (one solid, one dotted, so you can tell them apart). At the minute change one cycle is dispatched to retrace the changed digit stroke by stroke. Optional arena grid and border, and a choice of side-profile or overhead bike sprite.
 - **Standard Clock**: Simple centered clock with date and day of week
 - **Large Clock**: Extra-large time display with date
 - **Cycle All Styles**: Rotates through every clock style automatically, switching every 5 minutes.

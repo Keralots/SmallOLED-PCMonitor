@@ -557,6 +557,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_TRONBIKESTYLE_0")) { out = String(settings.tronBikeStyle == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_TRONBIKESTYLE_1")) { out = String(settings.tronBikeStyle == 1 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_TRONSHOWGRID")) { out = String(settings.tronShowGrid ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_TRONSHOWBORDER")) { out = String(settings.tronShowBorder ? "checked" : ""); return true; }
   if (!strcmp(n, "V_VIZREFRESHHZ")) { out = String(settings.vizRefreshHz); return true; }
   if (!strcmp(n, "SEL_VIZSTYLE_0")) { out = String(settings.vizStyle == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_VIZSTYLE_1")) { out = String(settings.vizStyle == 1 ? "selected" : ""); return true; }
@@ -1122,6 +1123,7 @@ void handleSave() {
  settings.tronBikeStyle = server.arg("tronBikeStyle").toInt();
  }
  settings.tronShowGrid = server.hasArg("tronShowGrid");
+ settings.tronShowBorder = server.hasArg("tronShowBorder");
  if (server.hasArg("vizStyle")) {
  settings.vizStyle = server.arg("vizStyle").toInt();
  }
@@ -1488,6 +1490,7 @@ void handleExportConfig() {
  json += "\"dinoShowClouds\":" + String(settings.dinoShowClouds ? "true" : "false") + ",";
  json += "\"dinoShowDate\":" + String(settings.dinoShowDate ? "true" : "false") + ",";
  json += "\"tronShowGrid\":" + String(settings.tronShowGrid ? "true" : "false") + ",";
+ json += "\"tronShowBorder\":" + String(settings.tronShowBorder ? "true" : "false") + ",";
  json += "\"vizPeakDots\":" + String(settings.vizPeakDots ? "true" : "false") + ",";
  json += "\"vizShowClock\":" + String(settings.vizShowClock ? "true" : "false") + ",";
  json += "\"scopeGrid\":" + String(settings.scopeGrid ? "true" : "false") + ",";
@@ -1759,6 +1762,7 @@ void handleImportConfig() {
  if (!doc["dinoShowClouds"].isNull()) settings.dinoShowClouds = doc["dinoShowClouds"];
  if (!doc["dinoShowDate"].isNull()) settings.dinoShowDate = doc["dinoShowDate"];
  if (!doc["tronShowGrid"].isNull()) settings.tronShowGrid = doc["tronShowGrid"];
+ if (!doc["tronShowBorder"].isNull()) settings.tronShowBorder = doc["tronShowBorder"];
  if (!doc["vizPeakDots"].isNull()) settings.vizPeakDots = doc["vizPeakDots"];
  if (!doc["vizShowClock"].isNull()) settings.vizShowClock = doc["vizShowClock"];
  if (!doc["scopeGrid"].isNull()) settings.scopeGrid = doc["scopeGrid"];

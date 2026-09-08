@@ -163,6 +163,7 @@ struct Settings {
   // TRON clock settings
   uint8_t tronBikeStyle;        // 0=Side profile, 1=Overhead
   bool tronShowGrid;            // Arena floor grid dots
+  bool tronShowBorder;          // Arena boundary rectangle
 
   // Audio visualizer settings (forced mode, not a clock style)
   uint8_t vizStyle;             // 0=Classic EQ, 1=Oscilloscope, 2=Mirror EQ

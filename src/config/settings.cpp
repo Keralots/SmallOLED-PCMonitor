@@ -336,6 +336,7 @@ void loadSettings() {
       preferences.getBool("astTransp", true); // Default: transparent digits
   settings.tronBikeStyle = preferences.getUChar("tronBike", 0);
   settings.tronShowGrid = preferences.getBool("tronGrid", true);
+  settings.tronShowBorder = preferences.getBool("tronBorder", true);
 
   // Audio visualizer (NVS keys are <=15 chars)
   settings.vizStyle = preferences.getUChar("vizStyle", 0);      // Classic EQ
@@ -586,6 +587,7 @@ void saveSettings() {
   preferences.putBool("astTransp", settings.asteroidsTransparent);
   preferences.putUChar("tronBike", settings.tronBikeStyle);
   preferences.putBool("tronGrid", settings.tronShowGrid);
+  preferences.putBool("tronBorder", settings.tronShowBorder);
 
   preferences.putUChar("vizStyle", settings.vizStyle);
   preferences.putUChar("vizHz", settings.vizRefreshHz);

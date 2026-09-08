@@ -504,6 +504,11 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                 <span class="check-box" aria-hidden="true"></span>
                 <span class="check-text"><strong>Arena grid</strong><span class="ct-hint">Dots on the arena floor. On a 1-bit panel they are as bright as the trails, so turn this off if it looks busy. Default on.</span></span>
               </label>
+              <label class="check-row standalone" style="margin-top:12px">
+                <input type="checkbox" name="tronShowBorder" id="tronShowBorder" %CHK_TRONSHOWBORDER%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Arena border</strong><span class="ct-hint">Rectangle around the edge of the screen. Off frees the outermost pixel row, which suits panels with a bezel already framing them. Default on.</span></span>
+              </label>
             </div>
 
             <!-- Dino Runner (style 11) -->

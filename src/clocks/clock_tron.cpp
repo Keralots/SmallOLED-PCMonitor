@@ -355,12 +355,12 @@ void displayClockWithTron() {
   updateBike(0, now); updateBike(1, now); updateTrace(dt, now);
 
   // Grid and border were dim texture; at one ink level they compete with the
-  // trails, so the grid is half as dense and optional.
+  // trails, so the grid is half as dense and both are optional.
   if (settings.tronShowGrid) {
     for (int x = 8; x < SCREEN_WIDTH; x += 16)
       for (int y = 8; y < SCREEN_HEIGHT - 2; y += 16) display.drawPixel(x, y, DISPLAY_WHITE);
   }
-  display.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, DISPLAY_WHITE);
+  if (settings.tronShowBorder) display.drawRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, DISPLAY_WHITE);
   drawDuel();
   drawDigits();
   if (phase != DUEL) drawBike((int)buildX, (int)buildY, buildDir);
