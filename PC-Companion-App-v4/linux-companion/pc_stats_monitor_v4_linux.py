@@ -333,11 +333,18 @@ def setup_autostart(enable=True):
 # Tray icon (shared app_window uses it when TRAY_AVAILABLE)
 # ---------------------------------------------------------------------------
 def create_tray_icon():
+    """The device portal's brand mark, so tray and web UI match."""
     if not TRAY_AVAILABLE:
         return None
-    image = Image.new("RGB", (64, 64), color="black")
-    dc = ImageDraw.Draw(image)
-    dc.rectangle([16, 16, 48, 48], fill="cyan")
+    try:
+        import brand_icon
+        image = brand_icon.render(64)
+        if image is not None:
+            return image
+    except Exception:
+        pass
+    image = Image.new("RGB", (64, 64), color=(31, 138, 91))
+    ImageDraw.Draw(image).rectangle([16, 16, 48, 48], fill="white")
     return image
 
 

@@ -3585,20 +3585,23 @@ def send_metrics(sock, config, last_good_values=None, status_code=STATUS_OK):
 
 
 def create_tray_icon():
-    """Create a simple system tray icon"""
+    """The device portal's brand mark, so tray and web UI match."""
     if not TRAY_AVAILABLE:
         return None
+    try:
+        import brand_icon
+        image = brand_icon.render(64)
+        if image is not None:
+            return image
+    except Exception:
+        pass
+    image = Image.new('RGB', (64, 64), color=brand_fallback_bg())
+    ImageDraw.Draw(image).rectangle([16, 16, 48, 48], fill='white')
+    return image
 
-    # Create a simple icon
-    def create_image():
-        width = 64
-        height = 64
-        image = Image.new('RGB', (width, height), color='black')
-        dc = ImageDraw.Draw(image)
-        dc.rectangle([16, 16, 48, 48], fill='cyan')
-        return image
 
-    return create_image()
+def brand_fallback_bg():
+    return (31, 138, 91)
 
 
 def run_minimized(config, notify_startup=False):
