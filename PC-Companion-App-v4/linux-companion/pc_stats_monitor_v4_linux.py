@@ -53,9 +53,20 @@ SUPPORTS_SOURCE_SELECT = False
 # ---------------------------------------------------------------------------
 # Paths / config
 # ---------------------------------------------------------------------------
+# Was "PCStatsMonitor", which every fork of this companion also claimed.
+DATA_DIR_NAME = "smalloled-companion"
+DATA_DIR_ENV = "SMALLOLED_CONFIG_DIR"
+
+
 def get_data_dir():
-    base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
-    d = os.path.join(base, "PCStatsMonitor")
+    """Path resolution only; the copy out of the old shared folder runs from
+    main() once the lock is held."""
+    override = os.environ.get(DATA_DIR_ENV)
+    if override:
+        d = os.path.abspath(override)
+    else:
+        base = os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
+        d = os.path.join(base, DATA_DIR_NAME)
     try:
         os.makedirs(d, exist_ok=True)
     except Exception:
@@ -98,6 +109,11 @@ def load_config():
 
 def save_config(config):
     try:
+        try:
+            import app_paths
+            config["app"] = app_paths.APP_TAG
+        except Exception:
+            pass
         with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=2)
         return True
@@ -202,11 +218,70 @@ def collect_metrics(config, snapshot, last_good_values=None, status_code=STATUS_
 # ---------------------------------------------------------------------------
 # Autostart (systemd --user unit)
 # ---------------------------------------------------------------------------
-_SERVICE_NAME = "pcstatsmonitor.service"
+_SERVICE_NAME = "smalloled-companion.service"
+# Removed only when its ExecStart points at this script.
+_LEGACY_SERVICE_NAME = "pcstatsmonitor.service"
 
 
-def _service_path():
-    return os.path.expanduser("~/.config/systemd/user/" + _SERVICE_NAME)
+def _service_path(name=None):
+    return os.path.expanduser("~/.config/systemd/user/" + (name or _SERVICE_NAME))
+
+
+def migrate_legacy_autostart():
+    """Take over the old shared systemd unit, but only if it is ours."""
+    import subprocess
+    old = _service_path(_LEGACY_SERVICE_NAME)
+    if not os.path.exists(old):
+        return ""
+    try:
+        with open(old, "r") as f:
+            unit = f.read()
+    except Exception as e:
+        return "Autostart: could not read %s (%s)." % (old, e)
+
+    ours = os.path.normpath(os.path.abspath(__file__))
+    exec_line = ""
+    for line in unit.splitlines():
+        if line.startswith("ExecStart="):
+            exec_line = line
+            break
+    if ours not in exec_line:
+        return ("Autostart: left %s alone - its ExecStart does not reference "
+                "this script." % old)
+
+    new = _service_path()
+    if os.path.exists(new):
+        return ""
+    try:
+        unit = unit.replace("Description=PC Stats Monitor",
+                            "Description=SmallOLED PC Companion")
+        with open(new, "w") as f:
+            f.write(unit)
+        for cmd in (["disable", _LEGACY_SERVICE_NAME], ["stop", _LEGACY_SERVICE_NAME]):
+            subprocess.run(["systemctl", "--user"] + cmd, check=False)
+        os.remove(old)
+        for cmd in (["daemon-reload"], ["enable", _SERVICE_NAME]):
+            subprocess.run(["systemctl", "--user"] + cmd, check=False)
+    except Exception as e:
+        return "Autostart: could not rename %s (%s)." % (_LEGACY_SERVICE_NAME, e)
+    return "Autostart: renamed %s to %s." % (_LEGACY_SERVICE_NAME, _SERVICE_NAME)
+
+
+def _run_first_launch_migration():
+    """No-op once done, so it is safe to call on every launch."""
+    try:
+        import app_paths
+        note = app_paths.migrate_legacy_config(DATA_DIR)
+        if note:
+            print(note)
+    except Exception as e:
+        print("Config migration skipped: %s" % e)
+    try:
+        note = migrate_legacy_autostart()
+        if note:
+            print(note)
+    except Exception as e:
+        print("Autostart migration skipped: %s" % e)
 
 
 def is_autostart_enabled():
@@ -265,8 +340,9 @@ def create_tray_icon():
 # Single-instance coordination (socket lock + IPC) - same as the Windows core
 # ---------------------------------------------------------------------------
 SINGLE_INSTANCE_HOST = "127.0.0.1"
-SINGLE_INSTANCE_PORT = 42100
-_SINGLE_INSTANCE_MAGIC = b"PCMON1"
+# 42100/PCMON1 was every fork's shared identity; see the Windows core.
+SINGLE_INSTANCE_PORT = int(os.environ.get("SMALLOLED_IPC_PORT") or 42101)
+_SINGLE_INSTANCE_MAGIC = b"SMOLED1"
 _single_instance_sock = None
 _reload_event = threading.Event()
 _show_event = threading.Event()
@@ -373,6 +449,13 @@ def main():
         return
     if role == "primary":
         start_single_instance_listener()
+    else:
+        print("WARNING: port %d is held by another program, so duplicate-launch "
+              "protection is off for this session. Set SMALLOLED_IPC_PORT to a "
+              "free port to restore it." % SINGLE_INSTANCE_PORT)
+
+    # Lock holder only: racing first launches would otherwise both migrate.
+    _run_first_launch_migration()
 
     import app_window
     start_hidden = args.minimized and not (args.configure or args.edit)

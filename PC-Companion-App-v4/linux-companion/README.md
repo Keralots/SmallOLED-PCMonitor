@@ -31,12 +31,24 @@ python3 pc_stats_monitor_v4_linux.py --autostart enable   # systemd --user servi
 
 ## Autostart
 `--autostart enable` writes and enables a **systemd user service**
-(`~/.config/systemd/user/pcstatsmonitor.service`) that launches the app minimized
+(`~/.config/systemd/user/smalloled-companion.service`) that launches the app minimized
 at login (after a 10s delay). Disable with `--autostart disable`, or toggle
 "Start with the system" in the Connection page of the UI.
 
 ## Where settings live
-`~/.config/PCStatsMonitor/monitor_config.json` (honours `$XDG_CONFIG_HOME`).
+`~/.config/smalloled-companion/monitor_config.json` (honours `$XDG_CONFIG_HOME`).
+Set `SMALLOLED_CONFIG_DIR` to override the folder entirely - that is how you run
+two copies against two different devices.
+
+### Upgrading from a version before this folder existed
+Older builds used `~/.config/PCStatsMonitor/`, a folder every app forked from
+this codebase also claimed. On first launch your configuration is **copied** into
+the new folder; the old one is left in place, because another application may
+still be reading it. A `MIGRATED-FROM.txt` note records where it came from.
+
+The systemd unit is renamed from `pcstatsmonitor.service` to
+`smalloled-companion.service`, but only when the old unit's `ExecStart` actually
+references this script.
 
 ## Notes
 - The system tray needs an AppIndicator-capable desktop; on GNOME it may require

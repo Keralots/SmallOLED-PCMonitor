@@ -73,17 +73,27 @@ if os.path.isdir(_COMMON_DIR) and _COMMON_DIR not in sys.path:
     sys.path.insert(0, _COMMON_DIR)
 
 
+# Was "PCStatsMonitor", which every fork of this companion also claimed.
+DATA_DIR_NAME = "SmallOLED-Companion"
+DATA_DIR_ENV = "SMALLOLED_CONFIG_DIR"
+
+
 def get_data_dir():
     """
     Per-user writable directory for the config file and log.
 
-    Frozen .exe -> %APPDATA%\\PCStatsMonitor so the config survives the .exe
-    living in a read-only spot (Program Files) and survives the .exe being
-    moved. Plain script -> next to the .py, matching the original behavior.
+    Frozen .exe -> %APPDATA%\\SmallOLED-Companion so the config survives
+    the .exe living in a read-only spot (Program Files) and survives the .exe
+    being moved. Plain script -> next to the .py, matching the original
+    behavior. SMALLOLED_CONFIG_DIR overrides both. Path resolution only; the
+    copy out of the old shared folder runs from main() once the lock is held.
     """
-    if IS_FROZEN:
+    override = os.environ.get(DATA_DIR_ENV)
+    if override:
+        data_dir = os.path.abspath(override)
+    elif IS_FROZEN:
         base = os.environ.get("APPDATA") or APP_DIR
-        data_dir = os.path.join(base, "PCStatsMonitor")
+        data_dir = os.path.join(base, DATA_DIR_NAME)
     else:
         data_dir = APP_DIR
     try:
@@ -1616,6 +1626,23 @@ def get_unit_from_type(sensor_type):
     return unit_map.get(sensor_type, "")
 
 
+def _run_first_launch_migration():
+    """No-op once done, so it is safe to call on every launch."""
+    try:
+        import app_paths
+        note = app_paths.migrate_legacy_config(DATA_DIR)
+        if note:
+            print(note)
+    except Exception as e:
+        print("Config migration skipped: %s" % e)
+    try:
+        note = migrate_legacy_autostart()
+        if note:
+            print(note)
+    except Exception as e:
+        print("Autostart migration skipped: %s" % e)
+
+
 def load_config():
     """
     Load configuration from file with version checking
@@ -1675,6 +1702,11 @@ def save_config(config):
     Save configuration to file
     """
     try:
+        try:
+            import app_paths
+            config["app"] = app_paths.APP_TAG
+        except Exception:
+            pass
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config, f, indent=2)
         print(f"\n✓ Configuration saved to {CONFIG_FILE}")
@@ -1686,7 +1718,9 @@ def save_config(config):
 
 # Windows "run at login" registry location (per-user, no admin needed).
 AUTOSTART_REG_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-AUTOSTART_VALUE_NAME = "PCStatsMonitor"
+AUTOSTART_VALUE_NAME = "SmallOLEDCompanion"
+# Removed only when it points at this executable; it may belong to another app.
+LEGACY_AUTOSTART_VALUE_NAME = "PCStatsMonitor"
 
 # Legacy Startup-folder shortcut from older script-based installs. We clean it
 # up when toggling autostart so users don't end up launching twice.
@@ -1717,6 +1751,68 @@ def _remove_legacy_shortcut():
             print(f"  Removed legacy startup shortcut: {old}")
     except Exception:
         pass  # winshell not installed / nothing to clean - that's fine
+
+
+def _autostart_target(command):
+    r"""The executable a Run command launches, canonicalised for comparison.
+
+    For the '"pythonw.exe" "script.py"' form the script identifies us, not the
+    interpreter.
+    """
+    if not command:
+        return ""
+    import shlex
+    try:
+        parts = shlex.split(command, posix=False)
+    except ValueError:
+        parts = command.split()
+    candidates = [pt.strip('"') for pt in parts if pt.strip('"')]
+    chosen = ""
+    for cand in candidates:
+        if cand.startswith("-"):
+            continue
+        low = cand.lower()
+        if low.endswith(".py") or low.endswith(".exe"):
+            if not chosen or not low.endswith(("python.exe", "pythonw.exe")):
+                chosen = cand
+    if not chosen and candidates:
+        chosen = candidates[0]
+    try:
+        return os.path.normcase(os.path.normpath(os.path.abspath(chosen)))
+    except Exception:
+        return os.path.normcase(chosen)
+
+
+def migrate_legacy_autostart():
+    """Take over the old shared Run value, but only if it launches this app.
+
+    Removing another product's entry would silently disable their autostart.
+    """
+    import winreg
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, AUTOSTART_REG_KEY, 0,
+                            winreg.KEY_QUERY_VALUE) as key:
+            legacy_cmd, _ = winreg.QueryValueEx(key, LEGACY_AUTOSTART_VALUE_NAME)
+    except FileNotFoundError:
+        return ""
+    except Exception:
+        return ""
+
+    ours = _autostart_target(_autostart_command())
+    theirs = _autostart_target(legacy_cmd)
+    if not ours or ours != theirs:
+        return ("Autostart: left the old '%s' entry alone - it launches %s, "
+                "not this app." % (LEGACY_AUTOSTART_VALUE_NAME, theirs or legacy_cmd))
+
+    try:
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, AUTOSTART_REG_KEY) as key:
+            winreg.SetValueEx(key, AUTOSTART_VALUE_NAME, 0, winreg.REG_SZ, legacy_cmd)
+            winreg.DeleteValue(key, LEGACY_AUTOSTART_VALUE_NAME)
+    except Exception as e:
+        return "Autostart: could not rename the old '%s' entry (%s)." % (
+            LEGACY_AUTOSTART_VALUE_NAME, e)
+    return "Autostart: renamed '%s' to '%s'." % (LEGACY_AUTOSTART_VALUE_NAME,
+                                                 AUTOSTART_VALUE_NAME)
 
 
 def is_autostart_enabled():
@@ -3727,8 +3823,11 @@ SINGLE_INSTANCE_HOST = "127.0.0.1"
 # (the dynamic range) so it avoids Windows' reserved WinNAT/Hyper-V port blocks,
 # which can otherwise make bind() fail with WSAEACCES. If it is ever unavailable,
 # acquire_single_instance() falls back to "standalone" and the app still runs.
-SINGLE_INSTANCE_PORT = 42100
-_SINGLE_INSTANCE_MAGIC = b"PCMON1"
+# 42100/PCMON1 was every fork's shared identity, so two could never run at once.
+# Both halves must differ: a new magic alone leaves the other app unable to bind
+# and silently running with no duplicate protection.
+SINGLE_INSTANCE_PORT = int(os.environ.get("SMALLOLED_IPC_PORT") or 42101)
+_SINGLE_INSTANCE_MAGIC = b"SMOLED1"
 
 # Held for the process lifetime so the OS keeps the lock; released on exit.
 _single_instance_sock = None
@@ -4004,6 +4103,15 @@ def main():
         return
     if role == "primary":
         start_single_instance_listener()
+    else:
+        # Run anyway rather than lock the user out, but a second copy started
+        # this way would write the same config file.
+        print("WARNING: port %d is held by another program, so duplicate-launch "
+              "protection is off for this session. Set SMALLOLED_IPC_PORT to a "
+              "free port to restore it." % SINGLE_INSTANCE_PORT)
+
+    # Lock holder only: racing first launches would otherwise both migrate.
+    _run_first_launch_migration()
 
     _splash_close()
     import app_window

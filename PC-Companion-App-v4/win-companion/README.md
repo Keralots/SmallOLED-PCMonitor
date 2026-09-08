@@ -51,9 +51,29 @@ the tray at login, after a 10s delay so LibreHardwareMonitor can start first. No
 administrator rights required.
 
 ### Where settings and logs live
-For the `.exe`, both live in `%APPDATA%\PCStatsMonitor\`:
+For the `.exe`, both live in `%APPDATA%\SmallOLED-Companion\`:
 - `monitor_config.json` - your saved configuration
 - `monitor.log` - runtime output (useful for debugging autostart)
+
+Set `SMALLOLED_CONFIG_DIR` to override the folder - that is how you run two
+copies against two different devices.
+
+#### Upgrading from a version before this folder existed
+Older builds kept settings in `%APPDATA%\PCStatsMonitor\`, a folder every app
+forked from this codebase also claimed. On first launch your configuration is
+**copied** into the new folder; the old one is left exactly where it is, because
+another application may still be reading it. A `MIGRATED-FROM.txt` note records
+where the copy came from.
+
+If you also run another companion from this family, the two used to overwrite
+each other's settings. Whichever saved last is what gets copied across, so check
+the device address and metric list once after upgrading. From now on they are
+independent: separate folders, separate autostart entries, and both can run at
+the same time.
+
+The autostart entry is renamed from `PCStatsMonitor` to `SmallOLEDCompanion`,
+but only when the old entry actually launches *this* app - if it points at
+another program it is left untouched.
 
 ---
 
@@ -128,5 +148,8 @@ the config-file/product version is **4.0**.
 - **Device shows nothing:** confirm the device IP is correct, both devices share the
   network/subnet, and Windows Firewall isn't blocking outbound UDP. Use *Test
   connection*.
-- **Autostart didn't trigger:** check `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\PCStatsMonitor`
-  and read `%APPDATA%\PCStatsMonitor\monitor.log`.
+- **Autostart didn't trigger:** check `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\SmallOLEDCompanion`
+  and read `%APPDATA%\SmallOLED-Companion\monitor.log`.
+- **"duplicate-launch protection is off" in the log:** something else is using
+  TCP port 42101 on localhost. The app still runs; set `SMALLOLED_IPC_PORT` to a
+  free port to restore the guard.

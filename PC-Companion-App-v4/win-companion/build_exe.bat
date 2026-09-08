@@ -13,7 +13,7 @@ REM
 REM  Notes:
 REM   * --windowed  -> no console window flashes at login (this is a background
 REM                    app that lives in the system tray). print() output is
-REM                    redirected to %APPDATA%\PCStatsMonitor\monitor.log.
+REM                    redirected to %APPDATA%\SmallOLED-Companion\monitor.log.
 REM   * --add-data "webui;webui" bundles the web UI (index.html/portal.css/js).
 REM     At runtime server.webui_dir() resolves it from sys._MEIPASS.
 REM   * --collect-all webview / pythonnet pulls in the pywebview EdgeChromium
@@ -62,6 +62,7 @@ if exist dist  rmdir /s /q dist
   --hidden-import app_state ^
   --hidden-import layout_engine ^
   --hidden-import audio_spectrum ^
+  --hidden-import app_paths ^
   --collect-all webview ^
   --collect-all pythonnet ^
   --collect-all pystray ^
