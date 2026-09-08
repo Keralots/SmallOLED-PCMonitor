@@ -50,6 +50,23 @@ The systemd unit is renamed from `pcstatsmonitor.service` to
 `smalloled-companion.service`, but only when the old unit's `ExecStart` actually
 references this script.
 
+## Audio visualizer
+Streams a 32-band FFT of whatever the PC is playing to the device, same as on
+Windows. It needs two optional packages:
+
+```
+python3 -m pip install soundcard numpy
+```
+
+`soundcard` records the *monitor* source of the current default output, which
+PulseAudio and PipeWire both provide, so nothing has to be routed by hand. The
+output device is re-resolved on every reconnect, so switching to headphones is
+picked up without a restart.
+
+Enable it in the **Audio** page of the UI. *Auto* starts the visualizer when
+sound is playing and releases the device back to its clock after a configurable
+quiet period. Without the packages the page says so and stays disabled.
+
 ## Notes
 - The system tray needs an AppIndicator-capable desktop; on GNOME it may require
   the AppIndicator extension. If the tray is unavailable, use the window/browser.
