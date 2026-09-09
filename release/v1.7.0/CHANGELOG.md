@@ -21,7 +21,7 @@ Full setup guide - LibreHardwareMonitor, sensor picking, autostart and troublesh
 
 You can also flash directly from your browser (no tools to install): https://keralots.github.io/SmallOLED-PCMonitor/
 
-> **Heads up for older devices:** this build is the biggest yet and sits very close to the OTA size limit on devices still using the original partition layout. If an OTA update fails with a "size" or "no space" error, export your config from the Maintenance page, re-flash once with the browser flasher (this updates the storage layout automatically), then import your backup. After that, OTA updates work normally again.
+> **Older devices need one USB re-flash.** This build no longer fits the app slot on devices still using the original partition layout - that means anything flashed for the first time before v1.5.1 and updated only over the air ever since. The OTA update will refuse it with a size error. Export your config from the Maintenance page, re-flash once with the browser flasher (this updates the storage layout for you), then import your backup. OTA updates work normally from then on. Devices flashed with the browser flasher at v1.5.1 or later are already on the newer layout and are not affected.
 
 
 # v1.7.0 - Changelog
