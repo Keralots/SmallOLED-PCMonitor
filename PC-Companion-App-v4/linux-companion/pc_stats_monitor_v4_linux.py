@@ -105,10 +105,20 @@ def load_config():
     if not os.path.exists(CONFIG_FILE):
         return None
     try:
-        with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
+        # utf-8-sig: a BOM is otherwise a parse error on a good config.
+        with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
+            config = json.load(f)
+        if not isinstance(config, dict):
+            raise ValueError("top level is %s, not an object" % type(config).__name__)
+        return config
     except Exception as e:
-        print("Error loading config: %s" % e)
+        # Keep a copy before defaults take over: the next save would otherwise
+        # overwrite the damaged file and the whole setup would be unrecoverable.
+        try:
+            import app_paths
+            app_paths.quarantine_unreadable_config(CONFIG_FILE, e)
+        except Exception:
+            print("Error loading config: %s" % e)
         return None
 
 

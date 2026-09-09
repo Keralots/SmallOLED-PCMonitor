@@ -170,5 +170,55 @@ class MigrationTests(unittest.TestCase):
         self.assertFalse(any(n.endswith(".tmp") for n in os.listdir(self.new)))
 
 
+class QuarantineTests(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="smalloled-quar-")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_damaged_config_is_copied_before_defaults_take_over(self):
+        cfg = os.path.join(self.root, app_paths.CONFIG_NAME)
+        with open(cfg, "w", encoding="utf-8") as f:
+            f.write("{ broken")
+
+        kept = app_paths.quarantine_unreadable_config(cfg, "test error")
+
+        self.assertTrue(kept)
+        self.assertTrue(os.path.isfile(kept))
+        with open(kept, encoding="utf-8") as f:
+            self.assertEqual(f.read(), "{ broken")
+        # The original is left where it is; only a copy is taken.
+        self.assertTrue(os.path.isfile(cfg))
+
+    def test_unwritable_target_reports_without_raising(self):
+        missing = os.path.join(self.root, "gone", app_paths.CONFIG_NAME)
+        self.assertEqual(app_paths.quarantine_unreadable_config(missing, "x"), "")
+
+
+class BomTests(unittest.TestCase):
+    """A BOM is what a PowerShell redirect or some editors leave behind. It used
+    to make a perfectly good config unreadable."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="smalloled-bom-")
+
+    def tearDown(self):
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    def test_utf8_sig_reads_a_bom_config(self):
+        cfg = os.path.join(self.root, app_paths.CONFIG_NAME)
+        with open(cfg, "w", encoding="utf-8-sig") as f:
+            json.dump({"esp32_ip": "192.168.0.12"}, f)
+
+        with open(cfg, encoding="utf-8-sig") as f:
+            self.assertEqual(json.load(f)["esp32_ip"], "192.168.0.12")
+
+        # Plain utf-8 is what the old code used, and it fails on the same file.
+        with open(cfg, encoding="utf-8") as f:
+            with self.assertRaises(ValueError):
+                json.load(f)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

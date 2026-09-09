@@ -1656,8 +1656,13 @@ def load_config():
         return None
 
     try:
-        with open(CONFIG_FILE, 'r') as f:
+        # utf-8-sig: a BOM (an editor, a PowerShell redirect) is otherwise a
+        # parse error that would quarantine a perfectly good config.
+        with open(CONFIG_FILE, 'r', encoding='utf-8-sig') as f:
             config = json.load(f)
+        if not isinstance(config, dict):
+            raise ValueError("top level is %s, not an object"
+                             % type(config).__name__)
 
         # Version check - force reconfiguration for old versions
         config_version = config.get("version", "1.0")
@@ -1698,7 +1703,13 @@ def load_config():
         print(f"  Selected metrics: {len(config.get('metrics', []))}")
         return config
     except Exception as e:
-        print(f"\n✗ Error loading config: {e}")
+        # Keep a copy before defaults take over: the next save would otherwise
+        # overwrite the damaged file and the whole setup would be unrecoverable.
+        try:
+            import app_paths
+            app_paths.quarantine_unreadable_config(CONFIG_FILE, e)
+        except Exception:
+            print(f"\n✗ Error loading config: {e}")
         return None
 
 
