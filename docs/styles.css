@@ -588,6 +588,10 @@ a:hover { border-color: var(--green); color: var(--green); }
 .btn-monitor:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-monitor.btn-ghost { background: #fff; color: var(--ink); border-color: var(--line-2); }
 .btn-monitor.btn-ghost:hover:not(:disabled) { background: var(--card-2); }
+a.btn-monitor { display: inline-block; text-decoration: none; color: #fff; border-color: var(--green-d); }
+a.btn-monitor:hover { filter: brightness(1.05); color: #fff; border-color: var(--green-d); }
+a.btn-monitor.btn-ghost { color: var(--ink); border-color: var(--line-2); }
+a.btn-monitor.btn-ghost:hover { background: var(--card-2); color: var(--ink); border-color: var(--line-2); }
 
 .monitor-output {
   margin: 0 0 12px;

@@ -87,7 +87,7 @@
           <ul class="checklist">
             <li><strong>Desktop Chrome or Edge.</strong> Web Serial doesn't run on Firefox, Safari, or mobile.</li>
             <li><strong>A real data USB cable.</strong> Power-only cables are silent killers - the port simply won't show up.</li>
-            <li><strong>Know your OLED.</strong> 0.96″ (SSD1306), 1.3″ (SH1106) and 2.42″ (SSD1309) need the matching firmware. The wrong one may flash fine, then go black on reconnect.</li>
+            <li><strong>Know your OLED.</strong> 0.96″ (SSD1306), 1.3″ (SH1106), 1.54″ (CH1116) and 2.42″ (SSD1309) need the matching firmware. The wrong one may flash fine, then go black on reconnect.</li>
             <li><strong>Stuck in a connect / disconnect loop?</strong> Hold <code>BOOT</code>, plug in USB while holding, then release. Or hold <code>BOOT</code>, tap <code>RESET</code>, then let go of both.</li>
             <li><strong>Nothing else on the serial port.</strong> Close Arduino IDE, PlatformIO Monitor, and the serial monitor below before flashing.</li>
           </ul>
@@ -194,7 +194,7 @@
             <h2 id="pc-head">Connect your PC</h2>
           </header>
 
-          <p class="lede">A small companion script reads your hardware sensors and streams CPU / RAM / GPU / disk stats to the device over your network. When it's running, the OLED switches from clock to live stats; when your PC sleeps, it falls back to an animated pixel clock.</p>
+          <p class="lede">A small companion app reads your hardware sensors and streams CPU / RAM / GPU / disk stats to the device over your network. When it's running, the OLED switches from clock to live stats; when your PC sleeps, it falls back to an animated pixel clock.</p>
 
           <div class="os-tabs" role="tablist" aria-label="Operating system">
             <button class="os-tab is-active" type="button" role="tab" data-os="win" aria-selected="true">Windows</button>
@@ -204,74 +204,71 @@
           <!-- Windows -->
           <div class="os-panel is-active" data-os-panel="win" role="tabpanel">
             <ol class="step-list">
-              <li><strong>Install Python 3.7+</strong> from <a href="https://www.python.org/downloads/" target="_blank" rel="noopener">python.org</a> - tick <strong>“Add python.exe to PATH”</strong> during setup.</li>
-              <li><strong>Install LibreHardwareMonitor</strong> from <a href="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases" target="_blank" rel="noopener">GitHub</a> and run it <strong>as Administrator</strong>. On 0.9.5+, enable <em>Options → Remote Web Server → Run</em>.</li>
-              <li>Install the Python dependencies:</li>
+              <li><strong>Download the companion app.</strong> One file, nothing to install - no Python needed.</li>
             </ol>
 
-            <div class="cmd" data-cmd>
-              <div class="cmd-head"><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-title">cmd · powershell</span></div>
-              <button class="cmd-copy" type="button">copy</button>
-              <pre><span class="pr">&gt; </span>pip install psutil pywin32 wmi pystray pillow</pre>
+            <div class="monitor-row">
+              <a class="btn-monitor" href="https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest/download/pc_stats_monitor_v4.exe">Download pc_stats_monitor_v4.exe</a>
+              <a class="btn-monitor btn-ghost" href="https://github.com/Keralots/SmallOLED-PCMonitor/releases/latest" target="_blank" rel="noopener">All release files</a>
             </div>
 
-            <ol class="step-list" start="4">
-              <li>Run the monitor - the config window opens automatically the first time:</li>
-            </ol>
-
-            <div class="cmd" data-cmd>
-              <div class="cmd-head"><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-title">cmd · powershell</span></div>
-              <button class="cmd-copy" type="button">copy</button>
-              <pre><span class="pr">&gt; </span>python pc_stats_monitor_v2.py</pre>
+            <div class="note">
+              <span class="note-k">note</span>
+              <div>The exe is unsigned, so the first launch may show <strong>“Windows protected your PC”</strong> - click <strong>More info -> Run anyway</strong>. The config window uses <strong>WebView2</strong>, preinstalled on Windows 11; on Windows 10 install Microsoft's free <em>Evergreen</em> runtime if the window never appears.</div>
             </div>
 
-            <ol class="step-list" start="5">
-              <li>In the GUI, enter the <strong>ESP32 IP</strong> (from the OLED), tick the sensors you want, then <strong>Save &amp; Start Monitoring</strong>.</li>
-              <li>Open the device's IP in a browser and drag each metric to where you want it on the display. Start with 1-2 and build up.</li>
+            <ol class="step-list" start="2" style="counter-reset: step 1">
+              <li><strong>Install LibreHardwareMonitor</strong> from <a href="https://github.com/LibreHardwareMonitor/LibreHardwareMonitor/releases" target="_blank" rel="noopener">GitHub</a>, run it <strong>as Administrator</strong>, and enable <em>Options -> Remote Web Server -> Run</em>. Only temperatures, fan RPM, GPU and power need it - CPU, RAM and disk work without it.</li>
+              <li><strong>Double-click the exe.</strong> On the <strong>Connection</strong> page enter the <strong>device IP</strong> from the OLED and hit <em>Test connection</em>.</li>
+              <li>On <strong>Sensors</strong>, tick the readings you want (up to 20). If you started LibreHardwareMonitor afterwards, click <em>Rescan sensors</em>.</li>
+              <li>On <strong>Layout &amp; preview</strong>, drag the metrics onto the 1:1 OLED preview, then <strong>Save &amp; push to device</strong>. Start with 1-2 and build up.</li>
+              <li>Close the window to tuck the app into the system tray - it keeps sending in the background. Right-click the tray icon to reopen it or quit.</li>
             </ol>
 
             <div class="note">
               <span class="note-k">tip</span>
-              <div>Want it to launch on boot? <code>python pc_stats_monitor_v2.py --autostart enable</code> runs it minimized to the system tray.</div>
+              <div>Want it to launch on boot? Tick <strong>Start with Windows</strong> on the Connection page. No admin rights, and it starts minimized to the tray.</div>
             </div>
           </div>
 
           <!-- Linux -->
           <div class="os-panel" data-os-panel="linux" role="tabpanel">
             <ol class="step-list">
-              <li><strong>Install Python 3.7+</strong> and Tkinter, then the dependencies:</li>
+              <li>Grab <a href="https://github.com/Keralots/SmallOLED-PCMonitor/tree/main/PC-Companion-App-v4/linux-companion" target="_blank" rel="noopener"><code>PC-Companion-App-v4/linux-companion/</code></a> from the repo. Same app as on Windows, run straight from source - there is no build step.</li>
+              <li>Install the dependencies (Python 3.10+):</li>
             </ol>
 
             <div class="cmd" data-cmd>
               <div class="cmd-head"><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-title">bash</span></div>
               <button class="cmd-copy" type="button">copy</button>
-              <pre><span class="pr">$ </span>pip install psutil tk
-<span class="cm"># if that fails on Debian/Ubuntu:</span>
-<span class="pr">$ </span>sudo apt install python3-pip python3-tk -y</pre>
+              <pre><span class="pr">$ </span>python3 -m pip install -r requirements.txt
+<span class="cm"># optional - native window instead of your browser:</span>
+<span class="pr">$ </span>sudo apt install gir1.2-webkit2-4.1 python3-gi -y
+<span class="cm"># optional - temperatures and fan speeds:</span>
+<span class="pr">$ </span>sudo apt install lm-sensors -y &amp;&amp; sudo sensors-detect</pre>
             </div>
 
-            <ol class="step-list" start="2">
-              <li>Run the Linux build of the monitor:</li>
+            <ol class="step-list" start="3" style="counter-reset: step 2">
+              <li>Run the app:</li>
             </ol>
 
             <div class="cmd" data-cmd>
               <div class="cmd-head"><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-dot"></span><span class="cmd-title">bash</span></div>
               <button class="cmd-copy" type="button">copy</button>
-              <pre><span class="pr">$ </span>python3 pc_stats_monitor_v2_linux.py</pre>
+              <pre><span class="pr">$ </span>python3 pc_stats_monitor_v4_linux.py</pre>
             </div>
 
-            <ol class="step-list" start="3">
-              <li>In the GUI, enter the <strong>ESP32 IP</strong> (from the OLED), pick your sensors, then <strong>Save &amp; Start Monitoring</strong>.</li>
-              <li>Open the device's IP in a browser and arrange the metrics on the display preview.</li>
+            <ol class="step-list" start="4" style="counter-reset: step 3">
+              <li>The config window opens - or, without the GTK/WebKit libs, your browser at <code>http://127.0.0.1:8737</code>. Enter the <strong>device IP</strong> on <strong>Connection</strong>, tick your sensors on <strong>Sensors</strong>, then arrange them on <strong>Layout &amp; preview</strong> and hit <strong>Save &amp; push to device</strong>.</li>
             </ol>
 
             <div class="note">
               <span class="note-k">tip</span>
-              <div>For a boot service: <code>python3 pc_stats_monitor_v2_linux.py --autostart enable</code> installs a systemd user unit. Check it with <code>systemctl --user status pc-monitor</code>.</div>
+              <div>For a boot service: <code>python3 pc_stats_monitor_v4_linux.py --autostart enable</code> installs a systemd user unit - check it with <code>systemctl --user status smalloled-companion</code>. NVIDIA GPUs need <code>pip install pynvml</code>; AMD cards are read from sysfs with no extra package.</div>
             </div>
           </div>
 
-          <p class="hint">Stats travel over UDP on port <code>4210</code> and refresh every ~3 seconds - both configurable in the GUI. Get the script and the latest GUI from the <a href="https://github.com/Keralots/SmallOLED-PCMonitor" target="_blank" rel="noopener">project repo</a>.</p>
+          <p class="hint">Stats travel over UDP on port <code>4210</code> and refresh every ~3 seconds - both adjustable in the app, and the port is a setting on the device too. Source for both builds lives in <a href="https://github.com/Keralots/SmallOLED-PCMonitor/tree/main/PC-Companion-App-v4" target="_blank" rel="noopener">PC-Companion-App-v4</a>.</p>
         </section>
 
         <!-- ────────── 04 Serial monitor ────────── -->
