@@ -22,5 +22,5 @@ numpy           # audio visualizer: the FFT
 # A NATIVE window via pywebview needs the system GTK/WebKit libraries, e.g. on
 # Debian/Ubuntu:   sudo apt install gir1.2-webkit2-4.1 python3-gi
 # Without them the app still works - it opens the UI in your default browser at
-# http://127.0.0.1:8736 . lm-sensors (`sudo apt install lm-sensors && sensors-detect`)
+# http://127.0.0.1:8737 . lm-sensors (`sudo apt install lm-sensors && sensors-detect`)
 # improves temperature/fan coverage.

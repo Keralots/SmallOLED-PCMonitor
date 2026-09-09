@@ -12,7 +12,7 @@ Run from source (no build step):
     python3 pc_stats_monitor_v4_linux.py
 A native window needs the GTK/WebKit libs (Debian/Ubuntu:
     sudo apt install gir1.2-webkit2-4.1 python3-gi); without them the UI opens
-in the default browser at http://127.0.0.1:8736 .
+in the default browser at http://127.0.0.1:8737 .
 """
 
 import argparse

@@ -19,7 +19,7 @@ python3 pc_stats_monitor_v4_linux.py
 - A **native window** (via pywebview) needs the GTK/WebKit system libs. On
   Debian/Ubuntu: `sudo apt install gir1.2-webkit2-4.1 python3-gi`. Without them
   the app automatically opens the UI in your **default browser** at
-  `http://127.0.0.1:8736` - everything still works.
+  `http://127.0.0.1:8737` - everything still works.
 - For temperatures/fans: `sudo apt install lm-sensors && sudo sensors-detect`.
   For NVIDIA GPUs: `pip install pynvml`. AMD GPUs are read from sysfs (no extra
   package).

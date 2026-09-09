@@ -90,7 +90,7 @@ python pc_stats_monitor_v4.py --autostart enable   # register run-at-login
 
 In script mode, config/log are written next to the `.py` instead of `%APPDATA%`.
 If `pywebview` is not installed, the app still serves the UI and opens it in your
-default browser at `http://127.0.0.1:8736/`.
+default browser at `http://127.0.0.1:8737/`.
 
 ### Building the .exe
 
