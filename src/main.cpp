@@ -459,35 +459,41 @@ void loop() {
   // Regular short press (mode toggle / clock style cycle)
   if (checkTouchButtonPressed()) {
     if (!handleTemporaryDisplayWake()) {
-      // The visualizer joins the tap cycle only while audio is actually
-      // arriving - otherwise a tap would land on a "No audio data" screen the
-      // user cannot do anything about. One more tap always leaves it.
+      // Stops are metrics -> clock -> visualizer -> metrics, skipping the
+      // ones that have nothing to show. The visualizer only joins while sound
+      // is actually playing: packets keep arriving through silence, so
+      // offering it then would hand the user a flat line and, before this,
+      // swallowed the clock stop entirely. With clock the only stop left, a
+      // tap cycles clock styles as it always did.
+      bool vizStop = vizHasSignal(3000);
+      bool metricsStop = metricData.online;
       if (httpForceViz) {
         httpForceViz = false;
+        manualClockMode = !metricsStop;
         Serial.println("Touch button: Leaving visualizer");
-      } else if (vizRecentEnough(10000)) {
-        httpForceViz = true;
-        vizNoteForced();
-        Serial.println("Touch button: Entering visualizer (audio streaming)");
       } else if (manualClockMode) {
-        // Check if PC is currently online (UDP is always processed, so status is accurate)
-        if (metricData.online) {
-          // PC is online - exit manual clock mode to show PC metrics
+        if (vizStop) {
           manualClockMode = false;
-          Serial.println("Touch button: Exiting manual clock mode (PC is online)");
+          httpForceViz = true;
+          vizNoteForced();
+          Serial.println("Touch button: Clock -> visualizer");
+        } else if (metricsStop) {
+          manualClockMode = false;
+          Serial.println("Touch button: Clock -> metrics");
         } else {
-          // PC is offline (timeout triggered) - cycle through clock styles
           settings.clockStyle = nextClockStyle(settings.clockStyle);
           resetClockAnimationState();
-          Serial.print("Touch button: PC offline, cycling clock style -> ");
+          Serial.print("Touch button: Clock style -> ");
           Serial.println(settings.clockStyle);
         }
-      } else if (metricData.online) {
-        // PC is online - enter manual clock mode
+      } else if (metricsStop) {
         manualClockMode = true;
-        Serial.println("Touch button: Entering manual clock mode (PC is online)");
+        Serial.println("Touch button: Metrics -> clock");
+      } else if (vizStop) {
+        httpForceViz = true;
+        vizNoteForced();
+        Serial.println("Touch button: Clock -> visualizer");
       } else {
-        // PC is offline - cycle through clock styles
         settings.clockStyle = nextClockStyle(settings.clockStyle);
         resetClockAnimationState();
         Serial.print("Touch button: Clock style -> ");

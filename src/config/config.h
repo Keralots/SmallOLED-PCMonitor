@@ -171,6 +171,7 @@ struct Settings {
   uint8_t vizRefreshHz;         // Frame rate cap while the visualizer is up (15-60)
   uint8_t vizBarStyle;          // 0=Solid, 1=Segmented, 2=Outline
   bool vizPeakDots;             // Peak-hold marker above each bar
+  uint8_t vizSilenceTimeout;    // Seconds of silence before the visualizer steps aside (0 = never)
   bool vizShowClock;            // Small HH:MM overlay in the top-right corner
   bool scopeGrid;               // Oscilloscope: draw the graticule
   bool scopeFill;               // Oscilloscope: fill to the centre line

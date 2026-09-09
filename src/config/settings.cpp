@@ -343,6 +343,7 @@ void loadSettings() {
   settings.vizRefreshHz = preferences.getUChar("vizHz", 30);
   settings.vizBarStyle = preferences.getUChar("vizBarStyle", 1); // Segmented
   settings.vizPeakDots = preferences.getBool("vizPeak", true);
+  settings.vizSilenceTimeout = preferences.getUChar("vizQuiet", 10);
   settings.vizShowClock = preferences.getBool("vizClock", true);
   settings.scopeGrid = preferences.getBool("scopeGrid", false);
   settings.scopeFill = preferences.getBool("scopeFill", false);
@@ -595,6 +596,7 @@ void saveSettings() {
   preferences.putUChar("vizHz", settings.vizRefreshHz);
   preferences.putUChar("vizBarStyle", settings.vizBarStyle);
   preferences.putBool("vizPeak", settings.vizPeakDots);
+  preferences.putUChar("vizQuiet", settings.vizSilenceTimeout);
   preferences.putBool("vizClock", settings.vizShowClock);
   preferences.putBool("scopeGrid", settings.scopeGrid);
   preferences.putBool("scopeFill", settings.scopeFill);

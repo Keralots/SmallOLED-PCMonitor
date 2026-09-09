@@ -620,6 +620,11 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               <span class="check-box" aria-hidden="true"></span>
               <span class="check-text"><strong>Peak hold</strong><span class="ct-hint">A marker that hangs at each band's last peak and falls back under gravity. Hidden while it would touch the bar. Default on.</span></span>
             </label>
+            <div class="field" style="margin-top:16px;margin-bottom:0">
+              <label class="field-label" for="vizSilenceTimeout">Step aside after silence</label>
+              <input type="number" name="vizSilenceTimeout" id="vizSilenceTimeout" min="0" max="255" step="1" value="%V_VIZSILENCETIMEOUT%">
+              <p class="field-hint">Seconds of quiet before the display leaves the visualizer and goes back to PC stats or the clock, so a paused track does not leave a flat line on screen. Sound brings it straight back. 0 keeps the visualizer up regardless. Default 10.</p>
+            </div>
             <label class="check-row standalone" id="vizClockRow" style="margin-top:12px">
               <input type="checkbox" name="vizShowClock" id="vizShowClock" %CHK_VIZSHOWCLOCK%>
               <span class="check-box" aria-hidden="true"></span>

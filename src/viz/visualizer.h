@@ -24,6 +24,9 @@ bool vizIngest(const uint8_t* buf, int len);
 
 bool vizRecentEnough(unsigned long maxAgeMs);
 
+// Packets keep arriving through silence, so "streaming" is not "playing".
+bool vizHasSignal(unsigned long maxAgeMs);
+
 // Opens a 10s grace window so "No audio data" shows before the first packet.
 void vizNoteForced();
 bool vizShouldDisplay();

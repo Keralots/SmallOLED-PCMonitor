@@ -28,6 +28,10 @@ static bool vizWaveEver = false;
 static uint32_t vizWaveserial = 0;
 static unsigned long vizLastReceived = 0;
 static bool vizEverReceived = false;
+static unsigned long vizLastSignalAt = 0;
+
+// Out of 255, after the companion's AGC. Silence sits at 0 with a little noise.
+#define VIZ_SIGNAL_MIN 10
 
 static float barH[VIZ_BANDS];
 static float peakY[VIZ_BANDS];
@@ -51,6 +55,9 @@ bool vizIngest(const uint8_t* buf, int len) {
   }
   vizLastReceived = millis();
   vizEverReceived = true;
+  for (int i = 0; i < VIZ_BANDS; i++) {
+    if (vizBands[i] >= VIZ_SIGNAL_MIN) { vizLastSignalAt = vizLastReceived; break; }
+  }
   return true;
 }
 
@@ -63,8 +70,21 @@ bool vizRecentEnough(unsigned long maxAgeMs) {
 
 void vizNoteForced() { vizForcedAt = millis(); }
 
+bool vizHasSignal(unsigned long maxAgeMs) {
+  return vizLastSignalAt && (millis() - vizLastSignalAt) <= maxAgeMs;
+}
+
+// Gating on signal rather than clearing the caller's flag is deliberate: the
+// companion only sends a mode command on a transition, so a display that
+// dropped out of viz by itself would never be told to come back mid-track.
+// Leaving the flag set means silence hides the visualizer and sound brings it
+// straight back, with no round trip to the PC.
 bool vizShouldDisplay() {
-  return vizRecentEnough(10000) || (millis() - vizForcedAt) < 10000;
+  if ((millis() - vizForcedAt) < 10000) return true;  // just asked for; show "No audio data"
+  if (!vizRecentEnough(10000)) return false;
+  unsigned long quiet = (unsigned long)settings.vizSilenceTimeout * 1000UL;
+  if (!quiet) return true;
+  return vizHasSignal(quiet);
 }
 
 // ========== Rendering ==========

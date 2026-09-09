@@ -566,6 +566,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_VIZBARSTYLE_1")) { out = String(settings.vizBarStyle == 1 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_VIZBARSTYLE_2")) { out = String(settings.vizBarStyle == 2 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_VIZPEAKDOTS")) { out = String(settings.vizPeakDots ? "checked" : ""); return true; }
+  if (!strcmp(n, "V_VIZSILENCETIMEOUT")) { out = String(settings.vizSilenceTimeout); return true; }
   if (!strcmp(n, "CHK_VIZSHOWCLOCK")) { out = String(settings.vizShowClock ? "checked" : ""); return true; }
   if (!strcmp(n, "V_SCOPEGAIN")) { out = String(settings.scopeGain); return true; }
   if (!strcmp(n, "SEL_SCOPETRAIL_0")) { out = String(settings.scopeTrail == 0 ? "selected" : ""); return true; }
@@ -1143,6 +1144,10 @@ void handleSave() {
  // Checkboxes only appear in the POST body when ticked, so their absence is
  // the "off" signal - same pattern as every other checkbox on this form.
  settings.vizPeakDots = server.hasArg("vizPeakDots");
+ if (server.hasArg("vizSilenceTimeout")) {
+   long q = server.arg("vizSilenceTimeout").toInt();
+   if (q >= 0 && q <= 255) settings.vizSilenceTimeout = (uint8_t)q;
+ }
  settings.vizShowClock = server.hasArg("vizShowClock");
  settings.scopeGrid = server.hasArg("scopeGrid");
  settings.scopeFill = server.hasArg("scopeFill");
@@ -1506,6 +1511,7 @@ void handleExportConfig() {
  json += "\"tronShowGrid\":" + String(settings.tronShowGrid ? "true" : "false") + ",";
  json += "\"tronShowBorder\":" + String(settings.tronShowBorder ? "true" : "false") + ",";
  json += "\"vizPeakDots\":" + String(settings.vizPeakDots ? "true" : "false") + ",";
+ json += "\"vizSilenceTimeout\":" + String(settings.vizSilenceTimeout) + ",";
  json += "\"vizShowClock\":" + String(settings.vizShowClock ? "true" : "false") + ",";
  json += "\"scopeGrid\":" + String(settings.scopeGrid ? "true" : "false") + ",";
  json += "\"scopeFill\":" + String(settings.scopeFill ? "true" : "false") + ",";
@@ -1782,6 +1788,10 @@ void handleImportConfig() {
  if (!doc["tronShowGrid"].isNull()) settings.tronShowGrid = doc["tronShowGrid"];
  if (!doc["tronShowBorder"].isNull()) settings.tronShowBorder = doc["tronShowBorder"];
  if (!doc["vizPeakDots"].isNull()) settings.vizPeakDots = doc["vizPeakDots"];
+ if (!doc["vizSilenceTimeout"].isNull()) {
+   long q = doc["vizSilenceTimeout"];
+   if (q >= 0 && q <= 255) settings.vizSilenceTimeout = (uint8_t)q;
+ }
  if (!doc["vizShowClock"].isNull()) settings.vizShowClock = doc["vizShowClock"];
  if (!doc["scopeGrid"].isNull()) settings.scopeGrid = doc["scopeGrid"];
  if (!doc["scopeFill"].isNull()) settings.scopeFill = doc["scopeFill"];
