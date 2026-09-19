@@ -1482,6 +1482,7 @@ row.innerHTML =
 '<div><label class="field-label">Bar width (px)</label><input type="number" name="barWidth_' + mt.id + '" value="' + (mt.barWidth || 60) + '" min="10" max="64"></div>' +
 '<div><label class="field-label">Bar offset X (px)</label><input type="number" name="barOffset_' + mt.id + '" value="' + (mt.barOffsetX || 0) + '" min="0" max="54"></div>' +
 '</div></div>' +
+'<input type="hidden" name="metric_' + mt.id + '" value="1">' +
 '<input type="hidden" name="order_' + mt.id + '" value="' + mt.displayOrder + '">' +
 '<input type="hidden" name="position_' + mt.id + '" value="' + mt.position + '">';
 list.appendChild(row);

@@ -1338,8 +1338,19 @@ void handleSave() {
  safeCopyString(settings.ntpServer2, s.c_str(), sizeof(settings.ntpServer2));
  }
 
+ // Metric rows are rendered in the browser from live /metrics data, so a page
+ // loaded before any PC packet arrived posts no metric fields at all. Every
+ // rendered row carries a metric_<id> marker: without it the row was never on
+ // the page and its stored layout must survive the save instead of being
+ // reset to defaults.
+ bool metricRowPosted[MAX_METRICS];
+ for (int i = 0; i < MAX_METRICS; i++) {
+ metricRowPosted[i] = server.hasArg("metric_" + String(i + 1));
+ }
+
  // Save custom labels
  for (int i = 0; i < MAX_METRICS; i++) {
+ if (!metricRowPosted[i]) continue;
  String labelArg = "label_" + String(i + 1);
  if (server.hasArg(labelArg)) {
  String label = server.arg(labelArg);
@@ -1355,6 +1366,7 @@ void handleSave() {
 
  // Save metric display order
  for (int i = 0; i < MAX_METRICS; i++) {
+ if (!metricRowPosted[i]) continue;
  String orderArg = "order_" + String(i + 1);
  if (server.hasArg(orderArg)) {
  settings.metricOrder[i] = server.arg(orderArg).toInt();
@@ -1363,6 +1375,7 @@ void handleSave() {
 
  // Save metric companions
  for (int i = 0; i < MAX_METRICS; i++) {
+ if (!metricRowPosted[i]) continue;
  String companionArg = "companion_" + String(i + 1);
  if (server.hasArg(companionArg)) {
  settings.metricCompanions[i] = server.arg(companionArg).toInt();
@@ -1373,6 +1386,7 @@ void handleSave() {
 
  // Save metric positions
  for (int i = 0; i < MAX_METRICS; i++) {
+ if (!metricRowPosted[i]) continue;
  String positionArg = "position_" + String(i + 1);
  if (server.hasArg(positionArg)) {
  settings.metricPositions[i] = server.arg(positionArg).toInt();
@@ -1383,6 +1397,7 @@ void handleSave() {
 
  // Save progress bar settings
  for (int i = 0; i < MAX_METRICS; i++) {
+ if (!metricRowPosted[i]) continue;
  String barPosArg = "barPosition_" + String(i + 1);
  String minArg = "barMin_" + String(i + 1);
  String maxArg = "barMax_" + String(i + 1);
