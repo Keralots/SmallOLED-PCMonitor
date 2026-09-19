@@ -68,7 +68,6 @@ struct Settings {
   bool showClock;           // Show clock in metrics mode
 
   // Display settings
-  uint8_t displayType;      // 0=SSD1306, 1=SH1106
   uint8_t displayRowMode;   // 0=5 rows, 1=6 rows, 2=Large 2-row, 3=Large 3-row
   uint8_t colonBlinkMode;   // 0=Always On, 1=Blink, 2=Always Off
   uint8_t colonBlinkRate;   // Tenths of Hz (10 = 1.0 Hz)

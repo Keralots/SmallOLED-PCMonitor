@@ -165,7 +165,7 @@ void handleDeviceInfo() {
  doc["ip"] = WiFi.localIP().toString();
  doc["hostname"] = String(settings.deviceName) + ".local";
  doc["deviceName"] = settings.deviceName;
- doc["displayType"] = settings.displayType;
+ doc["displayType"] = DISPLAY_TYPE;  // compile-time panel, not a stored setting
  doc["rssi"] = WiFi.RSSI();
  doc["uptime"] = millis() / 1000;
  doc["freeHeap"] = ESP.getFreeHeap();
@@ -453,7 +453,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   }
   if (!strcmp(n, "HEAP")) { out = String(ESP.getFreeHeap() / 1024.0, 1); return true; }
   if (!strcmp(n, "DISPLAYMODEL")) {
-    out = (settings.displayType == 2) ? "CH1116" : (settings.displayType == 1) ? "SH1106" : "SSD1306";
+    out = (DISPLAY_TYPE == 2) ? "CH1116" : (DISPLAY_TYPE == 1) ? "SH1106" : "SSD1306";
     return true;
   }
   // Hides the OTA partition-limit warning on already-repartitioned devices.
