@@ -579,6 +579,9 @@ void loop() {
   int targetHz = getOptimalRefreshRate();
   unsigned long frameInterval = 1000 / targetHz;
 
+  static bool clockWasShown = false;
+  if (!displayAvailable || isDisplayForcedOff()) clockWasShown = false;
+
   if (millis() >= nextDisplayUpdate && displayAvailable && !isDisplayForcedOff()) {
     nextDisplayUpdate = millis() + frameInterval;
 
@@ -595,6 +598,13 @@ void loop() {
     } else if (showStats) {
       displayStats();
     } else {
+      // The clocks only advance displayed_hour/min while they are drawn, so
+      // coming back from stats/viz/display-off they hold a stale time.
+      if (!clockWasShown) {
+        resetClockAnimationState();
+        struct tm now_tm;
+        if (peekLocalTime(&now_tm)) syncDisplayedTime(&now_tm);
+      }
       switch (settings.clockStyle) {
       case 0:
         displayClockWithMario();
@@ -638,6 +648,7 @@ void loop() {
         break;
       }
     }
+    clockWasShown = mode == MODE_CLOCK;
 
     display.display();
 
