@@ -129,7 +129,7 @@ This wiring is for 2.42" OLED. Use the same firmware as for 0.96" OLED for flash
 No need to change firmware, TTP223 and LED will work.
 
 If you are using 2N2222 and resistors for led here is the wiring:
-<img width="1297" height="905" alt="image" src="https://github.com/user-attachments/assets/35afc555-9f64-4d54-864b-816c04abfd04" />
+<img width="1127" height="745" alt="Screenshot 2026-10-01 160707" src="https://github.com/user-attachments/assets/b6ca1ce1-5ade-4e57-b4f3-69afaf8b9a05" />
 
 If you are using LDO6AJSA here is the wiring:
 <img width="941" height="660" alt="image" src="https://github.com/user-attachments/assets/1ff209f1-0437-42a3-b4c9-3db65d4d3e1e" />
