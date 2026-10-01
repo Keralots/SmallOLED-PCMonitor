@@ -73,6 +73,16 @@ bool isAnimationActive() {
     return true;
   }
 
+  // Game of Life clock (clockStyle == 18) - only the minute change needs the boost
+  if (settings.clockStyle == 18) {
+    return lifeIsAnimating();
+  }
+
+  // Dragon Ball clock (clockStyle == 19) - Goku is always hovering
+  if (settings.clockStyle == 19) {
+    return true;
+  }
+
   // Standard and Large clocks (clockStyle 1 & 2) have no animations
   return false;
 }

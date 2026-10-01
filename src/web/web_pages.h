@@ -125,6 +125,8 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                   <option value="10" %SEL_CLOCKSTYLE_10%>Asteroids</option>
                   <option value="11" %SEL_CLOCKSTYLE_11%>Dino Runner</option>
                   <option value="16" %SEL_CLOCKSTYLE_16%>TRON</option>
+                  <option value="18" %SEL_CLOCKSTYLE_18%>Game of Life</option>
+                  <option value="19" %SEL_CLOCKSTYLE_19%>Dragon Ball</option>
                   <option value="9" %SEL_CLOCKSTYLE_9%>Custom rotation</option>
                 </select>
               </div>
@@ -551,6 +553,66 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                 <span class="check-box" aria-hidden="true"></span>
                 <span class="check-text"><strong>Show date</strong><span class="ct-hint">Off centres the clock above the runner. Default off.</span></span>
               </label>
+            </div>
+
+            <!-- Dragon Ball (style 19) -->
+            <div class="subcard" id="dragonSettings" style="display:%DSP_CLOCKSTYLE_19%">
+              <label class="check-row standalone">
+                <input type="checkbox" name="dragonIdleTricks" id="dragonIdleTricks" %CHK_DRAGONIDLETRICKS%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Idle tricks</strong><span class="ct-hint">Kata, sparring with his afterimage, ki blasts, the Flying Nimbus, afterimage blinks and power-ups between minutes. Off: he only walks, and runs to the digit instead of blinking. Default on.</span></span>
+              </label>
+            </div>
+
+            <!-- Game of Life (style 18) -->
+            <div class="subcard" id="lifeSettings" style="display:%DSP_CLOCKSTYLE_18%">
+              <div class="grid-2">
+                <div class="field" style="margin-bottom:0">
+                  <label class="field-label" for="lifeSpeed">Generations per second</label>
+                  <div class="range-row">
+                    <input type="range" name="lifeSpeed" id="lifeSpeed" min="2" max="20" step="1" value="%V_LIFESPEED%">
+                    <span class="range-val" data-for="lifeSpeed">%V_LIFESPEED%</span>
+                  </div>
+                  <p class="field-hint">How fast the colony evolves. Default 8.</p>
+                </div>
+                <div class="field" style="margin-bottom:0">
+                  <label class="field-label" for="lifeDensity">Colony density</label>
+                  <div class="select-wrap">
+                    <select name="lifeDensity" id="lifeDensity">
+                      <option value="0" %SEL_LIFEDENSITY_0%>Sparse</option>
+                      <option value="1" %SEL_LIFEDENSITY_1%>Normal</option>
+                      <option value="2" %SEL_LIFEDENSITY_2%>Dense</option>
+                    </select>
+                  </div>
+                  <p class="field-hint">How busy the background gets and how often new gliders arrive. Default Normal.</p>
+                </div>
+              </div>
+              <label class="check-row standalone" style="margin-top:16px">
+                <input type="checkbox" name="lifeShowDate" id="lifeShowDate" %CHK_LIFESHOWDATE%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Show date</strong><span class="ct-hint">Off centres the clock in the colony. Default off.</span></span>
+              </label>
+              <label class="check-row standalone" style="margin-top:12px">
+                <input type="checkbox" name="lifeSmallCells" id="lifeSmallCells" %CHK_LIFESMALLCELLS%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Small cells</strong><span class="ct-hint">Finer colony grid behind the standard clock. Always on with Small clock. Default off.</span></span>
+              </label>
+              <label class="check-row standalone" style="margin-top:12px">
+                <input type="checkbox" name="lifeSmallClock" id="lifeSmallClock" %CHK_LIFESMALLCLOCK%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Small clock</strong><span class="ct-hint">Smaller digits on a finer grid, leaving most of the screen to the colony. Default off.</span></span>
+              </label>
+              <div class="field" id="lifePosFields" style="margin:16px 0 0;display:%DSP_LIFESMALLCLOCK%">
+                <label class="field-label" for="lifeClockPos">Clock position</label>
+                <div class="select-wrap">
+                  <select name="lifeClockPos" id="lifeClockPos">
+                    <option value="0" %SEL_LIFECLOCKPOS_0%>Centre</option>
+                    <option value="1" %SEL_LIFECLOCKPOS_1%>Top</option>
+                    <option value="2" %SEL_LIFECLOCKPOS_2%>Bottom</option>
+                  </select>
+                </div>
+                <p class="field-hint">Top or bottom leaves one large open area for the colony. Default Centre.</p>
+              </div>
             </div>
           </div>
 
@@ -1119,10 +1181,12 @@ var staticSel = $('#useStaticIP');
 if (staticSel) { var fs = function () { toggle($('#staticFields'), staticSel.value === '1'); }; staticSel.addEventListener('change', fs); fs(); }
 var refSel = $('#refreshRateMode');
 if (refSel) { var fr = function () { toggle($('#refreshRateFields'), refSel.value === '1'); }; refSel.addEventListener('change', fr); fr(); }
+var lifeSmall = $('#lifeSmallClock');
+if (lifeSmall) { var fl = function () { toggle($('#lifePosFields'), lifeSmall.checked); }; lifeSmall.addEventListener('change', fl); fl(); }
 var marioEnc = $('#marioIdleEncounters');
 if (marioEnc) { var fe = function () { toggle($('#marioEncFields'), marioEnc.checked); }; marioEnc.addEventListener('change', fe); fe(); }
-var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','9':'cycleSettings','10':'asteroidsSettings','11':'dinoSettings','16':'tronSettings' };
-var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings','tronSettings','cycleSettings'];
+var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','9':'cycleSettings','10':'asteroidsSettings','11':'dinoSettings','16':'tronSettings','18':'lifeSettings','19':'dragonSettings' };
+var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings','tronSettings','lifeSettings','dragonSettings','cycleSettings'];
 var clockStyle = $('#clockStyle');
 function syncClockPanels() {
 ALL_PANELS.forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
@@ -1131,7 +1195,7 @@ if (show) { var e = document.getElementById(show); if (e) e.style.display = ''; 
 }
 if (clockStyle) { clockStyle.addEventListener('change', syncClockPanels); syncClockPanels(); }
 var cycleInput = $('#cycleConfig'), cycleRows = $('#cycleRows');
-var cycleNames = {0:'Mario',1:'Standard',2:'Large',3:'Space Invaders',5:'Arkanoid',6:'Pac-Man',7:'Snake',8:'Tetris',10:'Asteroids',11:'Dino Runner',16:'TRON'};
+var cycleNames = {0:'Mario',1:'Standard',2:'Large',3:'Space Invaders',5:'Arkanoid',6:'Pac-Man',7:'Snake',8:'Tetris',10:'Asteroids',11:'Dino Runner',16:'TRON',18:'Game of Life',19:'Dragon Ball'};
 if (cycleInput && cycleRows) {
 var cycleItems = cycleInput.value.split(',').map(function (v) { var p = v.split(':'); return { id: Number(p[0]), seconds: Number(p[1]), enabled: Number(p[1]) > 0 }; });
 Object.keys(cycleNames).forEach(function (k) { var id = Number(k); if (!cycleItems.some(function (v) { return v.id === id; })) cycleItems.push({ id: id, seconds: 300, enabled: false }); });

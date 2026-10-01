@@ -167,6 +167,8 @@ void resetClockAnimationState() {
   resetAsteroidsAnimation();
   resetDinoAnimation();
   resetTronAnimation();
+  resetLifeAnimation();
+  resetDragonBallAnimation();
 
   // Cross-cutting override + queue residue (leftover Pac-Man eat-queue
   // state can survive an aborted animation; clear so the next minute

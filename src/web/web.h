@@ -53,6 +53,7 @@ void handleSetVizStyle();
 void handleDebugFramebuffer();
 #endif
 void handleSetClockStyle();
+void handleDragonBallDemo();
 void handleReboot();
 
 #endif // WEB_H
