@@ -55,7 +55,7 @@ struct MetricData {
 // ========== Settings Structure ========== 
 struct Settings {
   // Clock settings
-  uint8_t clockStyle;       // 0=Mario, 1=Standard, 2=Large, 3=Space Invader, 4=Space Ship, 5=Pong, 6=Pac-Man, 7=Snake, 8=Tetris, 9=Custom rotation, 10=Asteroids, 11=Dino Runner, 16=TRON
+  uint8_t clockStyle;       // 0=Mario, 1=Standard, 2=Large, 3=Space Invader, 4=Space Ship, 5=Pong, 6=Pac-Man, 7=Snake, 8=Tetris, 9=Custom rotation, 10=Asteroids, 11=Dino Runner, 16=TRON, 18=Game of Life
   char cycleConfig[128];    // Ordered style:seconds pairs used by style 9; 0 seconds disables
   int16_t gmtOffset;        // GMT offset in minutes (deprecated, kept for migration)
   bool daylightSaving;      // DST enabled (deprecated, kept for migration)
@@ -188,6 +188,14 @@ struct Settings {
   uint8_t dinoCactusFreq;       // 0=Rare, 1=Normal, 2=Frequent
   bool dinoShowClouds;          // Parallax clouds (default: true)
   bool dinoShowDate;            // Show date row (off = centred clock)
+
+  // Game of Life clock settings
+  uint8_t lifeSpeed;            // Generations per second (2-20)
+  uint8_t lifeDensity;          // 0=Sparse, 1=Normal, 2=Dense
+  bool lifeShowDate;            // Show date row (off = centred clock)
+  bool lifeSmallClock;          // Size-2 digits on a finer grid, more room for the colony
+  bool lifeSmallCells;          // 2px colony cells with the large clock (small clock always uses them)
+  uint8_t lifeClockPos;         // Small clock only: 0=Centre, 1=Top, 2=Bottom
 
   // Metric configuration arrays
   char metricLabels[MAX_METRICS][METRIC_NAME_LEN];

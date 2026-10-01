@@ -385,6 +385,12 @@ void loadSettings() {
       preferences.getBool("dinoClouds", true); // Default: clouds on
   settings.dinoShowDate =
       preferences.getBool("dinoDate", false); // Default: hidden (centred clock)
+  settings.lifeSpeed = preferences.getUChar("lifeSpeed", 8);
+  settings.lifeDensity = preferences.getUChar("lifeDensity", 1);
+  settings.lifeShowDate = preferences.getBool("lifeDate", false);
+  settings.lifeSmallClock = preferences.getBool("lifeSmall", false);
+  settings.lifeSmallCells = preferences.getBool("lifeCells", false);
+  settings.lifeClockPos = preferences.getUChar("lifePos", 0);
 
   bool brightnessSettingsSanitized = false;
   uint8_t sanitizedDisplayBrightness =
@@ -638,6 +644,12 @@ void saveSettings() {
   preferences.putUChar("dinoCactus", settings.dinoCactusFreq);
   preferences.putBool("dinoClouds", settings.dinoShowClouds);
   preferences.putBool("dinoDate", settings.dinoShowDate);
+  preferences.putUChar("lifeSpeed", settings.lifeSpeed);
+  preferences.putUChar("lifeDensity", settings.lifeDensity);
+  preferences.putBool("lifeDate", settings.lifeShowDate);
+  preferences.putBool("lifeSmall", settings.lifeSmallClock);
+  preferences.putBool("lifeCells", settings.lifeSmallCells);
+  preferences.putUChar("lifePos", settings.lifeClockPos);
 
   // Save network configuration
   preferences.putString("deviceName", settings.deviceName);

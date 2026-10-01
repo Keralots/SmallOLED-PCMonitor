@@ -131,4 +131,9 @@ bool tronIsAnimating();
 void displayClockWithDino();
 void resetDinoAnimation();
 
+// ========== Game of Life Clock ==========
+void displayClockWithLife();
+void resetLifeAnimation();
+bool lifeIsAnimating();
+
 #endif // CLOCKS_H

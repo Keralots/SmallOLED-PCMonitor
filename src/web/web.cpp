@@ -547,6 +547,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_CLOCKSTYLE_10")) { out = String(settings.clockStyle == 10 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_11")) { out = String(settings.clockStyle == 11 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_16")) { out = String(settings.clockStyle == 16 ? "selected" : ""); return true; }
+  if (!strcmp(n, "SEL_CLOCKSTYLE_18")) { out = String(settings.clockStyle == 18 ? "selected" : ""); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_0")) { out = String(settings.clockStyle == 0 ? "block" : "none"); return true; }
   if (!strcmp(n, "V_MARIOBOUNCEHEIGHT")) { out = String(settings.marioBounceHeight); return true; }
   if (!strcmp(n, "F_MARIOBOUNCEHEIGHT")) { out = String(settings.marioBounceHeight / 10.0, 1); return true; }
@@ -626,6 +627,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "CHK_ASTEROIDSTRANSPARENT")) { out = String(settings.asteroidsTransparent ? "checked" : ""); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_11")) { out = String(settings.clockStyle == 11 ? "block" : "none"); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_16")) { out = String(settings.clockStyle == 16 ? "block" : "none"); return true; }
+  if (!strcmp(n, "DSP_CLOCKSTYLE_18")) { out = String(settings.clockStyle == 18 ? "block" : "none"); return true; }
   if (!strcmp(n, "SEL_TRONBIKESTYLE_0")) { out = String(settings.tronBikeStyle == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_TRONBIKESTYLE_1")) { out = String(settings.tronBikeStyle == 1 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_TRONSHOWGRID")) { out = String(settings.tronShowGrid ? "checked" : ""); return true; }
@@ -652,6 +654,17 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_DINOCACTUSFREQ_2")) { out = String(settings.dinoCactusFreq == 2 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWCLOUDS")) { out = String(settings.dinoShowClouds ? "checked" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWDATE")) { out = String(settings.dinoShowDate ? "checked" : ""); return true; }
+  if (!strcmp(n, "V_LIFESPEED")) { out = String(settings.lifeSpeed); return true; }
+  if (!strcmp(n, "SEL_LIFEDENSITY_0")) { out = String(settings.lifeDensity == 0 ? "selected" : ""); return true; }
+  if (!strcmp(n, "SEL_LIFEDENSITY_1")) { out = String(settings.lifeDensity == 1 ? "selected" : ""); return true; }
+  if (!strcmp(n, "SEL_LIFEDENSITY_2")) { out = String(settings.lifeDensity == 2 ? "selected" : ""); return true; }
+  if (!strcmp(n, "CHK_LIFESHOWDATE")) { out = String(settings.lifeShowDate ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_LIFESMALLCLOCK")) { out = String(settings.lifeSmallClock ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_LIFESMALLCELLS")) { out = String(settings.lifeSmallCells ? "checked" : ""); return true; }
+  if (!strcmp(n, "SEL_LIFECLOCKPOS_0")) { out = String(settings.lifeClockPos == 0 ? "selected" : ""); return true; }
+  if (!strcmp(n, "SEL_LIFECLOCKPOS_1")) { out = String(settings.lifeClockPos == 1 ? "selected" : ""); return true; }
+  if (!strcmp(n, "SEL_LIFECLOCKPOS_2")) { out = String(settings.lifeClockPos == 2 ? "selected" : ""); return true; }
+  if (!strcmp(n, "DSP_LIFESMALLCLOCK")) { out = String(settings.lifeSmallClock ? "block" : "none"); return true; }
   if (!strcmp(n, "SEL_USE24HOUR")) { out = String(settings.use24Hour ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_USE24HOUR_NOT")) { out = String(!settings.use24Hour ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_DATEFORMAT_0")) { out = String(settings.dateFormat == 0 ? "selected" : ""); return true; }
@@ -940,6 +953,9 @@ void validateSettings() {
  clampSetting(settings.scopeGain, 50, 200, "scopeGain");
  clampSetting(settings.dinoSpeed, 5, 30, "dinoSpeed");
  clampSetting(settings.dinoCactusFreq, 0, 2, "dinoCactusFreq");
+ clampSetting(settings.lifeSpeed, 2, 20, "lifeSpeed");
+ clampSetting(settings.lifeDensity, 0, 2, "lifeDensity");
+ clampSetting(settings.lifeClockPos, 0, 2, "lifeClockPos");
 }
 
 void handleSave() {
@@ -1251,6 +1267,18 @@ void handleSave() {
  }
  settings.dinoShowClouds = server.hasArg("dinoShowClouds");
  settings.dinoShowDate = server.hasArg("dinoShowDate");
+ if (server.hasArg("lifeSpeed")) {
+ settings.lifeSpeed = server.arg("lifeSpeed").toInt();
+ }
+ if (server.hasArg("lifeDensity")) {
+ settings.lifeDensity = server.arg("lifeDensity").toInt();
+ }
+ settings.lifeShowDate = server.hasArg("lifeShowDate");
+ settings.lifeSmallClock = server.hasArg("lifeSmallClock");
+ settings.lifeSmallCells = server.hasArg("lifeSmallCells");
+ if (server.hasArg("lifeClockPos")) {
+ settings.lifeClockPos = server.arg("lifeClockPos").toInt();
+ }
 
  // Save network configuration
  if (server.hasArg("deviceName")) {
@@ -1596,6 +1624,9 @@ void handleExportConfig() {
  json += "\"asteroidsRockSpeed\":" + String(settings.asteroidsRockSpeed) + ",";
  json += "\"dinoSpeed\":" + String(settings.dinoSpeed) + ",";
  json += "\"dinoCactusFreq\":" + String(settings.dinoCactusFreq) + ",";
+ json += "\"lifeSpeed\":" + String(settings.lifeSpeed) + ",";
+ json += "\"lifeDensity\":" + String(settings.lifeDensity) + ",";
+ json += "\"lifeClockPos\":" + String(settings.lifeClockPos) + ",";
  json += "\"tronBikeStyle\":" + String(settings.tronBikeStyle) + ",";
  json += "\"vizStyle\":" + String(settings.vizStyle) + ",";
  json += "\"vizRefreshHz\":" + String(settings.vizRefreshHz) + ",";
@@ -1619,6 +1650,9 @@ void handleExportConfig() {
  json += "\"asteroidsTransparent\":" + String(settings.asteroidsTransparent ? "true" : "false") + ",";
  json += "\"dinoShowClouds\":" + String(settings.dinoShowClouds ? "true" : "false") + ",";
  json += "\"dinoShowDate\":" + String(settings.dinoShowDate ? "true" : "false") + ",";
+ json += "\"lifeShowDate\":" + String(settings.lifeShowDate ? "true" : "false") + ",";
+ json += "\"lifeSmallClock\":" + String(settings.lifeSmallClock ? "true" : "false") + ",";
+ json += "\"lifeSmallCells\":" + String(settings.lifeSmallCells ? "true" : "false") + ",";
  json += "\"tronShowGrid\":" + String(settings.tronShowGrid ? "true" : "false") + ",";
  json += "\"tronShowBorder\":" + String(settings.tronShowBorder ? "true" : "false") + ",";
  json += "\"vizPeakDots\":" + String(settings.vizPeakDots ? "true" : "false") + ",";
@@ -1888,6 +1922,9 @@ void handleImportConfig() {
  if (!doc["asteroidsRockSpeed"].isNull()) settings.asteroidsRockSpeed = doc["asteroidsRockSpeed"];
  if (!doc["dinoSpeed"].isNull()) settings.dinoSpeed = doc["dinoSpeed"];
  if (!doc["dinoCactusFreq"].isNull()) settings.dinoCactusFreq = doc["dinoCactusFreq"];
+ if (!doc["lifeSpeed"].isNull()) settings.lifeSpeed = doc["lifeSpeed"];
+ if (!doc["lifeDensity"].isNull()) settings.lifeDensity = doc["lifeDensity"];
+ if (!doc["lifeClockPos"].isNull()) settings.lifeClockPos = doc["lifeClockPos"];
  if (!doc["tronBikeStyle"].isNull()) settings.tronBikeStyle = doc["tronBikeStyle"];
  if (!doc["vizStyle"].isNull()) settings.vizStyle = doc["vizStyle"];
  if (!doc["vizRefreshHz"].isNull()) settings.vizRefreshHz = doc["vizRefreshHz"];
@@ -1911,6 +1948,9 @@ void handleImportConfig() {
  if (!doc["asteroidsTransparent"].isNull()) settings.asteroidsTransparent = doc["asteroidsTransparent"];
  if (!doc["dinoShowClouds"].isNull()) settings.dinoShowClouds = doc["dinoShowClouds"];
  if (!doc["dinoShowDate"].isNull()) settings.dinoShowDate = doc["dinoShowDate"];
+ if (!doc["lifeShowDate"].isNull()) settings.lifeShowDate = doc["lifeShowDate"];
+ if (!doc["lifeSmallClock"].isNull()) settings.lifeSmallClock = doc["lifeSmallClock"];
+ if (!doc["lifeSmallCells"].isNull()) settings.lifeSmallCells = doc["lifeSmallCells"];
  if (!doc["tronShowGrid"].isNull()) settings.tronShowGrid = doc["tronShowGrid"];
  if (!doc["tronShowBorder"].isNull()) settings.tronShowBorder = doc["tronShowBorder"];
  if (!doc["vizPeakDots"].isNull()) settings.vizPeakDots = doc["vizPeakDots"];

@@ -73,6 +73,11 @@ bool isAnimationActive() {
     return true;
   }
 
+  // Game of Life clock (clockStyle == 18) - only the minute change needs the boost
+  if (settings.clockStyle == 18) {
+    return lifeIsAnimating();
+  }
+
   // Standard and Large clocks (clockStyle 1 & 2) have no animations
   return false;
 }

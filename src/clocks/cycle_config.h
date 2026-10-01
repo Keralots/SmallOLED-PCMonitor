@@ -6,10 +6,10 @@
 // Every renderer the rotation can show, in the order it used before the
 // rotation became configurable. Style 4 is an alias of 3 and 9 is the rotation
 // itself, so neither appears here.
-static const uint8_t CYCLE_STYLES[] = {1, 0, 3, 2, 5, 6, 7, 8, 10, 11, 16};
+static const uint8_t CYCLE_STYLES[] = {1, 0, 3, 2, 5, 6, 7, 8, 10, 11, 16, 18};
 static const unsigned CYCLE_COUNT = sizeof(CYCLE_STYLES);
 static const char CYCLE_DEFAULT[] =
-    "1:300,0:300,3:300,2:300,5:300,6:300,7:300,8:300,10:300,11:300,16:300";
+    "1:300,0:300,3:300,2:300,5:300,6:300,7:300,8:300,10:300,11:300,16:300,18:300";
 
 // A config written by a firmware that shipped fewer styles is still accepted:
 // its entries keep their order and durations and the styles added since are
