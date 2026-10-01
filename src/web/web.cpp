@@ -79,6 +79,7 @@ void setupWebServer() {
  server.on("/api/debug/fb", HTTP_GET, handleDebugFramebuffer);
 #endif
  server.on("/api/clock/style", HTTP_GET, handleSetClockStyle);
+ server.on("/api/dragonball/demo", HTTP_GET, handleDragonBallDemo);
  server.on("/api/reboot", HTTP_GET, handleReboot);
 
  // OTA Firmware Update handlers
@@ -384,6 +385,29 @@ void handleSetClockStyle() {
  resetClockAnimationState();
  server.send(200, "application/json",
              "{\"success\":true,\"clockStyle\":" + String(id) + "}");
+}
+
+// GET /api/dragonball/demo[?act=N|?stop=1] - unlisted showcase for the Dragon
+// Ball clock. Switches to it (not saved) and the clock screen, then plays every
+// act in turn - idle tricks, fights, Genki Dama, Shenron, the Kamehameha shot
+// and the Super Saiyan change, the last two replayed on the digits showing.
+// act=N plays just one; stop=1 ends the run. /api/mode/auto hands the screen back.
+void handleDragonBallDemo() {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ int only = -1;
+ if (server.hasArg("act")) only = server.arg("act").toInt();
+ if (server.hasArg("stop")) only = -2;
+ if (only != -2) {
+   if (settings.clockStyle != 19) {
+     settings.clockStyle = 19;
+     resetClockAnimationState();
+   }
+   httpForceClock = true;
+   httpForceViz = false;
+ }
+ dragonBallStartDemo(only);
+ server.send(200, "application/json",
+             "{\"success\":true,\"acts\":" + String(dragonBallDemoActs()) + "}");
 }
 
 // GET /api/reboot - soft restart (non-destructive, unlike /reset which wipes config)

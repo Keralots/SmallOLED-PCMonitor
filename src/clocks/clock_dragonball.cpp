@@ -8,8 +8,12 @@
  * Nimbus, vanishes in a zanzoken blink, turns to the camera and powers up
  * inside a flickering aura while pebbles lift off the ground, or fights a
  * visitor: Vegeta flies in, Piccolo flickers in, they trade blows, clash
- * fists, and it ends in a beam struggle or a finishing kick that sends the
- * visitor tumbling off screen.
+ * fists, swap ki blasts that collide or get swatted away, and lock beams -
+ * the visitor's beam drives Goku back across the ground until he flares up
+ * and blasts the visitor tumbling off screen. Rarely he raises a Genki Dama
+ * from motes of energy all over the screen and hurls it over the horizon.
+ * Dragon Balls turn up on the ground; he picks them up, and with all seven
+ * Shenron rises from them and coils across the screen in front of the time.
  *
  * At :56, for one or two changed digits, he gets beside each one (blink, or a
  * run with tricks off), pulls his cupped hands back to his hip while a ki ball
@@ -340,19 +344,68 @@ static const char *const PIC_HURT[] = {
   ".XXXXXX.XXX.........", ".XXXXX...XXX........",
   "XXXX.......XX.......", ".XXX.......XXX......"};
 
+// ---- Crouched beam-struggle pose, Genki Dama pose (front, 14x27), Shenron head ----
+static const char *const SPR_STRAIN[] = {
+  "....................", "....................",
+  "...X.X..............", "X..XXXX.X...........",
+  "XX.XXXXXXX..........", ".XXXXXXXXXX.........",
+  "XXXXXXXXXXXX........", ".XXXXXXXXXXX........",
+  "XXXXXXXXXXXXX.......", "..XXXXXXX.XX........",
+  ".XXXXXX...X.........", "...XXX..X..X........",
+  "....XX.....X........", ".....X...XX.........",
+  "......XXX...........", ".....XXXXX..........",
+  "....XXXXXXXXXXXX....", "....XXXXXXXXXXXX....",
+  "....XXXX............", ".....XXX............",
+  ".....X....X.........", "...XXXXXXX..........",
+  "..XX.....XX.........", ".XXX.....XXX........"};
+
+static const char *const SPR_GENKI[] = {
+  ".XX........XX.", ".XX........XX.",
+  "..X........X..", "...X.....X....",
+  "...XX...XX..X.", ".X.XXX.XXX.XX.",
+  ".XXXXXXXXXXXX.", "XXXXXXXXXXXXXX",
+  ".XXXXXXXXXXXX.", "XXXXXXXXXXXXXX",
+  "XXX.XXX.XX.XXX", ".XX........XX.",
+  ".XX.XX..XX.XX.", ".XX..X..X..XX.",
+  ".X.X......X.X.", ".X..X.XX.X..X.",
+  ".X...XXXX...X.", "..XXXXXXXXXX..",
+  "...XXXXXXXX...", "...XXXXXXXX...",
+  "....XXXXXX....", "....X....X....",
+  "....XXXXXX....", "...XXX..XXX...",
+  "..XXX....XXX..", ".XXX......XXX.",
+  ".XX........XX."};
+
+static const char *const SHENRON_HEAD[] = {
+  "..X...X...........", "...X.X............",
+  "....XXXXXX........", "...XXXXXXXXXX.....",
+  "..XXX.XXXXXXXXX...", "..XXXXXXXXXXXXXXX.",
+  "..XXXXXX..........", "..XXXXXXX.XX.X.X..",
+  "...XXXXXXXXXXXX...", "....XXXXX........."};
+
 enum DbPhase {
   DB_IDLE, DB_BLINK, DB_RUN, DB_CHARGE, DB_FIRE, DB_RETRACT, DB_FORM,
   DB_SSJ_UP, DB_SSJ_CRUMBLE, DB_SSJ_STRIKE, DB_SSJ_DOWN
 };
 enum DbIdle {
   IDLE_WALK, IDLE_PAUSE, IDLE_KATA, IDLE_SPAR, IDLE_POWER,
-  IDLE_VOLLEY, IDLE_BLASTS, IDLE_BEAM, IDLE_NIMBUS, IDLE_FIGHT
+  IDLE_VOLLEY, IDLE_BLASTS, IDLE_BEAM, IDLE_NIMBUS, IDLE_FIGHT,
+  IDLE_GENKI, IDLE_FETCH, IDLE_SHENRON
 };
 
 // ---- Visitors ----
-enum DbPose { POSE_STAND, POSE_PUNCH, POSE_KICK, POSE_HURT };
+enum DbPose { POSE_STAND, POSE_PUNCH, POSE_KICK, POSE_HURT, POSE_STRAIN };
 enum DbFoeKind { FOE_VEGETA, FOE_PICCOLO };
-enum DbFight { FIGHT_ARRIVE, FIGHT_BEATS, FIGHT_CHARGE, FIGHT_STRUGGLE, FIGHT_KO, FIGHT_WIN };
+enum DbFight {
+  FIGHT_ARRIVE, FIGHT_BEATS, FIGHT_VOLLEY, FIGHT_CHARGE, FIGHT_STRUGGLE, FIGHT_KO, FIGHT_WIN
+};
+
+// Ki exchange before the beams: when each fighter shoots (1 = Goku, 2 = visitor).
+// Pairs at the same moment meet in the middle.
+struct DbShot { float t; uint8_t who; };
+static const DbShot FIGHT_VOLLEY_SHOTS[] = {
+  {0.00f, 1}, {0.30f, 2}, {0.65f, 1}, {0.65f, 2},
+  {1.05f, 2}, {1.35f, 1}, {1.60f, 1}, {1.60f, 2},
+};
 
 static const char *const *const FOE_POSES[2][4] = {
   {VEG_STAND, VEG_PUNCH, VEG_KICK, VEG_HURT},
@@ -395,6 +448,7 @@ struct DbKi {
   bool active;
   float x, y, vx, vy;
   int8_t target;    // digit slot it is aimed at, -1 = flies off screen
+  uint8_t owner;    // 0 idle shot, 1 Goku in a fight, 2 visitor, 3 swatted away
 };
 
 // One beat of a kata or sparring routine.
@@ -477,10 +531,25 @@ static DbPose db_goku_pose = POSE_STAND, db_foe_pose = POSE_STAND;
 static int db_beat = 0;
 static float db_beat_t = 0;
 static float db_beat_g0 = 0, db_beat_f0 = 0;
-static bool db_kick_finish = false;
 static float db_clash_x = 0;
 static float db_shock_t = 0;                     // clash shake
 static int db_now_sec = 0;
+static int db_shot = 0;                          // next entry in the ki exchange
+static float db_goku_act = 0, db_foe_act = 0;   // brief punch pose after a shot or swat
+static float db_flare_t = 0;                     // Goku's comeback burst
+
+#define DB_MAX_MOTES 30
+static DbSpark db_motes[DB_MAX_MOTES];           // Genki Dama energy
+static float db_genki_x = 0, db_genki_y = 0, db_genki_r = 0;
+static bool db_genki_thrown = false;
+static float db_boom_t = 0;                      // explosion over the horizon
+static int db_boom_x = 0, db_boom_y = 0;
+
+static int db_ball_x = -1;                       // Dragon Ball on the ground
+static int db_balls = 0;                         // collected so far
+static float db_ball_timer = 45.0f;
+static float db_pips_t = 0;                      // collected-count display
+static float db_scatter_x[7], db_scatter_y[7], db_scatter_vx[7], db_scatter_vy[7];
 
 static DbSlot slot_mode[5];
 static int slot_rows_gone[5];
@@ -570,7 +639,7 @@ static void dbFireKi(float x, float y, float tx, float ty, int target) {
   float dx = tx - x, dy = ty - y, d = sqrtf(dx * dx + dy * dy);
   for (int i = 0; i < DB_MAX_KI; i++) {
     if (db_ki[i].active) continue;
-    db_ki[i] = {true, x, y, dx / d * DB_KI_SPEED, dy / d * DB_KI_SPEED, (int8_t)target};
+    db_ki[i] = {true, x, y, dx / d * DB_KI_SPEED, dy / d * DB_KI_SPEED, (int8_t)target, 0};
     return;
   }
 }
@@ -583,17 +652,19 @@ static float dbFoeFront() {
   return db_foe_x + (dbFoeDir() > 0 ? DB_FIST_X : DB_SIDE_W - 1 - DB_FIST_X);
 }
 
-static void dbStartFight() {
+static void dbStartFight(DbFoeKind foe) {
   // Goku turns toward the open side; the visitor takes the spot ahead of him.
+  // He also needs room behind him: the visitor's beam drives him back.
   db_dir = db_x < (SCREEN_WIDTH - DB_SIDE_W) / 2 ? 1 : -1;
-  if (db_dir > 0 && db_x > SCREEN_WIDTH - DB_SIDE_W - DB_FIGHT_GAP - 8) db_x = SCREEN_WIDTH - DB_SIDE_W - DB_FIGHT_GAP - 8;
-  if (db_dir < 0 && db_x < DB_FIGHT_GAP + 8) db_x = DB_FIGHT_GAP + 8;
-  db_foe = random(0, 2) ? FOE_VEGETA : FOE_PICCOLO;
+  if (db_dir > 0) db_x = fminf(fmaxf(db_x, 18), SCREEN_WIDTH - DB_SIDE_W - DB_FIGHT_GAP - 8);
+  else db_x = fmaxf(fminf(db_x, SCREEN_WIDTH - DB_SIDE_W - 18), DB_FIGHT_GAP + 8);
+  db_foe = foe;
   db_idle = IDLE_FIGHT;
   db_fight = FIGHT_ARRIVE;
   db_phase_t = 0;
   db_goku_pose = db_foe_pose = POSE_STAND;
-  db_kick_finish = random(0, 100) < 45;
+  db_shot = 0;
+  db_goku_act = db_foe_act = 0;
   float spot = db_x + db_dir * DB_FIGHT_GAP;
   db_foe_vx = spot;  // landing spot, kept here during the arrival
   if (db_foe == FOE_VEGETA) {
@@ -605,57 +676,171 @@ static void dbStartFight() {
   }
 }
 
+static void dbStartGenki() {
+  db_idle = IDLE_GENKI;
+  db_phase_t = 0;
+  db_genki_thrown = false;
+  db_genki_r = 0;
+  db_x = fminf(fmaxf(db_x, 8), SCREEN_WIDTH - DB_SIDE_W - 8);
+  db_dir = db_x < (SCREEN_WIDTH - DB_SIDE_W) / 2 ? 1 : -1;  // hurl it toward the far side
+  db_genki_x = db_x + DB_SIDE_W / 2;
+  db_genki_y = 27;
+  memset(db_motes, 0, sizeof(db_motes));
+}
+
+// The seven balls line up in the middle of the ground.
+static int dbRowBallX(int i) { return SCREEN_WIDTH / 2 - 18 + i * 6; }
+
+static void dbStartShenron() {
+  db_idle = IDLE_SHENRON;
+  db_phase_t = 0;
+  db_ball_x = -1;
+  // Step aside so the balls have the middle of the ground.
+  float cx = db_x + DB_SIDE_W / 2;
+  if (cx > 36 && cx < SCREEN_WIDTH - 36) {
+    dbLeaveGhost(SPR_STAND);
+    db_x = cx < SCREEN_WIDTH / 2 ? 4 : SCREEN_WIDTH - DB_SIDE_W - 4;
+  }
+  db_dir = db_x < SCREEN_WIDTH / 2 ? 1 : -1;
+  for (int i = 0; i < 7; i++) {
+    db_scatter_x[i] = dbRowBallX(i);
+    db_scatter_y[i] = DB_GROUND_Y - 3;
+    float a = -2.6f + i * 0.35f;  // fan out upward
+    db_scatter_vx[i] = cosf(a) * 110;
+    db_scatter_vy[i] = sinf(a) * 110;
+  }
+}
+
+// Everything Goku can do between minutes, plus the two minute-change shows
+// (replayed on the digits already showing) for the demo endpoint.
+enum DbAct {
+  ACT_WALK, ACT_KATA, ACT_SPAR, ACT_VOLLEY, ACT_BLASTS, ACT_BEAM, ACT_NIMBUS,
+  ACT_BLINK, ACT_POWER, ACT_FIGHT_VEGETA, ACT_FIGHT_PICCOLO, ACT_GENKI,
+  ACT_FETCH, ACT_SHENRON, ACT_SHOT, ACT_SSJ, ACT_COUNT
+};
+
+static int db_demo_step = -1;                    // next demo act, -1 = off
+static int db_demo_last = -1;                    // last act to play
+
+static void dbStartDemoChange(int count);
+
+static void dbStartAct(int act) {
+  switch (act) {
+    case ACT_WALK:
+      dbStartWalk();
+      break;
+    case ACT_KATA:
+      dbStartRoutine(IDLE_KATA);
+      break;
+    case ACT_SPAR:
+      dbStartRoutine(IDLE_SPAR);
+      break;
+    case ACT_VOLLEY: {
+      // Volley at a random digit: face it, then fire in ragged bursts.
+      static const int slots[4] = {0, 1, 3, 4};
+      db_volley_target = slots[random(0, 4)];
+      db_dir = DIGIT_X[db_volley_target] + 7 >= db_x + DB_SIDE_W / 2 ? 1 : -1;
+      db_idle = IDLE_VOLLEY;
+      db_shots_left = random(3, 7);
+      db_shot_timer = 0.2f;
+      break;
+    }
+    case ACT_BLASTS:
+    case ACT_BEAM:
+      if (db_dir > 0 && db_x > SCREEN_WIDTH - 50) db_dir = -1;
+      if (db_dir < 0 && db_x < 30) db_dir = 1;
+      if (act == ACT_BLASTS) {
+        db_idle = IDLE_BLASTS;
+        db_shots_left = random(3, 6);
+        db_shot_timer = 0.15f;
+      } else {
+        db_idle = IDLE_BEAM;
+        db_phase_t = 0;
+        db_beam = db_tail = 0;
+      }
+      break;
+    case ACT_NIMBUS:
+      // Nimbus swoops in from the side he is facing away from.
+      db_idle = IDLE_NIMBUS;
+      db_nimbus_stage = 0;
+      db_cloud_x = db_dir > 0 ? -26 : SCREEN_WIDTH + 2;
+      db_phase_t = 0;
+      break;
+    case ACT_BLINK:
+      dbLeaveGhost(SPR_STAND);
+      db_x = dbRandf(0, SCREEN_WIDTH - DB_SIDE_W);
+      db_dir = random(0, 2) ? 1 : -1;
+      dbIdlePause();
+      break;
+    case ACT_POWER:
+      db_idle = IDLE_POWER;
+      db_phase_t = 0;
+      break;
+    case ACT_FIGHT_VEGETA:
+    case ACT_FIGHT_PICCOLO:
+      dbStartFight(act == ACT_FIGHT_VEGETA ? FOE_VEGETA : FOE_PICCOLO);
+      break;
+    case ACT_GENKI:
+      dbStartGenki();
+      break;
+    case ACT_FETCH:
+      if (db_ball_x < 0) {
+        float cx = db_x + DB_SIDE_W / 2;
+        db_ball_x = (int)(cx < SCREEN_WIDTH / 2 ? cx + 30 : cx - 30);
+      }
+      db_idle = IDLE_FETCH;
+      db_walk_to = dbClampX(db_ball_x - DB_SIDE_W / 2);
+      db_dir = db_walk_to >= db_x ? 1 : -1;
+      db_phase_t = 0;
+      break;
+    case ACT_SHENRON:
+      db_balls = 7;
+      dbStartShenron();
+      break;
+    case ACT_SHOT:
+      dbStartDemoChange(1);
+      break;
+    case ACT_SSJ:
+      dbStartDemoChange(4);
+      break;
+  }
+}
+
 // Picks what Goku does next. Without tricks he only walks and stands.
 static void dbNextIdle() {
+  if (db_demo_step >= 0) {
+    int act = db_demo_step++;
+    if (db_demo_step > db_demo_last) db_demo_step = -1;
+    dbStartAct(act);
+    return;
+  }
   if (!settings.dragonIdleTricks) {
     if (random(0, 3)) dbStartWalk();
     else dbIdlePause();
     return;
   }
-  int roll = random(0, 100);
-  if (roll < 28) {
-    dbStartWalk();
-  } else if (roll < 42) {
-    dbStartRoutine(IDLE_KATA);
-  } else if (roll < 51) {
-    dbStartRoutine(IDLE_SPAR);
-  } else if (roll < 63) {
-    // Volley at a random digit: face it, then fire in ragged bursts.
-    static const int slots[4] = {0, 1, 3, 4};
-    db_volley_target = slots[random(0, 4)];
-    db_dir = DIGIT_X[db_volley_target] + 7 >= db_x + DB_SIDE_W / 2 ? 1 : -1;
-    db_idle = IDLE_VOLLEY;
-    db_shots_left = random(3, 7);
-    db_shot_timer = 0.2f;
-  } else if (roll < 69) {
-    if (db_dir > 0 && db_x > SCREEN_WIDTH - 50) db_dir = -1;
-    if (db_dir < 0 && db_x < 30) db_dir = 1;
-    db_idle = IDLE_BLASTS;
-    db_shots_left = random(3, 6);
-    db_shot_timer = 0.15f;
-  } else if (roll < 74) {
-    if (db_dir > 0 && db_x > SCREEN_WIDTH - 50) db_dir = -1;
-    if (db_dir < 0 && db_x < 30) db_dir = 1;
-    db_idle = IDLE_BEAM;
-    db_phase_t = 0;
-    db_beam = db_tail = 0;
-  } else if (roll < 80 && db_now_sec < 46) {
-    dbStartFight();
-  } else if (roll < 87) {
-    // Nimbus swoops in from the side he is facing away from.
-    db_idle = IDLE_NIMBUS;
-    db_nimbus_stage = 0;
-    db_cloud_x = db_dir > 0 ? -26 : SCREEN_WIDTH + 2;
-    db_phase_t = 0;
-  } else if (roll < 94) {
-    dbLeaveGhost(SPR_STAND);
-    db_x = dbRandf(0, SCREEN_WIDTH - DB_SIDE_W);
-    db_dir = random(0, 2) ? 1 : -1;
-    dbIdlePause();
-  } else {
-    db_idle = IDLE_POWER;
-    db_phase_t = 0;
+  if (db_balls >= 7 && db_now_sec < 38) {
+    dbStartAct(ACT_SHENRON);
+    return;
   }
+  if (db_ball_x >= 0 && random(0, 100) < 70) {
+    dbStartAct(ACT_FETCH);
+    return;
+  }
+  int roll = random(0, 100);
+  int act;
+  if (roll < 5 && db_now_sec < 40) act = ACT_GENKI;
+  else if (roll < 28) act = ACT_WALK;
+  else if (roll < 42) act = ACT_KATA;
+  else if (roll < 51) act = ACT_SPAR;
+  else if (roll < 63) act = ACT_VOLLEY;
+  else if (roll < 69) act = ACT_BLASTS;
+  else if (roll < 74) act = ACT_BEAM;
+  else if (roll < 80 && db_now_sec < 46) act = random(0, 2) ? ACT_FIGHT_VEGETA : ACT_FIGHT_PICCOLO;
+  else if (roll < 87) act = ACT_NIMBUS;
+  else if (roll < 94) act = ACT_BLINK;
+  else act = ACT_POWER;
+  dbStartAct(act);
 }
 
 // Where Goku stands to shoot digit `idx`: left of it facing right unless
@@ -688,6 +873,58 @@ static void dbStartChange() {
     db_phase = DB_RUN;
   }
 }
+
+// Starts the minute-change show for db_change_idx/val. False if nothing changes.
+static bool dbBeginChanges() {
+  db_cur = 0;
+  db_beam = db_tail = 0;
+  db_lift = 0;
+  memset(db_ki, 0, sizeof(db_ki));
+  memset(db_motes, 0, sizeof(db_motes));
+  db_genki_r = 0;
+  if (db_num_changes >= DB_SSJ_MIN_CHANGES) {
+    db_phase = DB_SSJ_UP;
+    db_phase_t = 0;
+    db_x = fminf(fmaxf(db_x, 10), SCREEN_WIDTH - DB_FRONT_W - 10);
+    return true;
+  }
+  if (db_num_changes > 0) {
+    dbStartChange();
+    return true;
+  }
+  return false;
+}
+
+// Demo: replay the show on the digits already showing, so the time stays right.
+static void dbStartDemoChange(int count) {
+  static const int slots[4] = {0, 1, 3, 4};
+  db_num_changes = 0;
+  for (int k = count == 1 ? 3 : 0; k < 4; k++) {
+    db_change_idx[db_num_changes] = slots[k];
+    db_change_val[db_num_changes] = getDisplayedDigitValue(slots[k]);
+    db_num_changes++;
+  }
+  dbBeginChanges();
+}
+
+void dragonBallStartDemo(int only) {
+  if (only == -2) {
+    db_demo_step = -1;
+    return;
+  }
+  if (only >= 0 && only < ACT_COUNT) {
+    db_demo_step = db_demo_last = only;
+  } else {
+    db_demo_step = 0;
+    db_demo_last = ACT_COUNT - 1;
+  }
+  if (db_phase == DB_IDLE) {
+    db_idle = IDLE_PAUSE;
+    db_phase_t = 1.0f;  // pick the first act on the next frame
+  }
+}
+
+int dragonBallDemoActs() { return ACT_COUNT; }
 
 static void dbStartForm(int idx, uint8_t value, float spread) {
   slot_mode[idx] = SLOT_FORMING;
@@ -899,16 +1136,34 @@ static void dbUpdateFight(float dt) {
       db_beat_f0 = db_foe_x;
       if (db_beat >= DB_LEN(FIGHT_SCRIPT)) {
         db_phase_t = 0;
-        if (db_kick_finish) {
-          db_goku_pose = POSE_KICK;
-          db_foe_pose = POSE_HURT;
-          dbBeatFx(1, POSE_KICK, POSE_HURT);
-          db_fight = FIGHT_KO;
-          db_foe_vx = fdir * -120.0f;
-          db_foe_vy = -70.0f;
-        } else {
-          db_fight = FIGHT_CHARGE;
+        db_fight = FIGHT_VOLLEY;
+        db_shot = 0;
+      }
+      break;
+    }
+
+    case FIGHT_VOLLEY: {
+      while (db_shot < DB_LEN(FIGHT_VOLLEY_SHOTS) && db_phase_t >= FIGHT_VOLLEY_SHOTS[db_shot].t) {
+        bool goku = FIGHT_VOLLEY_SHOTS[db_shot].who == 1;
+        float x = goku ? dbGokuFront() : dbFoeFront();
+        int dir = goku ? db_dir : -db_dir;
+        for (int i = 0; i < DB_MAX_KI; i++) {
+          if (db_ki[i].active) continue;
+          db_ki[i] = {true, x, (float)dbFistY(), dir * 130.0f, 0, -1, (uint8_t)(goku ? 1 : 2)};
+          break;
         }
+        if (goku) db_goku_act = 0.15f;
+        else db_foe_act = 0.15f;
+        db_shot++;
+      }
+      db_goku_pose = db_goku_act > 0 ? POSE_PUNCH : POSE_STAND;
+      db_foe_pose = db_foe_act > 0 ? POSE_PUNCH : POSE_STAND;
+      bool flying = false;
+      for (int i = 0; i < DB_MAX_KI; i++)
+        if (db_ki[i].active && (db_ki[i].owner == 1 || db_ki[i].owner == 2)) flying = true;
+      if ((db_shot >= DB_LEN(FIGHT_VOLLEY_SHOTS) && !flying && db_phase_t > 2.0f) || db_phase_t > 3.5f) {
+        db_fight = FIGHT_CHARGE;
+        db_phase_t = 0;
       }
       break;
     }
@@ -924,18 +1179,31 @@ static void dbUpdateFight(float dt) {
       break;
 
     case FIGHT_STRUGGLE: {
-      // The clash point wobbles, then Goku pushes it into the visitor.
-      db_goku_pose = POSE_PUNCH;
+      // Even at first; then the visitor's beam drives Goku back, crouched and
+      // sliding, until he flares up and drives the clash home.
       db_foe_pose = POSE_PUNCH;
       float mid = (dbGokuFront() + dbFoeFront()) / 2;
-      if (db_phase_t < 1.5f) {
+      if (db_phase_t < 1.2f) {
+        db_goku_pose = POSE_PUNCH;
         db_clash_x = mid + sinf(db_phase_t * 5.0f) * 4 * db_dir;
+      } else if (db_phase_t < 2.7f) {
+        db_goku_pose = POSE_STRAIN;
+        db_x = dbClampX(db_x - db_dir * 7.0f * dt);
+        db_clash_x -= db_dir * 9.0f * dt;
+        if ((db_clash_x - dbGokuFront()) * db_dir < 5) db_clash_x = dbGokuFront() + 5 * db_dir;
+        if (random(0, 2) == 0)
+          dbSpark(dbCol(3), DB_GROUND_Y - 1, -db_dir * dbRandf(10, 40), dbRandf(-30, -10), 0.3f);
       } else {
-        db_clash_x += db_dir * 40.0f * dt;
+        if (db_flare_t <= 0 && db_goku_pose == POSE_STRAIN) {
+          db_flare_t = 0.45f;
+          db_shock_t = 0.4f;
+        }
+        db_goku_pose = POSE_PUNCH;
+        db_clash_x += db_dir * 75.0f * dt;
       }
       if (random(0, 2) == 0)
         dbSpark(db_clash_x, dbFistY(), dbRandf(-50, 50), dbRandf(-60, 20), 0.3f);
-      if ((db_clash_x - dbFoeFront()) * db_dir >= 0 || db_phase_t > 3.5f) {
+      if ((db_clash_x - dbFoeFront()) * db_dir >= 0 || db_phase_t > 5.0f) {
         db_flash_t = 0.25f;
         db_flash_x = (int)dbFoeFront();
         db_flash_y = dbFistY();
@@ -968,6 +1236,90 @@ static void dbUpdateFight(float dt) {
     case FIGHT_WIN:
       if (db_phase_t > 0.8f) dbIdlePause();
       break;
+  }
+}
+
+static void dbUpdateGenki(float dt) {
+  float t = db_phase_t;
+  if (!db_genki_thrown) {
+    if (t > 0.4f && t < 4.2f) {
+      db_genki_r = fminf(8.0f, 1 + 7 * (t - 0.4f) / 3.8f);
+      // Motes of energy drift in from every edge of the sky.
+      for (int n = 0; n < 2; n++) {
+        float x, y;
+        switch (random(0, 3)) {
+          case 0: x = dbRandf(0, SCREEN_WIDTH); y = 0; break;
+          case 1: x = 0; y = dbRandf(0, 50); break;
+          default: x = SCREEN_WIDTH - 1; y = dbRandf(0, 50); break;
+        }
+        dbPush(db_motes, DB_MAX_MOTES, x, y, 0, 0, 3.0f);
+      }
+    }
+    for (int i = 0; i < DB_MAX_MOTES; i++) {
+      DbSpark &m = db_motes[i];
+      if (!m.active) continue;
+      float dx = db_genki_x - m.x, dy = db_genki_y - m.y, d = sqrtf(dx * dx + dy * dy);
+      if (d < db_genki_r + 1 || (m.life -= dt) <= 0) { m.active = false; continue; }
+      m.x += dx / d * 75.0f * dt;
+      m.y += dy / d * 75.0f * dt;
+    }
+    if (t > 4.6f) {
+      db_genki_thrown = true;
+      memset(db_motes, 0, sizeof(db_motes));
+    }
+    return;
+  }
+  // Hurled toward the far edge, dropping a little, then a blast beyond it.
+  if (db_boom_t <= 0 && db_genki_r > 0) {
+    db_genki_x += db_dir * 85.0f * dt;
+    db_genki_y += 10.0f * dt;
+    if (db_genki_x < -db_genki_r || db_genki_x > SCREEN_WIDTH + db_genki_r) {
+      db_boom_t = 0.8f;
+      db_boom_x = db_dir > 0 ? SCREEN_WIDTH - 1 : 0;
+      db_boom_y = (int)db_genki_y;
+      db_shock_t = 0.8f;
+      db_genki_r = 0;
+    }
+  } else if (db_boom_t <= 0) {
+    dbIdlePause();
+  }
+}
+
+// Shenron's body: a curve out of the ball row, sweeping up to the left and
+// then winding right across the screen. u runs tail (0) to head (1).
+static void dbShenronPoint(float u, float phase, float &x, float &y) {
+  if (u < 0.22f) {
+    float s = u / 0.22f, a = 1 - s;
+    x = a * a * 64 + 2 * a * s * 24 + s * s * 14;
+    y = a * a * 57 + 2 * a * s * 64 + s * s * 36;
+  } else {
+    float s = (u - 0.22f) / 0.78f;
+    x = 14 + s * 92;
+    y = 36 + 12 * sinf(s * 6.283f + phase) * fminf(1.0f, s * 4);
+  }
+}
+
+static void dbUpdateShenron(float dt) {
+  float t = db_phase_t;
+  if (t < 1.0f && random(0, 3) == 0) {
+    int i = random(0, 7);
+    dbSpark(dbRowBallX(i), DB_GROUND_Y - 4, dbRandf(-10, 10), dbRandf(-70, -40), 0.4f);
+  }
+  if (t > 6.0f && t < 7.0f) {
+    float x, y;
+    dbShenronPoint((t - 6.0f), (t - 3.0f) * 2.0f, x, y);
+    for (int s = 0; s < 2; s++) dbSpark(x, y, dbRandf(-40, 40), dbRandf(-40, 10), 0.5f);
+  }
+  if (t > 7.0f) {
+    for (int i = 0; i < 7; i++) {
+      db_scatter_x[i] += db_scatter_vx[i] * dt;
+      db_scatter_y[i] += db_scatter_vy[i] * dt;
+    }
+  }
+  if (t > 7.9f) {
+    db_balls = 0;
+    db_ball_timer = dbRandf(60, 150);
+    dbIdlePause();
   }
 }
 
@@ -1042,6 +1394,33 @@ static void dbUpdateIdle(float dt) {
     case IDLE_FIGHT:
       dbUpdateFight(dt);
       break;
+    case IDLE_GENKI:
+      dbUpdateGenki(dt);
+      break;
+    case IDLE_FETCH: {
+      float d = db_walk_to - db_x, step = DB_WALK_SPEED * 1.6f * dt;
+      if (db_ball_x < 0) { dbIdlePause(); break; }
+      if (fabsf(d) > step && db_phase_t < 8) {
+        db_x += step * (d > 0 ? 1 : -1);
+        db_walk_dist += step;
+        db_phase_t = 0;  // the crouch timer starts on arrival
+        break;
+      }
+      db_x = db_walk_to;
+      if (db_phase_t > 0.45f) {
+        for (int s = 0; s < 6; s++)
+          dbSpark(db_ball_x, DB_GROUND_Y - 3, dbRandf(-30, 30), dbRandf(-50, -15), 0.4f);
+        db_ball_x = -1;
+        db_balls++;
+        db_pips_t = 2.2f;
+        db_ball_timer = dbRandf(60, 150);
+        dbIdlePause();
+      }
+      break;
+    }
+    case IDLE_SHENRON:
+      dbUpdateShenron(dt);
+      break;
   }
 }
 
@@ -1052,6 +1431,37 @@ static void dbUpdateKi(float dt) {
     if (!k.active) continue;
     k.x += k.vx * dt;
     k.y += k.vy * dt;
+    if (k.owner == 1 || k.owner == 2) {
+      // Head-on meetings pop; a blast that gets through is swatted skyward.
+      for (int j = 0; j < DB_MAX_KI; j++) {
+        DbKi &o = db_ki[j];
+        if (j == i || !o.active || o.owner == k.owner || (o.owner != 1 && o.owner != 2)) continue;
+        if (fabsf(o.x - k.x) < 4 && fabsf(o.y - k.y) < 3) {
+          for (int s = 0; s < 6; s++)
+            dbSpark(k.x, k.y, dbRandf(-60, 60), dbRandf(-60, 20), 0.35f);
+          db_flash_t = 0.15f;
+          db_flash_x = (int)k.x;
+          db_flash_y = (int)k.y;
+          k.active = o.active = false;
+        }
+      }
+      if (!k.active) continue;
+      bool gokuShot = k.owner == 1;
+      float front = gokuShot ? dbFoeFront() : dbGokuFront();
+      float dirTo = gokuShot ? db_dir : -db_dir;
+      if ((k.x - front) * dirTo >= 0) {
+        k.owner = 3;
+        k.vx = -k.vx * 0.25f;
+        k.vy = -120.0f;
+        if (gokuShot) db_foe_act = 0.15f;
+        else db_goku_act = 0.15f;
+      }
+      continue;
+    }
+    if (k.owner == 3) {
+      if (k.y < 0) k.active = false;
+      continue;
+    }
     if (k.target >= 0 && k.y <= DB_DIGIT_BOTTOM) {
       // Pop against the underside of the digit.
       for (int s = 0; s < 3; s++)
@@ -1080,7 +1490,25 @@ static void updateDragonBallAnimation(struct tm *timeinfo) {
   for (int i = 0; i < 5; i++)
     if (slot_shake[i] > 0) slot_shake[i] -= dt;
   if (db_shock_t > 0) db_shock_t -= dt;
+  if (db_goku_act > 0) db_goku_act -= dt;
+  if (db_foe_act > 0) db_foe_act -= dt;
+  if (db_flare_t > 0) db_flare_t -= dt;
+  if (db_boom_t > 0) db_boom_t -= dt;
+  if (db_pips_t > 0) db_pips_t -= dt;
   db_now_sec = timeinfo->tm_sec;
+
+  // A Dragon Ball turns up on the ground now and then.
+  if (settings.dragonIdleTricks && db_phase == DB_IDLE && db_ball_x < 0 && db_balls < 7 &&
+      db_idle != IDLE_SHENRON) {
+    db_ball_timer -= dt;
+    if (db_ball_timer <= 0) {
+      for (int k = 0; k < 6; k++) {
+        int x = random(6, SCREEN_WIDTH - 6);
+        if (fabsf(x - (db_x + DB_SIDE_W / 2)) > 16) { db_ball_x = x; break; }
+      }
+      db_ball_timer = 10;  // retry soon if he was in the way every time
+    }
+  }
 
   for (int i = 0; i < 5; i++)
     if (slot_mode[i] == SLOT_SOLID) slot_value[i] = getDisplayedDigitValue(i);
@@ -1101,18 +1529,7 @@ static void updateDragonBallAnimation(struct tm *timeinfo) {
       db_change_val[db_num_changes] = target_digit_values[i];
       db_num_changes++;
     }
-    db_cur = 0;
-    db_beam = db_tail = 0;
-    db_lift = 0;
-    if (db_num_changes >= DB_SSJ_MIN_CHANGES) {
-      db_phase = DB_SSJ_UP;
-      db_phase_t = 0;
-      db_x = fminf(fmaxf(db_x, 10), SCREEN_WIDTH - DB_FRONT_W - 10);
-    } else if (db_num_changes > 0) {
-      dbStartChange();
-    } else {
-      time_overridden = false;
-    }
+    if (!dbBeginChanges()) time_overridden = false;
   }
 
   int idx = db_num_changes ? db_change_idx[db_cur] : 0;
@@ -1315,7 +1732,7 @@ static void dbDrawChar(const char *const *rows, int h, int x, int lift, int dir,
 
 // Level beam between two x positions. The spiral variant is Piccolo's
 // Special Beam Cannon: a thin core with a ribbon winding round it.
-static void dbDrawHBeam(int xa, int xb, int y, bool spiral) {
+static void dbDrawHBeam(int xa, int xb, int y, bool spiral, int thick = 0) {
   if (xa > xb) { int s = xa; xa = xb; xb = s; }
   for (int x = xa; x <= xb; x++) {
     if (spiral) {
@@ -1323,11 +1740,13 @@ static void dbDrawHBeam(int xa, int xb, int y, bool spiral) {
       dbPixel(x, y + (int)roundf(sinf(x * 0.7f - db_clock * 25.0f) * 3));
       dbPixel(x, y - (int)roundf(sinf(x * 0.7f - db_clock * 25.0f + 1.6f) * 3));
     } else {
-      int half = 4 + (int)roundf(sinf(x * 0.6f - db_clock * 18.0f));
+      int half = 4 + thick + (int)roundf(sinf(x * 0.6f - db_clock * 18.0f));
+      int core = 2 + thick / 2;
       dbPixel(x, y - half);
       dbPixel(x, y + half);
       bool band = ((x + (int)(db_clock * 60.0f)) % 6 + 6) % 6 == 0;
-      for (int w = -2; w <= 2; w++) dbPixel(x, y + w, band && abs(w) <= 1 ? DISPLAY_BLACK : DISPLAY_WHITE);
+      for (int w = -core; w <= core; w++)
+        dbPixel(x, y + w, band && abs(w) <= core - 1 ? DISPLAY_BLACK : DISPLAY_WHITE);
     }
   }
 }
@@ -1337,6 +1756,7 @@ static const char *const *dbGokuPoseRows(DbPose p) {
     case POSE_PUNCH: return SPR_PUNCH;
     case POSE_KICK: return SPR_KICK;
     case POSE_HURT: return SPR_HURT;
+    case POSE_STRAIN: return SPR_STRAIN;
     default: return SPR_STAND;
   }
 }
@@ -1476,12 +1896,80 @@ static void dbDrawFight(int gx) {
   }
   if (db_fight == FIGHT_STRUGGLE) {
     int y = dbFistY();
-    dbDrawHBeam((int)dbGokuFront(), (int)db_clash_x, y, false);
-    dbDrawHBeam((int)db_clash_x, (int)dbFoeFront(), y, db_foe == FOE_PICCOLO);
-    dbDisc((int)db_clash_x, y, 4 + ((int)(db_clock * 20) & 1));
+    bool pushed = db_goku_pose == POSE_STRAIN, comeback = db_phase_t >= 2.7f;
+    dbDrawHBeam((int)dbGokuFront(), (int)db_clash_x, y, false, comeback ? 2 : 0);
+    dbDrawHBeam((int)db_clash_x, (int)dbFoeFront(), y, db_foe == FOE_PICCOLO, pushed ? 2 : 0);
+    dbDisc((int)db_clash_x, y, (comeback ? 5 : 4) + ((int)(db_clock * 20) & 1));
+  }
+  if (db_flare_t > 0) {
+    // Comeback burst: a ring blowing outward from Goku.
+    int r = 4 + (int)((0.45f - db_flare_t) * 50);
+    dbRing((int)(db_x + DB_SIDE_W / 2), DB_FEET_Y - 12, r);
   }
 
   dbDrawChar(dbGokuPoseRows(db_goku_pose), DB_SIDE_H, gx, 0, db_dir, false);
+}
+
+static void dbDrawGenkiBall(int cx, int cy, int r) {
+  // Black body so it reads in front of the digits, shimmering checker inside.
+  bool odd = (int)(db_clock * 10) & 1;
+  for (int y = -r; y <= r; y++)
+    for (int x = -r; x <= r; x++) {
+      int d = x * x + y * y;
+      if (d > r * r) continue;
+      bool rim = d >= (r - 1) * (r - 1);
+      dbPixel(cx + x, cy + y, rim || (((x + y) & 1) == odd) ? DISPLAY_WHITE : DISPLAY_BLACK);
+    }
+}
+
+static void dbDrawDragonBall(int x, int y, int r) {
+  dbDisc(x, y, r);
+  dbPixel(x, y, DISPLAY_BLACK);                 // the star
+  if ((int)(db_clock * 3) % 4 == 0) dbPixel(x - 1, y - 1, DISPLAY_BLACK);  // glint
+}
+
+static void dbDrawShenron() {
+  float t = db_phase_t;
+  if (t < 1.0f) return;
+  float grow = fminf(1.0f, (t - 1.0f) / 2.0f);
+  float tail = t > 6.0f ? fminf(1.0f, t - 6.0f) : 0.0f;
+  if (tail >= 1.0f) return;
+  float phase = t > 3.0f ? (t - 3.0f) * 2.0f : 0.0f;
+  int n = 0;
+  float px = 0, py = 0;
+  dbShenronPoint(tail, phase, px, py);
+  for (float u = tail + 0.0025f; u <= grow; u += 0.0025f, n++) {
+    float x, y;
+    dbShenronPoint(u, phase, x, y);
+    float dx = x - px, dy = y - py, len = sqrtf(dx * dx + dy * dy);
+    if (len < 0.01f) continue;
+    float nx = -dy / len, ny = dx / len;
+    if (ny > 0) { nx = -nx; ny = -ny; }        // normal points up
+    int half = u < 0.1f ? 2 : 3;
+    for (int w = -half + 1; w < half; w++) dbPixel((int)roundf(x + nx * w), (int)roundf(y + ny * w), DISPLAY_BLACK);
+    dbPixel((int)roundf(x + nx * half), (int)roundf(y + ny * half));
+    dbPixel((int)roundf(x - nx * half), (int)roundf(y - ny * half));
+    if (n % 6 == 0) dbPixel((int)roundf(x), (int)roundf(y));                       // scales
+    if (n % 9 == 0) dbPixel((int)roundf(x + nx * (half + 1)), (int)roundf(y + ny * (half + 1)));  // spines
+    px = x;
+    py = y;
+  }
+  // Head at the leading end, facing the way the body travels.
+  float hx, hy, bx, by;
+  dbShenronPoint(grow, phase, hx, hy);
+  dbShenronPoint(fmaxf(0, grow - 0.01f), phase, bx, by);
+  int dir = hx >= bx ? 1 : -1;
+  int x0 = dir > 0 ? (int)hx - 3 : (int)hx - 14;
+  for (int r = 0; r < 10; r++)
+    for (int c = 0; c < 18; c++)
+      if (SHENRON_HEAD[r][c] == 'X') dbPixel(dir > 0 ? x0 + c : x0 + 17 - c, (int)hy - 5 + r);
+  // Whiskers trailing back from the snout.
+  int sx = dir > 0 ? x0 + 15 : x0 + 2, sy = (int)hy;
+  for (int k = 0; k < 10; k++) {
+    int wx = sx - dir * k;
+    dbPixel(wx, sy - 3 - (int)roundf(sinf(k * 0.5f + db_clock * 6) * 2) - k / 3);
+    dbPixel(wx, sy + 4 + (int)roundf(sinf(k * 0.5f + db_clock * 6 + 1) * 2) + k / 3);
+  }
 }
 
 static void dbDrawGokuIdle(int gx) {
@@ -1527,6 +2015,36 @@ static void dbDrawGokuIdle(int gx) {
     case IDLE_FIGHT:
       dbDrawFight(gx);
       break;
+    case IDLE_GENKI:
+      if (!db_genki_thrown) {
+        dbDrawSprite(SPR_GENKI, DB_FRONT_W, 27, gx + (DB_SIDE_W - DB_FRONT_W) / 2, DB_FEET_Y - 26, 1);
+        for (int i = 0; i < DB_MAX_MOTES; i++)
+          if (db_motes[i].active) dbPixel((int)db_motes[i].x, (int)db_motes[i].y);
+      } else {
+        dbDrawSide(db_boom_t > 0 || db_genki_r <= 0 ? SPR_STAND : SPR_PUNCH, gx, 0, db_dir);
+      }
+      if (db_genki_r >= 1) dbDrawGenkiBall((int)db_genki_x, (int)db_genki_y, (int)db_genki_r);
+      break;
+    case IDLE_FETCH:
+      if (fabsf(db_walk_to - db_x) > 0.5f) dbDrawSide(dbWalkFrame(), gx, 0, db_dir);
+      else dbDrawSide(SPR_STRAIN, gx, 0, db_dir);  // bends down for it
+      break;
+    case IDLE_SHENRON: {
+      dbDrawSide(SPR_STAND, gx, 0, db_dir);
+      float t = db_phase_t;
+      if (t < 7.0f) {
+        int r = t < 1.0f ? 2 + ((int)(db_clock * 12) & 1) : 2;
+        for (int i = 0; i < 7; i++) dbDrawDragonBall(dbRowBallX(i), DB_GROUND_Y - 3, r);
+        if (t < 1.0f && random(0, 3) == 0) {
+          int bx = dbRowBallX(random(0, 7));
+          dbBolt(bx, DB_GROUND_Y - 5, bx + (int)random(-6, 7), 24);
+        }
+      } else {
+        for (int i = 0; i < 7; i++) dbDrawDragonBall((int)db_scatter_x[i], (int)db_scatter_y[i], 2);
+      }
+      dbDrawShenron();
+      break;
+    }
     case IDLE_NIMBUS:
       dbDrawSide(SPR_STAND, gx, lift, db_dir);
       dbDrawNimbus((int)db_cloud_x, DB_FEET_Y - (db_nimbus_stage >= 1 && db_nimbus_stage <= 2 ? lift : 8) + 1);
@@ -1651,6 +2169,19 @@ void displayClockWithDragonBall() {
       break;
   }
 
+  if (db_ball_x >= 0) dbDrawDragonBall(db_ball_x, DB_GROUND_Y - 3, 2);
+  if (db_pips_t > 0) {
+    for (int i = 0; i < 7; i++) {
+      int x = SCREEN_WIDTH / 2 - 18 + i * 6, y = 29;
+      if (i < db_balls) dbDisc(x, y, 1);
+      else { dbPixel(x - 1, y - 1); dbPixel(x + 1, y - 1); dbPixel(x - 1, y + 1); dbPixel(x + 1, y + 1); }
+    }
+  }
+  if (db_boom_t > 0) {
+    int r = (int)((0.8f - db_boom_t) * 40) + 2;
+    dbRing(db_boom_x, db_boom_y, r);
+    dbRing(db_boom_x, db_boom_y, r / 2);
+  }
   if (db_flash_t > 0) dbDrawStar(db_flash_x, db_flash_y);
 
   for (int i = 0; i < DB_MAX_KI; i++)

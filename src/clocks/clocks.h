@@ -140,5 +140,8 @@ bool lifeIsAnimating();
 void displayClockWithDragonBall();
 void resetDragonBallAnimation();
 bool dragonBallIsAnimating();
+// Demo: play every act in turn (only = -1), one act (0..acts-1), or stop (-2).
+void dragonBallStartDemo(int only);
+int dragonBallDemoActs();
 
 #endif // CLOCKS_H
