@@ -54,6 +54,10 @@ void handleDebugFramebuffer();
 #endif
 void handleSetClockStyle();
 void handleDragonBallDemo();
+#if GAMEPAD_ENABLED
+void handleGameStart();
+void handleGameStop();
+#endif
 void handleReboot();
 
 #endif // WEB_H

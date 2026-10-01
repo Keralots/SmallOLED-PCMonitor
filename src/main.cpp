@@ -44,6 +44,9 @@
 #include "utils/utils.h"
 #include "timezones.h"
 #include "viz/visualizer.h"
+#if GAMEPAD_ENABLED
+#include "game/game_mode.h"
+#endif
 
 // ========== External Objects ==========
 extern WiFiUDP udp;              // Defined in network.cpp
@@ -199,6 +202,9 @@ void advanceClockStyleFromTouch() {
 // stats and clock: it is only ever on because something explicitly asked for
 // it, and it stops asking on its own once the stream dies.
 DisplayMode currentDisplayMode() {
+#if GAMEPAD_ENABLED
+  if (gameModeActive()) return MODE_GAME;
+#endif
   if (httpForceViz && vizShouldDisplay()) return MODE_VIZ;
 #if TOUCH_BUTTON_ENABLED
   if (metricData.online && !manualClockMode && !httpForceClock) return MODE_METRICS;
@@ -215,9 +221,13 @@ int getOptimalRefreshRate() {
   // should not freeze the bars. Capped rather than free-running - these
   // controllers have no double buffering, so pushing frames faster than the
   // panel scans them out shows up as tearing.
-  if (currentDisplayMode() == MODE_VIZ) {
+  DisplayMode mode = currentDisplayMode();
+  if (mode == MODE_VIZ) {
     return settings.vizRefreshHz;
   }
+#if GAMEPAD_ENABLED
+  if (mode == MODE_GAME) return GAME_REFRESH_HZ;
+#endif
 
   if (settings.refreshRateMode == 1) {
     // Manual mode - use user-specified rate
@@ -484,7 +494,13 @@ void loop() {
 #endif
   // Regular short press (mode toggle / clock style cycle)
   if (checkTouchButtonPressed()) {
-    if (!handleTemporaryDisplayWake()) {
+    if (handleTemporaryDisplayWake()) {
+#if GAMEPAD_ENABLED
+    } else if (gameModeActive()) {
+      gameModeStop();
+      Serial.println("Touch button: Leaving game mode");
+#endif
+    } else {
       // Stops are metrics -> clock -> visualizer -> metrics, skipping the
       // ones that have nothing to show. The visualizer only joins while sound
       // is actually playing: packets keep arriving through silence, so
@@ -595,7 +611,11 @@ void loop() {
     bool showStats = mode == MODE_METRICS;
 
     // Show error status if PC is connected but LHM has issues
-    if (mode == MODE_VIZ) {
+    if (mode == MODE_GAME) {
+#if GAMEPAD_ENABLED
+      displayGameMode();
+#endif
+    } else if (mode == MODE_VIZ) {
       displayVisualizer();
     } else if (showStats && metricData.status != STATUS_OK && metricData.status != 0) {
       displayErrorStatus(metricData.status);

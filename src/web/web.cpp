@@ -15,6 +15,9 @@
 #include "../display/display.h"
 #include "../timezones.h"
 #include "../viz/visualizer.h"
+#if GAMEPAD_ENABLED
+#include "../game/game_mode.h"
+#endif
 #include "web_pages.h"
 #include <WebServer.h>
 #include <Update.h>
@@ -80,6 +83,10 @@ void setupWebServer() {
 #endif
  server.on("/api/clock/style", HTTP_GET, handleSetClockStyle);
  server.on("/api/dragonball/demo", HTTP_GET, handleDragonBallDemo);
+#if GAMEPAD_ENABLED
+ server.on("/api/game/start", HTTP_GET, handleGameStart);
+ server.on("/api/game/stop", HTTP_GET, handleGameStop);
+#endif
  server.on("/api/reboot", HTTP_GET, handleReboot);
 
  // OTA Firmware Update handlers
@@ -102,6 +109,10 @@ void setupWebServer() {
  HTTPUpload& upload = server.upload();
  if (upload.status == UPLOAD_FILE_START) {
  Serial.printf("Update: %s\n", upload.filename.c_str());
+#if GAMEPAD_ENABLED
+ // A BLE connect in flight can stall the upload long enough to trip the task WDT.
+ gameModeStop();
+#endif
  if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { // Start with max available size
  Update.printError(Serial);
  }
@@ -195,7 +206,7 @@ void handleStatus() {
  // still the daytime value.
  doc["displayOn"] = !isDisplayForcedOff() && getLastAppliedBrightness() > 0;
  doc["forcedOff"] = isDisplayForcedOff();
- doc["mode"] = mode == MODE_VIZ ? "viz" : (mode == MODE_METRICS ? "metrics" : "clock");
+ doc["mode"] = mode == MODE_GAME ? "game" : mode == MODE_VIZ ? "viz" : (mode == MODE_METRICS ? "metrics" : "clock");
  doc["forcedClock"] = httpForceClock;
  doc["forcedViz"] = httpForceViz;
  // The companion derives a boot timestamp from this to notice a reboot and
@@ -325,6 +336,9 @@ void handleDebugFramebuffer() {
 
 // GET /api/mode/clock - force clock display even when the PC is online
 void handleModeClock() {
+#if GAMEPAD_ENABLED
+ gameModeStop();
+#endif
  httpForceClock = true;
  httpForceViz = false;  // the two overrides are mutually exclusive
  server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -334,12 +348,31 @@ void handleModeClock() {
 // GET /api/mode/viz - force the audio visualizer. Needs the companion's audio
 // stream; without it the panel says so and drops back after the grace window.
 void handleModeViz() {
+#if GAMEPAD_ENABLED
+ gameModeStop();
+#endif
  httpForceViz = true;
  httpForceClock = false;
  vizNoteForced();
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", "{\"success\":true,\"mode\":\"viz\"}");
 }
+
+#if GAMEPAD_ENABLED
+// GET /api/game/start - enter game mode: scan for a BLE gamepad, then Falling Blocks.
+void handleGameStart() {
+ gameModeStart();
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true,\"mode\":\"game\"}");
+}
+
+// GET /api/game/stop - leave game mode and release the pad.
+void handleGameStop() {
+ gameModeStop();
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true}");
+}
+#endif
 
 // GET /api/viz/style?id=0-2 - switch the visualizer style at runtime.
 // Like /api/clock/style this mutates settings without persisting; a later
@@ -362,6 +395,9 @@ void handleSetVizStyle() {
 
 // GET /api/mode/auto - resume automatic mode (metrics when PC online, clock otherwise)
 void handleModeAuto() {
+#if GAMEPAD_ENABLED
+ gameModeStop();
+#endif
  httpForceClock = false;
  httpForceViz = false;
  server.sendHeader("Access-Control-Allow-Origin", "*");

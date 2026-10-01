@@ -59,6 +59,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
         <button type="button" class="nav-item active" data-nav="clock">Clock</button>
         <button type="button" class="nav-item" data-nav="display">Display</button>
         <button type="button" class="nav-item" data-nav="viz">Audio visualizer</button>
+        <button type="button" class="nav-item" data-nav="game">Game mode</button>
         <button type="button" class="nav-item" data-nav="layout">Display layout<span class="nv-tag">PC</span></button>
         <button type="button" class="nav-item" data-nav="metrics">Visible metrics<span class="nv-tag">PC</span></button>
       </div>
@@ -741,6 +742,22 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
             <div class="btn-row" style="margin-top:12px">
               <button type="button" class="btn" id="vizStart">Show visualizer</button>
               <button type="button" class="btn btn-ghost" id="vizAuto">Back to auto</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- GAME MODE -->
+        <section class="page" data-page="game">
+          <div class="page-header">
+            <h1 class="page-h1">Game mode</h1>
+            <p class="page-lede">Pair a Bluetooth gamepad and play on the OLED. A forced mode like the visualizer: it runs until you quit from the pad, tap the touch button or press Stop.</p>
+          </div>
+          <div class="card">
+            <h2 class="card-title">Falling Blocks</h2>
+            <p class="field-hint" style="margin-top:0">Play Falling Blocks on the OLED with an Xbox Wireless Controller over Bluetooth LE (model 1708 or newer, controller firmware 5.x). Start game mode, then hold the pad's pair button for 3 seconds. A paired pad reconnects with the Xbox button. D-pad moves, Up drops, A/B rotate, Menu pauses, View quits from pause.</p>
+            <div class="btn-row" style="margin-top:12px">
+              <button type="button" class="btn" id="gameStart">Start game mode</button>
+              <button type="button" class="btn btn-ghost" id="gameStop">Stop</button>
             </div>
           </div>
         </section>
@@ -1631,6 +1648,9 @@ if (vizStyleSel) { vizStyleSel.addEventListener('change', syncVizPanels); syncVi
 var vizStartBtn = $('#vizStart'), vizAutoBtn = $('#vizAuto');
 if (vizStartBtn) vizStartBtn.addEventListener('click', function () { fetch('/api/mode/viz'); });
 if (vizAutoBtn) vizAutoBtn.addEventListener('click', function () { fetch('/api/mode/auto'); });
+var gameStartBtn = $('#gameStart'), gameStopBtn = $('#gameStop');
+if (gameStartBtn) gameStartBtn.addEventListener('click', function () { fetch('/api/game/start'); });
+if (gameStopBtn) gameStopBtn.addEventListener('click', function () { fetch('/api/game/stop'); });
 var ntpBtn = $('#ntpTestBtn');
 if (ntpBtn) ntpBtn.addEventListener('click', function () {
 var res = $('#ntpTestResult');

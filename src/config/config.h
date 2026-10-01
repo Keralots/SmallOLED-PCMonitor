@@ -218,7 +218,8 @@ struct Settings {
 // so the precedence lives in exactly one place (currentDisplayMode() in
 // main.cpp) instead of being spelled out at each call site.
 enum DisplayMode {
-  MODE_VIZ,      // Audio visualizer (forced, and actually fed or in grace)
+  MODE_GAME,     // Game mode (gamepad pairing / game)
+  MODE_VIZ,     // Audio visualizer (forced, and actually fed or in grace)
   MODE_METRICS,  // PC stats
   MODE_CLOCK,    // Clock / screensaver
 };
