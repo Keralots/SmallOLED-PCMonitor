@@ -391,12 +391,15 @@ void handleSetClockStyle() {
 // Ball clock. Switches to it (not saved) and the clock screen, then plays every
 // act in turn - idle tricks, fights, Genki Dama, Shenron, the Kamehameha shot
 // and the Super Saiyan change, the last two replayed on the digits showing.
-// act=N plays just one; stop=1 ends the run. /api/mode/auto hands the screen back.
+// act=N plays just one; stop=1 ends the run. When the run ends the previous
+// style and display mode come back.
 void handleDragonBallDemo() {
  server.sendHeader("Access-Control-Allow-Origin", "*");
  int only = -1;
  if (server.hasArg("act")) only = server.arg("act").toInt();
  if (server.hasArg("stop")) only = -2;
+ int prevStyle = settings.clockStyle;
+ bool prevForce = httpForceClock;
  if (only != -2) {
    if (settings.clockStyle != 19) {
      settings.clockStyle = 19;
@@ -405,7 +408,7 @@ void handleDragonBallDemo() {
    httpForceClock = true;
    httpForceViz = false;
  }
- dragonBallStartDemo(only);
+ dragonBallStartDemo(only, prevStyle, prevForce);
  server.send(200, "application/json",
              "{\"success\":true,\"acts\":" + String(dragonBallDemoActs()) + "}");
 }

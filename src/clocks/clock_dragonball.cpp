@@ -36,6 +36,8 @@
 #include <math.h>
 #include <string.h>
 
+extern bool httpForceClock;
+
 #define DB_DIGIT_Y 2
 #define DB_DIGIT_BOTTOM 22
 #define DB_GROUND_Y 63
@@ -721,6 +723,10 @@ enum DbAct {
 
 static int db_demo_step = -1;                    // next demo act, -1 = off
 static int db_demo_last = -1;                    // last act to play
+static bool db_demo_on = false;
+static int db_demo_prev_style = -1;              // restored when the demo ends
+static bool db_demo_prev_force = false;
+static unsigned long db_last_draw = 0;
 
 static void dbStartDemoChange(int count);
 
@@ -807,11 +813,17 @@ static void dbStartAct(int act) {
 }
 
 // Picks what Goku does next. Without tricks he only walks and stands.
+static void dbEndDemo(bool restoreStyle);
+
 static void dbNextIdle() {
   if (db_demo_step >= 0) {
     int act = db_demo_step++;
     if (db_demo_step > db_demo_last) db_demo_step = -1;
     dbStartAct(act);
+    return;
+  }
+  if (db_demo_on) {
+    dbEndDemo(true);
     return;
   }
   if (!settings.dragonIdleTricks) {
@@ -836,8 +848,8 @@ static void dbNextIdle() {
   else if (roll < 63) act = ACT_VOLLEY;
   else if (roll < 69) act = ACT_BLASTS;
   else if (roll < 74) act = ACT_BEAM;
-  else if (roll < 80 && db_now_sec < 46) act = random(0, 2) ? ACT_FIGHT_VEGETA : ACT_FIGHT_PICCOLO;
-  else if (roll < 87) act = ACT_NIMBUS;
+  else if (roll < 80 && db_now_sec < 40) act = random(0, 2) ? ACT_FIGHT_VEGETA : ACT_FIGHT_PICCOLO;
+  else if (roll < 87 && db_now_sec < 48) act = ACT_NIMBUS;
   else if (roll < 94) act = ACT_BLINK;
   else act = ACT_POWER;
   dbStartAct(act);
@@ -907,11 +919,32 @@ static void dbStartDemoChange(int count) {
   dbBeginChanges();
 }
 
-void dragonBallStartDemo(int only) {
+// Hands the screen back to whatever was showing before the demo started.
+// restoreStyle is false when the user already picked another style meanwhile.
+static void dbEndDemo(bool restoreStyle) {
+  db_demo_step = -1;
+  db_demo_on = false;
+  int prev = db_demo_prev_style;
+  db_demo_prev_style = -1;
+  if (prev < 0) return;
+  httpForceClock = db_demo_prev_force;
+  if (restoreStyle && settings.clockStyle != prev) {
+    settings.clockStyle = prev;
+    resetClockAnimationState();
+  }
+}
+
+void dragonBallStartDemo(int only, int prevStyle, bool prevForce) {
   if (only == -2) {
-    db_demo_step = -1;
+    if (db_demo_on) dbEndDemo(true);
     return;
   }
+  if (!db_demo_on) {
+    db_demo_prev_style = prevStyle;
+    db_demo_prev_force = prevForce;
+  }
+  db_demo_on = true;
+  db_last_draw = millis();
   if (only >= 0 && only < ACT_COUNT) {
     db_demo_step = db_demo_last = only;
   } else {
@@ -979,6 +1012,13 @@ void resetDragonBallAnimation() {
   db_ghost_t = 0;
   db_flash_t = 0;
   db_burst_t = 0;
+  db_shock_t = 0;
+  db_boom_t = 0;
+  db_flare_t = 0;
+  db_pips_t = 0;
+  db_goku_act = db_foe_act = 0;
+  db_genki_r = 0;
+  db_genki_thrown = false;
   for (int i = 0; i < 5; i++) {
     slot_mode[i] = SLOT_SOLID;
     slot_rows_gone[i] = 0;
@@ -988,6 +1028,7 @@ void resetDragonBallAnimation() {
   memset(db_sparks, 0, sizeof(db_sparks));
   memset(db_rubble, 0, sizeof(db_rubble));
   memset(db_ki, 0, sizeof(db_ki));
+  memset(db_motes, 0, sizeof(db_motes));
   db_num_changes = 0;
   last_db_update = 0;
   last_minute_db = -1;
@@ -2056,6 +2097,11 @@ static void dbDrawGokuIdle(int gx) {
 
 void displayClockWithDragonBall() {
   if (!db_init_done) resetDragonBallAnimation();
+
+  // Not drawn for a while means another style took over; drop the demo there.
+  unsigned long drawNow = millis();
+  if (db_demo_on && drawNow - db_last_draw > 2000) dbEndDemo(false);
+  db_last_draw = drawNow;
 
   struct tm timeinfo;
   if (!getTimeWithTimeout(&timeinfo)) {
