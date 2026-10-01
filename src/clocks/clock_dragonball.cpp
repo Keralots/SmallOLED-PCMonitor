@@ -5,8 +5,11 @@
  * it, seen from the side. He walks about and, with idle tricks on, also runs
  * karate kata, spars with his own afterimage, peppers a digit with small ki
  * blasts, fires blasts or a small Kamehameha straight ahead, rides the Flying
- * Nimbus, vanishes in a zanzoken blink or turns to the camera and powers up
- * inside a flickering aura while pebbles lift off the ground.
+ * Nimbus, vanishes in a zanzoken blink, turns to the camera and powers up
+ * inside a flickering aura while pebbles lift off the ground, or fights a
+ * visitor: Vegeta flies in, Piccolo flickers in, they trade blows, clash
+ * fists, and it ends in a beam struggle or a finishing kick that sends the
+ * visitor tumbling off screen.
  *
  * At :56, for one or two changed digits, he gets beside each one (blink, or a
  * run with tricks off), pulls his cupped hands back to his hip while a ki ball
@@ -206,14 +209,181 @@ static const char *const SPR_SSJ[] = {
   "...XXX..XXX...", "..XXX....XXX..",
   ".XXX......XXX."};
 
+// ---- Hurt pose for Goku, and the visitors (Vegeta 26 rows, Piccolo 24) ----
+static const char *const SPR_HURT[] = {
+  "...X.X..............", "X..XXXX.X...........",
+  "XX.XXXXXXX..........", ".XXXXXXXXXX.........",
+  "XXXXXXXXXXXX........", ".XXXXXXXXXXX........",
+  "XXXXXXXXXXXXX.......", "..XXXXXXX.XX........",
+  ".XXXXXX...X.........", "...XXX..X..X........",
+  "....XX.....X........", ".....X...XX.........",
+  "......XXX...........", ".....XXXXX..........",
+  "..XXXXXXX...........", ".XX.XXXXX...........",
+  "X...XXXXX...........", ".....XXX............",
+  ".....X....X.........", ".....XXXXX..........",
+  "....XXX.XXX.........", "...XXX...XXX........",
+  "..XX.......XX.......", ".XXX.......XXX......"};
+
+static const char *const VEG_STAND[] = {
+  "......X.............", ".....XX..X..........",
+  "....XXX.XX..........", "...XXXXXXX..........",
+  "...XXXXXXX..X.......", "..XXXXXXXXXXX.......",
+  "..XXXXXXXXXX........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXX.........", "..XXXXXX.X..........",
+  "...XXXX...X.........", "...XXX.XX..X........",
+  "....XX.....X........", ".....X...XX.........",
+  "......XXX...........", ".....XXXXX..........",
+  "....XXXXXXX.........", "....XXX.XXX.........",
+  "....XXX.XXX.........", ".....XX.XXX.........",
+  ".....X....X.........", ".....XXXXX..........",
+  ".....XXXXX..........", ".....XX.XX..........",
+  ".....XX.XX..........", "....XXX.XXX........."};
+
+static const char *const PIC_STAND[] = {
+  "...........X........", "....XXXX..X.........",
+  "..XXXXXXXXX.........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXXX........", ".X........X.........",
+  ".XXXXXXXXXX.........", "..X.......X.........",
+  "X.X...X....X........", ".XX........X........",
+  "..X.......X.........", "...X...XX.X.........",
+  "....XXXX............", "...X.XXXXX..........",
+  "...XXXXXXXX.........", "...XXXX.XXX.........",
+  "..XXXXX.XXX.........", "..XX.XX.XXX.........",
+  "..XX.X....X.........", ".XXX.XXXXX..........",
+  ".XXX.XXXXX..........", ".XXX.XX.XX..........",
+  "XXXX.XX.XX..........", "....XXX.XXX........."};
+
+static const char *const VEG_PUNCH[] = {
+  "......X.............", ".....XX..X..........",
+  "....XXX.XX..........", "...XXXXXXX..........",
+  "...XXXXXXX..X.......", "..XXXXXXXXXXX.......",
+  "..XXXXXXXXXX........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXX.........", "..XXXXXX.X..........",
+  "...XXXX...X.........", "...XXX.XX..X........",
+  "....XX.....X........", ".....X...XX.........",
+  "......XXX...........", ".....XXXXX..........",
+  "....XXXXXXXXXXXX....", "....XXXXXXXXXXXX....",
+  "....XXXX............", ".....XXX............",
+  ".....X....X.........", ".....XXXXX..........",
+  "....XXX.XXX.........", "...XXX...XXX........",
+  "..XX.......XX.......", ".XXX.......XXX......"};
+
+static const char *const PIC_PUNCH[] = {
+  "...........X........", "....XXXX..X.........",
+  "..XXXXXXXXX.........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXXX........", ".X........X.........",
+  ".XXXXXXXXXX.........", "..X.......X.........",
+  "X.X...X....X........", ".XX........X........",
+  "..X.......X.........", "...X...XX.X.........",
+  "....XXXX............", "...X.XXXXX..........",
+  "...XXXXXXXXXXXXX....", "...XXXXXXXXXXXXX....",
+  "..XXXXXX............", "..XX.XXX............",
+  "..XX.X....X.........", ".XXX.XXXXX..........",
+  ".XXXXXX.XXX.........", ".XXXXX...XXX........",
+  "XXXX.......XX.......", ".XXX.......XXX......"};
+
+static const char *const VEG_KICK[] = {
+  "......X.............", ".....XX..X..........",
+  "....XXX.XX..........", "...XXXXXXX..........",
+  "...XXXXXXX..X.......", "..XXXXXXXXXXX.......",
+  "..XXXXXXXXXX........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXX.........", "..XXXXXX.X..........",
+  "...XXXX...X.........", "...XXX.XX..X........",
+  "....XX.....X........", ".....X...XX.........",
+  "......XXX...........", "....XXXXX...........",
+  "...XXXXXXX..........", "..XXXXXXXX..........",
+  "..XX.XXXXX..........", ".....XXXXXXXXXXX....",
+  ".....X..XXXXXXXX....", ".....XXX............",
+  ".....XX.............", ".....XX.............",
+  ".....XX.............", "....XXX............."};
+
+static const char *const PIC_KICK[] = {
+  "...........X........", "....XXXX..X.........",
+  "..XXXXXXXXX.........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXXX........", ".X........X.........",
+  ".XXXXXXXXXX.........", "..X.......X.........",
+  "X.X...X....X........", ".XX........X........",
+  "..X.......X.........", "...X...XX.X.........",
+  "....XXXX............", "...XXXXXX...........",
+  "...XXXXXXX..........", "..XXXXXXXX..........",
+  "..XX.XXXXX..........", "..XX.XXXXXXXXXXX....",
+  "..XX.X..XXXXXXXX....", ".XXX.XXX............",
+  ".XXX.XX.............", ".XXX.XX.............",
+  "XXXX.XX.............", "....XXX............."};
+
+static const char *const VEG_HURT[] = {
+  "......X.............", ".....XX..X..........",
+  "....XXX.XX..........", "...XXXXXXX..........",
+  "...XXXXXXX..X.......", "..XXXXXXXXXXX.......",
+  "..XXXXXXXXXX........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXX.........", "..XXXXXX.X..........",
+  "...XXXX...X.........", "...XXX.XX..X........",
+  "....XX.....X........", ".....X...XX.........",
+  "......XXX...........", ".....XXXXX..........",
+  "..XXXXXXX...........", ".XX.XXXXX...........",
+  "X...XXXXX...........", ".....XXX............",
+  ".....X....X.........", ".....XXXXX..........",
+  "....XXX.XXX.........", "...XXX...XXX........",
+  "..XX.......XX.......", ".XXX.......XXX......"};
+
+static const char *const PIC_HURT[] = {
+  "...........X........", "....XXXX..X.........",
+  "..XXXXXXXXX.........", ".XXXXXXXXXXX........",
+  ".XXXXXXXXXXX........", ".X........X.........",
+  ".XXXXXXXXXX.........", "..X.......X.........",
+  "X.X...X....X........", ".XX........X........",
+  "..X.......X.........", "...X...XX.X.........",
+  "....XXXX............", "...X.XXXXX..........",
+  "..XXXXXXX...........", ".XXXXXXXX...........",
+  "X.XXXXXXX...........", "..XX.XXX............",
+  "..XX.X....X.........", ".XXX.XXXXX..........",
+  ".XXXXXX.XXX.........", ".XXXXX...XXX........",
+  "XXXX.......XX.......", ".XXX.......XXX......"};
+
 enum DbPhase {
   DB_IDLE, DB_BLINK, DB_RUN, DB_CHARGE, DB_FIRE, DB_RETRACT, DB_FORM,
   DB_SSJ_UP, DB_SSJ_CRUMBLE, DB_SSJ_STRIKE, DB_SSJ_DOWN
 };
 enum DbIdle {
   IDLE_WALK, IDLE_PAUSE, IDLE_KATA, IDLE_SPAR, IDLE_POWER,
-  IDLE_VOLLEY, IDLE_BLASTS, IDLE_BEAM, IDLE_NIMBUS
+  IDLE_VOLLEY, IDLE_BLASTS, IDLE_BEAM, IDLE_NIMBUS, IDLE_FIGHT
 };
+
+// ---- Visitors ----
+enum DbPose { POSE_STAND, POSE_PUNCH, POSE_KICK, POSE_HURT };
+enum DbFoeKind { FOE_VEGETA, FOE_PICCOLO };
+enum DbFight { FIGHT_ARRIVE, FIGHT_BEATS, FIGHT_CHARGE, FIGHT_STRUGGLE, FIGHT_KO, FIGHT_WIN };
+
+static const char *const *const FOE_POSES[2][4] = {
+  {VEG_STAND, VEG_PUNCH, VEG_KICK, VEG_HURT},
+  {PIC_STAND, PIC_PUNCH, PIC_KICK, PIC_HURT},
+};
+static const int FOE_H[2] = {26, 24};
+
+// One exchange: what each fighter does, how far each moves toward the other
+// (negative = knocked back), and the effect at the point of contact.
+struct DbBeat {
+  uint8_t goku, foe;
+  float secs;
+  int8_t gokuStep, foeStep;
+  uint8_t fx;       // 0 none, 1 hit star, 2 fist clash (big flash + shake)
+};
+
+static const DbBeat FIGHT_SCRIPT[] = {
+  {POSE_STAND, POSE_STAND, 0.55f, 0, 0, 0},
+  {POSE_PUNCH, POSE_HURT, 0.25f, 2, -3, 1},
+  {POSE_STAND, POSE_STAND, 0.15f, 0, 0, 0},
+  {POSE_HURT, POSE_PUNCH, 0.25f, -3, 2, 1},
+  {POSE_STAND, POSE_STAND, 0.12f, 0, 0, 0},
+  {POSE_KICK, POSE_HURT, 0.30f, 1, -3, 1},
+  {POSE_HURT, POSE_KICK, 0.30f, -3, 1, 1},
+  {POSE_STAND, POSE_STAND, 0.15f, 0, 0, 0},
+  {POSE_PUNCH, POSE_PUNCH, 0.30f, 3, 3, 2},
+  {POSE_STAND, POSE_STAND, 0.20f, -4, -4, 0},
+  {POSE_STAND, POSE_STAND, 0.40f, 0, 0, 0},
+};
+
+#define DB_FIGHT_GAP 17          // sprite-left to sprite-left at the start
 enum DbSlot { SLOT_SOLID, SLOT_ERASING, SLOT_GONE, SLOT_FORMING };
 
 struct DbSpark {
@@ -297,6 +467,20 @@ static int db_volley_target = 0;
 static float db_cloud_x = 0;                     // Flying Nimbus
 static int db_nimbus_stage = 0;
 static float db_nimbus_to = 0;
+static int db_nimbus_legs = 0;
+
+static DbFoeKind db_foe = FOE_VEGETA;            // fight visitor
+static DbFight db_fight = FIGHT_ARRIVE;
+static float db_foe_x = 0, db_foe_lift = 0;
+static float db_foe_vx = 0, db_foe_vy = 0;
+static DbPose db_goku_pose = POSE_STAND, db_foe_pose = POSE_STAND;
+static int db_beat = 0;
+static float db_beat_t = 0;
+static float db_beat_g0 = 0, db_beat_f0 = 0;
+static bool db_kick_finish = false;
+static float db_clash_x = 0;
+static float db_shock_t = 0;                     // clash shake
+static int db_now_sec = 0;
 
 static DbSlot slot_mode[5];
 static int slot_rows_gone[5];
@@ -391,6 +575,36 @@ static void dbFireKi(float x, float y, float tx, float ty, int target) {
   }
 }
 
+// Fighter edges, fist height, and where the two of them meet.
+static float dbFoeDir() { return -db_dir; }
+static int dbFistY() { return dbSideTop() + DB_FIST_Y; }
+static float dbGokuFront() { return dbCol(DB_FIST_X); }
+static float dbFoeFront() {
+  return db_foe_x + (dbFoeDir() > 0 ? DB_FIST_X : DB_SIDE_W - 1 - DB_FIST_X);
+}
+
+static void dbStartFight() {
+  // Goku turns toward the open side; the visitor takes the spot ahead of him.
+  db_dir = db_x < (SCREEN_WIDTH - DB_SIDE_W) / 2 ? 1 : -1;
+  if (db_dir > 0 && db_x > SCREEN_WIDTH - DB_SIDE_W - DB_FIGHT_GAP - 8) db_x = SCREEN_WIDTH - DB_SIDE_W - DB_FIGHT_GAP - 8;
+  if (db_dir < 0 && db_x < DB_FIGHT_GAP + 8) db_x = DB_FIGHT_GAP + 8;
+  db_foe = random(0, 2) ? FOE_VEGETA : FOE_PICCOLO;
+  db_idle = IDLE_FIGHT;
+  db_fight = FIGHT_ARRIVE;
+  db_phase_t = 0;
+  db_goku_pose = db_foe_pose = POSE_STAND;
+  db_kick_finish = random(0, 100) < 45;
+  float spot = db_x + db_dir * DB_FIGHT_GAP;
+  db_foe_vx = spot;  // landing spot, kept here during the arrival
+  if (db_foe == FOE_VEGETA) {
+    db_foe_x = db_dir > 0 ? SCREEN_WIDTH + 4 : -DB_SIDE_W - 4;
+    db_foe_lift = 22;
+  } else {
+    db_foe_x = spot;
+    db_foe_lift = 0;
+  }
+}
+
 // Picks what Goku does next. Without tricks he only walks and stands.
 static void dbNextIdle() {
   if (!settings.dragonIdleTricks) {
@@ -413,25 +627,27 @@ static void dbNextIdle() {
     db_idle = IDLE_VOLLEY;
     db_shots_left = random(3, 7);
     db_shot_timer = 0.2f;
-  } else if (roll < 71) {
+  } else if (roll < 69) {
     if (db_dir > 0 && db_x > SCREEN_WIDTH - 50) db_dir = -1;
     if (db_dir < 0 && db_x < 30) db_dir = 1;
     db_idle = IDLE_BLASTS;
     db_shots_left = random(3, 6);
     db_shot_timer = 0.15f;
-  } else if (roll < 78) {
+  } else if (roll < 74) {
     if (db_dir > 0 && db_x > SCREEN_WIDTH - 50) db_dir = -1;
     if (db_dir < 0 && db_x < 30) db_dir = 1;
     db_idle = IDLE_BEAM;
     db_phase_t = 0;
     db_beam = db_tail = 0;
-  } else if (roll < 85) {
+  } else if (roll < 80 && db_now_sec < 46) {
+    dbStartFight();
+  } else if (roll < 87) {
     // Nimbus swoops in from the side he is facing away from.
     db_idle = IDLE_NIMBUS;
     db_nimbus_stage = 0;
     db_cloud_x = db_dir > 0 ? -26 : SCREEN_WIDTH + 2;
     db_phase_t = 0;
-  } else if (roll < 93) {
+  } else if (roll < 94) {
     dbLeaveGhost(SPR_STAND);
     db_x = dbRandf(0, SCREEN_WIDTH - DB_SIDE_W);
     db_dir = random(0, 2) ? 1 : -1;
@@ -581,18 +797,27 @@ static void dbUpdateNimbus(float dt) {
       db_lift = sinf(fminf(1.0f, db_phase_t / 0.4f) * 1.5708f) * 8;
       if (db_phase_t > 0.4f) {
         db_nimbus_stage = 2;
+        db_nimbus_legs = random(3, 5);
         db_nimbus_to = dbRandf(0, SCREEN_WIDTH - DB_SIDE_W);
         db_dir = db_nimbus_to >= db_x ? 1 : -1;
         db_phase_t = 0;
       }
       break;
-    case 2: {  // ride, climbing a little, bobbing
+    case 2: {  // ride a few legs back and forth, climbing a little, bobbing
       float d = db_nimbus_to - db_x, step = 45.0f * dt;
-      db_lift = 8 + fminf(6.0f, db_phase_t * 8) + sinf(db_clock * 5);
+      db_lift = 8 + fminf(6.0f, db_phase_t * 8) + sinf(db_clock * 5) + 2 * sinf(db_phase_t * 1.3f);
       if (fabsf(d) <= step) {
         db_x = db_nimbus_to;
-        db_nimbus_stage = 3;
-        db_phase_t = 0;
+        if (--db_nimbus_legs > 0) {
+          // Next leg heads well away from here so the turns read clearly.
+          float to = dbRandf(0, SCREEN_WIDTH - DB_SIDE_W);
+          if (fabsf(to - db_x) < 35) to = db_x < SCREEN_WIDTH / 2 ? db_x + 45 : db_x - 45;
+          db_nimbus_to = dbClampX(to);
+          db_dir = db_nimbus_to >= db_x ? 1 : -1;
+        } else {
+          db_nimbus_stage = 3;
+          db_phase_t = 0;
+        }
       } else {
         db_x += step * db_dir;
       }
@@ -609,6 +834,139 @@ static void dbUpdateNimbus(float dt) {
     case 4:
       db_cloud_x += db_dir * 80.0f * dt;
       if (db_cloud_x < -30 || db_cloud_x > SCREEN_WIDTH + 4) dbIdlePause();
+      break;
+  }
+}
+
+static void dbBeatFx(uint8_t fx, DbPose g, DbPose f) {
+  if (!fx) return;
+  int x = (int)((dbGokuFront() + dbFoeFront()) / 2);
+  int y = dbFistY() + ((g == POSE_KICK || f == POSE_KICK) ? 3 : 0);
+  db_flash_t = fx == 2 ? 0.25f : 0.12f;
+  db_flash_x = x;
+  db_flash_y = y;
+  if (fx == 2) {
+    db_shock_t = 0.3f;
+    for (int i = 0; i < 8; i++)
+      dbSpark(x, y, dbRandf(-80, 80), dbRandf(-70, 10), dbRandf(0.3f, 0.6f));
+  }
+}
+
+static void dbUpdateFight(float dt) {
+  float fdir = dbFoeDir();
+  switch (db_fight) {
+    case FIGHT_ARRIVE:
+      if (db_foe == FOE_VEGETA) {
+        // Swoops in from the edge and lands in front of Goku.
+        float d = db_foe_vx - db_foe_x, step = 90.0f * dt;
+        if (fabsf(d) <= step) {
+          db_foe_x = db_foe_vx;
+          db_foe_lift = 0;
+          for (int i = 0; i < 5; i++)
+            dbSpark(db_foe_x + 10, DB_GROUND_Y - 1, dbRandf(-40, 40), dbRandf(-25, -5), 0.4f);
+        } else {
+          db_foe_x += d > 0 ? step : -step;
+          db_foe_lift = fmaxf(0.0f, 22 * fabsf(d) / 60.0f);
+        }
+      }
+      if ((db_foe == FOE_VEGETA && db_foe_lift <= 0 && db_phase_t > 0.3f) ||
+          (db_foe == FOE_PICCOLO && db_phase_t > 0.5f)) {
+        db_fight = FIGHT_BEATS;
+        db_beat = 0;
+        db_beat_t = 0;
+        db_beat_g0 = db_x;
+        db_beat_f0 = db_foe_x;
+      }
+      break;
+
+    case FIGHT_BEATS: {
+      const DbBeat &b = FIGHT_SCRIPT[db_beat];
+      db_goku_pose = (DbPose)b.goku;
+      db_foe_pose = (DbPose)b.foe;
+      db_beat_t += dt;
+      float k = fminf(1.0f, db_beat_t / b.secs);
+      db_x = dbClampX(db_beat_g0 + b.gokuStep * k * db_dir);
+      db_foe_x = db_beat_f0 + b.foeStep * k * fdir;
+      // Never let them overlap or drift apart.
+      float gap = (db_foe_x - db_x) * db_dir;
+      if (gap < 14) db_foe_x = db_x + 14 * db_dir;
+      if (gap > 26) db_foe_x = db_x + 26 * db_dir;
+      if (db_beat_t < b.secs) break;
+      dbBeatFx(b.fx, db_goku_pose, db_foe_pose);
+      db_beat++;
+      db_beat_t = 0;
+      db_beat_g0 = db_x;
+      db_beat_f0 = db_foe_x;
+      if (db_beat >= DB_LEN(FIGHT_SCRIPT)) {
+        db_phase_t = 0;
+        if (db_kick_finish) {
+          db_goku_pose = POSE_KICK;
+          db_foe_pose = POSE_HURT;
+          dbBeatFx(1, POSE_KICK, POSE_HURT);
+          db_fight = FIGHT_KO;
+          db_foe_vx = fdir * -120.0f;
+          db_foe_vy = -70.0f;
+        } else {
+          db_fight = FIGHT_CHARGE;
+        }
+      }
+      break;
+    }
+
+    case FIGHT_CHARGE:
+      db_goku_pose = POSE_STAND;
+      db_foe_pose = POSE_STAND;
+      if (db_phase_t > 0.7f) {
+        db_fight = FIGHT_STRUGGLE;
+        db_phase_t = 0;
+        db_clash_x = (dbGokuFront() + dbFoeFront()) / 2;
+      }
+      break;
+
+    case FIGHT_STRUGGLE: {
+      // The clash point wobbles, then Goku pushes it into the visitor.
+      db_goku_pose = POSE_PUNCH;
+      db_foe_pose = POSE_PUNCH;
+      float mid = (dbGokuFront() + dbFoeFront()) / 2;
+      if (db_phase_t < 1.5f) {
+        db_clash_x = mid + sinf(db_phase_t * 5.0f) * 4 * db_dir;
+      } else {
+        db_clash_x += db_dir * 40.0f * dt;
+      }
+      if (random(0, 2) == 0)
+        dbSpark(db_clash_x, dbFistY(), dbRandf(-50, 50), dbRandf(-60, 20), 0.3f);
+      if ((db_clash_x - dbFoeFront()) * db_dir >= 0 || db_phase_t > 3.5f) {
+        db_flash_t = 0.25f;
+        db_flash_x = (int)dbFoeFront();
+        db_flash_y = dbFistY();
+        db_shock_t = 0.3f;
+        db_fight = FIGHT_KO;
+        db_phase_t = 0;
+        db_foe_pose = POSE_HURT;
+        db_foe_vx = fdir * -120.0f;
+        db_foe_vy = -70.0f;
+      }
+      break;
+    }
+
+    case FIGHT_KO:
+      // Knocked tumbling off the screen.
+      if (db_phase_t > 0.2f) db_goku_pose = POSE_STAND;
+      db_foe_x += db_foe_vx * dt;
+      db_foe_lift -= db_foe_vy * dt;
+      db_foe_vy += 150.0f * dt;
+      if (db_foe_lift < 0) {
+        db_foe_lift = 0;
+        db_foe_vy = -fabsf(db_foe_vy) * 0.4f;
+      }
+      if (db_foe_x < -DB_SIDE_W - 2 || db_foe_x > SCREEN_WIDTH + 2) {
+        db_fight = FIGHT_WIN;
+        db_phase_t = 0;
+      }
+      break;
+
+    case FIGHT_WIN:
+      if (db_phase_t > 0.8f) dbIdlePause();
       break;
   }
 }
@@ -681,6 +1039,9 @@ static void dbUpdateIdle(float dt) {
     case IDLE_NIMBUS:
       dbUpdateNimbus(dt);
       break;
+    case IDLE_FIGHT:
+      dbUpdateFight(dt);
+      break;
   }
 }
 
@@ -718,6 +1079,8 @@ static void updateDragonBallAnimation(struct tm *timeinfo) {
   if (db_burst_t > 0) db_burst_t -= dt;
   for (int i = 0; i < 5; i++)
     if (slot_shake[i] > 0) slot_shake[i] -= dt;
+  if (db_shock_t > 0) db_shock_t -= dt;
+  db_now_sec = timeinfo->tm_sec;
 
   for (int i = 0; i < 5; i++)
     if (slot_mode[i] == SLOT_SOLID) slot_value[i] = getDisplayedDigitValue(i);
@@ -941,6 +1304,43 @@ static void dbDrawSprite(const char *const *rows, int w, int h, int x, int y, in
         dbPixel(dir > 0 ? x + c : x + w - 1 - c, y + r);
 }
 
+static void dbDrawChar(const char *const *rows, int h, int x, int lift, int dir, bool flipY) {
+  int top = DB_FEET_Y - h + 1 - lift;
+  for (int r = 0; r < h; r++) {
+    int rr = flipY ? h - 1 - r : r;
+    for (int c = 0; c < DB_SIDE_W; c++)
+      if (rows[rr][c] == 'X') dbPixel(dir > 0 ? x + c : x + DB_SIDE_W - 1 - c, top + r);
+  }
+}
+
+// Level beam between two x positions. The spiral variant is Piccolo's
+// Special Beam Cannon: a thin core with a ribbon winding round it.
+static void dbDrawHBeam(int xa, int xb, int y, bool spiral) {
+  if (xa > xb) { int s = xa; xa = xb; xb = s; }
+  for (int x = xa; x <= xb; x++) {
+    if (spiral) {
+      dbPixel(x, y);
+      dbPixel(x, y + (int)roundf(sinf(x * 0.7f - db_clock * 25.0f) * 3));
+      dbPixel(x, y - (int)roundf(sinf(x * 0.7f - db_clock * 25.0f + 1.6f) * 3));
+    } else {
+      int half = 4 + (int)roundf(sinf(x * 0.6f - db_clock * 18.0f));
+      dbPixel(x, y - half);
+      dbPixel(x, y + half);
+      bool band = ((x + (int)(db_clock * 60.0f)) % 6 + 6) % 6 == 0;
+      for (int w = -2; w <= 2; w++) dbPixel(x, y + w, band && abs(w) <= 1 ? DISPLAY_BLACK : DISPLAY_WHITE);
+    }
+  }
+}
+
+static const char *const *dbGokuPoseRows(DbPose p) {
+  switch (p) {
+    case POSE_PUNCH: return SPR_PUNCH;
+    case POSE_KICK: return SPR_KICK;
+    case POSE_HURT: return SPR_HURT;
+    default: return SPR_STAND;
+  }
+}
+
 static void dbDrawSide(const char *const *pose, int x, int lift, int dir, bool dotted = false) {
   dbDrawSprite(pose, DB_SIDE_W, DB_SIDE_H, x, dbSideTop() - lift, dir, dotted);
 }
@@ -1053,6 +1453,37 @@ static const char *const *dbWalkFrame() {
   return cycle[((int)(db_walk_dist / 4.0f)) & 3];
 }
 
+static void dbDrawFight(int gx) {
+  int fdir = (int)dbFoeDir();
+  int fx = (int)db_foe_x;
+  const char *const *foeRows = FOE_POSES[db_foe][db_foe_pose];
+  int fh = FOE_H[db_foe];
+
+  if (db_fight == FIGHT_ARRIVE && db_foe == FOE_PICCOLO) {
+    // Flickers in: dotted at first, then solid.
+    if (db_phase_t < 0.3f) dbDrawSprite(foeRows, DB_SIDE_W, fh, fx, DB_FEET_Y - fh + 1, fdir, true);
+    else if ((int)(db_phase_t * 30) & 1) dbDrawChar(foeRows, fh, fx, 0, fdir, false);
+  } else if (db_fight != FIGHT_WIN) {
+    bool tumble = db_fight == FIGHT_KO && ((int)(db_phase_t * 12) & 1);
+    dbDrawChar(foeRows, fh, fx, (int)db_foe_lift, fdir, tumble);
+  }
+
+  if (db_fight == FIGHT_CHARGE) {
+    // Both gather a ball of ki in front of them.
+    int r = 1 + (int)(db_phase_t * 4);
+    dbDisc((int)dbGokuFront(), dbFistY(), r);
+    dbDisc((int)dbFoeFront(), dbFistY(), r);
+  }
+  if (db_fight == FIGHT_STRUGGLE) {
+    int y = dbFistY();
+    dbDrawHBeam((int)dbGokuFront(), (int)db_clash_x, y, false);
+    dbDrawHBeam((int)db_clash_x, (int)dbFoeFront(), y, db_foe == FOE_PICCOLO);
+    dbDisc((int)db_clash_x, y, 4 + ((int)(db_clock * 20) & 1));
+  }
+
+  dbDrawChar(dbGokuPoseRows(db_goku_pose), DB_SIDE_H, gx, 0, db_dir, false);
+}
+
 static void dbDrawGokuIdle(int gx) {
   int lift = (int)db_lift;
   switch (db_idle) {
@@ -1093,6 +1524,9 @@ static void dbDrawGokuIdle(int gx) {
         if (db_phase_t < 1.6f) dbDisc((int)db_hx, (int)db_hy, 3);
       }
       break;
+    case IDLE_FIGHT:
+      dbDrawFight(gx);
+      break;
     case IDLE_NIMBUS:
       dbDrawSide(SPR_STAND, gx, lift, db_dir);
       dbDrawNimbus((int)db_cloud_x, DB_FEET_Y - (db_nimbus_stage >= 1 && db_nimbus_stage <= 2 ? lift : 8) + 1);
@@ -1120,7 +1554,8 @@ void displayClockWithDragonBall() {
 
   bool ssj = db_phase >= DB_SSJ_UP;
   bool powering = db_phase == DB_IDLE && db_idle == IDLE_POWER;
-  int amp = (db_phase == DB_SSJ_UP || db_phase == DB_SSJ_CRUMBLE) ? 2 : (powering || db_burst_t > 0) ? 1 : 0;
+  int amp = (db_phase == DB_SSJ_UP || db_phase == DB_SSJ_CRUMBLE) ? 2
+          : (powering || db_burst_t > 0 || db_shock_t > 0) ? 1 : 0;
   int shake = amp ? (int)(db_clock * 40) % (2 * amp + 1) - amp : 0;
   int shakeY = amp == 2 ? -((int)(db_clock * 33) & 1) : 0;
 
