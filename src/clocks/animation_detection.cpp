@@ -78,6 +78,11 @@ bool isAnimationActive() {
     return lifeIsAnimating();
   }
 
+  // Dragon Ball clock (clockStyle == 19) - Goku is always hovering
+  if (settings.clockStyle == 19) {
+    return true;
+  }
+
   // Standard and Large clocks (clockStyle 1 & 2) have no animations
   return false;
 }

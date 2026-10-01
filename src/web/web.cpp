@@ -548,6 +548,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_CLOCKSTYLE_11")) { out = String(settings.clockStyle == 11 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_16")) { out = String(settings.clockStyle == 16 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_18")) { out = String(settings.clockStyle == 18 ? "selected" : ""); return true; }
+  if (!strcmp(n, "SEL_CLOCKSTYLE_19")) { out = String(settings.clockStyle == 19 ? "selected" : ""); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_0")) { out = String(settings.clockStyle == 0 ? "block" : "none"); return true; }
   if (!strcmp(n, "V_MARIOBOUNCEHEIGHT")) { out = String(settings.marioBounceHeight); return true; }
   if (!strcmp(n, "F_MARIOBOUNCEHEIGHT")) { out = String(settings.marioBounceHeight / 10.0, 1); return true; }
@@ -628,6 +629,8 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "DSP_CLOCKSTYLE_11")) { out = String(settings.clockStyle == 11 ? "block" : "none"); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_16")) { out = String(settings.clockStyle == 16 ? "block" : "none"); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_18")) { out = String(settings.clockStyle == 18 ? "block" : "none"); return true; }
+  if (!strcmp(n, "DSP_CLOCKSTYLE_19")) { out = String(settings.clockStyle == 19 ? "block" : "none"); return true; }
+  if (!strcmp(n, "CHK_DRAGONIDLETRICKS")) { out = String(settings.dragonIdleTricks ? "checked" : ""); return true; }
   if (!strcmp(n, "SEL_TRONBIKESTYLE_0")) { out = String(settings.tronBikeStyle == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_TRONBIKESTYLE_1")) { out = String(settings.tronBikeStyle == 1 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_TRONSHOWGRID")) { out = String(settings.tronShowGrid ? "checked" : ""); return true; }
@@ -1276,6 +1279,7 @@ void handleSave() {
  settings.lifeShowDate = server.hasArg("lifeShowDate");
  settings.lifeSmallClock = server.hasArg("lifeSmallClock");
  settings.lifeSmallCells = server.hasArg("lifeSmallCells");
+ settings.dragonIdleTricks = server.hasArg("dragonIdleTricks");
  if (server.hasArg("lifeClockPos")) {
  settings.lifeClockPos = server.arg("lifeClockPos").toInt();
  }
@@ -1653,6 +1657,7 @@ void handleExportConfig() {
  json += "\"lifeShowDate\":" + String(settings.lifeShowDate ? "true" : "false") + ",";
  json += "\"lifeSmallClock\":" + String(settings.lifeSmallClock ? "true" : "false") + ",";
  json += "\"lifeSmallCells\":" + String(settings.lifeSmallCells ? "true" : "false") + ",";
+ json += "\"dragonIdleTricks\":" + String(settings.dragonIdleTricks ? "true" : "false") + ",";
  json += "\"tronShowGrid\":" + String(settings.tronShowGrid ? "true" : "false") + ",";
  json += "\"tronShowBorder\":" + String(settings.tronShowBorder ? "true" : "false") + ",";
  json += "\"vizPeakDots\":" + String(settings.vizPeakDots ? "true" : "false") + ",";
@@ -1951,6 +1956,7 @@ void handleImportConfig() {
  if (!doc["lifeShowDate"].isNull()) settings.lifeShowDate = doc["lifeShowDate"];
  if (!doc["lifeSmallClock"].isNull()) settings.lifeSmallClock = doc["lifeSmallClock"];
  if (!doc["lifeSmallCells"].isNull()) settings.lifeSmallCells = doc["lifeSmallCells"];
+ if (!doc["dragonIdleTricks"].isNull()) settings.dragonIdleTricks = doc["dragonIdleTricks"];
  if (!doc["tronShowGrid"].isNull()) settings.tronShowGrid = doc["tronShowGrid"];
  if (!doc["tronShowBorder"].isNull()) settings.tronShowBorder = doc["tronShowBorder"];
  if (!doc["vizPeakDots"].isNull()) settings.vizPeakDots = doc["vizPeakDots"];

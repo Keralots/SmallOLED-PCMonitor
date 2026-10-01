@@ -126,6 +126,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                   <option value="11" %SEL_CLOCKSTYLE_11%>Dino Runner</option>
                   <option value="16" %SEL_CLOCKSTYLE_16%>TRON</option>
                   <option value="18" %SEL_CLOCKSTYLE_18%>Game of Life</option>
+                  <option value="19" %SEL_CLOCKSTYLE_19%>Dragon Ball</option>
                   <option value="9" %SEL_CLOCKSTYLE_9%>Custom rotation</option>
                 </select>
               </div>
@@ -551,6 +552,15 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                 <input type="checkbox" name="dinoShowDate" id="dinoShowDate" %CHK_DINOSHOWDATE%>
                 <span class="check-box" aria-hidden="true"></span>
                 <span class="check-text"><strong>Show date</strong><span class="ct-hint">Off centres the clock above the runner. Default off.</span></span>
+              </label>
+            </div>
+
+            <!-- Dragon Ball (style 19) -->
+            <div class="subcard" id="dragonSettings" style="display:%DSP_CLOCKSTYLE_19%">
+              <label class="check-row standalone">
+                <input type="checkbox" name="dragonIdleTricks" id="dragonIdleTricks" %CHK_DRAGONIDLETRICKS%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Idle tricks</strong><span class="ct-hint">Kata, sparring with his afterimage, ki blasts, the Flying Nimbus, afterimage blinks and power-ups between minutes. Off: he only walks, and runs to the digit instead of blinking. Default on.</span></span>
               </label>
             </div>
 
@@ -1175,8 +1185,8 @@ var lifeSmall = $('#lifeSmallClock');
 if (lifeSmall) { var fl = function () { toggle($('#lifePosFields'), lifeSmall.checked); }; lifeSmall.addEventListener('change', fl); fl(); }
 var marioEnc = $('#marioIdleEncounters');
 if (marioEnc) { var fe = function () { toggle($('#marioEncFields'), marioEnc.checked); }; marioEnc.addEventListener('change', fe); fe(); }
-var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','9':'cycleSettings','10':'asteroidsSettings','11':'dinoSettings','16':'tronSettings','18':'lifeSettings' };
-var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings','tronSettings','lifeSettings','cycleSettings'];
+var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','9':'cycleSettings','10':'asteroidsSettings','11':'dinoSettings','16':'tronSettings','18':'lifeSettings','19':'dragonSettings' };
+var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings','tronSettings','lifeSettings','dragonSettings','cycleSettings'];
 var clockStyle = $('#clockStyle');
 function syncClockPanels() {
 ALL_PANELS.forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
@@ -1185,7 +1195,7 @@ if (show) { var e = document.getElementById(show); if (e) e.style.display = ''; 
 }
 if (clockStyle) { clockStyle.addEventListener('change', syncClockPanels); syncClockPanels(); }
 var cycleInput = $('#cycleConfig'), cycleRows = $('#cycleRows');
-var cycleNames = {0:'Mario',1:'Standard',2:'Large',3:'Space Invaders',5:'Arkanoid',6:'Pac-Man',7:'Snake',8:'Tetris',10:'Asteroids',11:'Dino Runner',16:'TRON',18:'Game of Life'};
+var cycleNames = {0:'Mario',1:'Standard',2:'Large',3:'Space Invaders',5:'Arkanoid',6:'Pac-Man',7:'Snake',8:'Tetris',10:'Asteroids',11:'Dino Runner',16:'TRON',18:'Game of Life',19:'Dragon Ball'};
 if (cycleInput && cycleRows) {
 var cycleItems = cycleInput.value.split(',').map(function (v) { var p = v.split(':'); return { id: Number(p[0]), seconds: Number(p[1]), enabled: Number(p[1]) > 0 }; });
 Object.keys(cycleNames).forEach(function (k) { var id = Number(k); if (!cycleItems.some(function (v) { return v.id === id; })) cycleItems.push({ id: id, seconds: 300, enabled: false }); });

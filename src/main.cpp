@@ -166,7 +166,7 @@ bool getTimeWithTimeout(struct tm *timeinfo, unsigned long timeout_ms) {
 // AnimatedPixelClock so a style ported later keeps the same number on both
 // devices; 4 is a legacy alias for 3 and 12-15 are that project's styles we
 // have not ported, so neither appears here.
-const uint8_t CLOCK_STYLES[] = {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 16, 18};
+const uint8_t CLOCK_STYLES[] = {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 16, 18, 19};
 const uint8_t CLOCK_STYLE_COUNT = sizeof(CLOCK_STYLES) / sizeof(CLOCK_STYLES[0]);
 
 bool isValidClockStyle(uint8_t id) {
@@ -240,7 +240,8 @@ int getOptimalRefreshRate() {
          settings.clockStyle == 6 || settings.clockStyle == 7 ||
          settings.clockStyle == 8 || settings.clockStyle == 9 ||
          settings.clockStyle == 10 || settings.clockStyle == 11 ||
-         settings.clockStyle == 16 || settings.clockStyle == 18)) {
+         settings.clockStyle == 16 || settings.clockStyle == 18 ||
+         settings.clockStyle == 19)) {
       return 60; // Instant boost for smooth manual clock mode
     }
 #endif
@@ -256,8 +257,9 @@ int getOptimalRefreshRate() {
         settings.clockStyle == 6 || settings.clockStyle == 7 ||
         settings.clockStyle == 8 || settings.clockStyle == 9 ||
         settings.clockStyle == 10 || settings.clockStyle == 11 ||
-        settings.clockStyle == 16 || settings.clockStyle == 18) {
-      // Animated clocks (Mario, Space Invaders, Space Ship, Pong, Pac-Man, Snake, Tetris, Cycle, Asteroids, Dino, TRON, Life)
+        settings.clockStyle == 16 || settings.clockStyle == 18 ||
+        settings.clockStyle == 19) {
+      // Animated clocks (Mario, Space Invaders, Space Ship, Pong, Pac-Man, Snake, Tetris, Cycle, Asteroids, Dino, TRON, Life, Dragon Ball)
       return 20; // 20 Hz keeps character movement smooth
     } else {
       // Static clocks (Standard, Large)
@@ -332,6 +334,7 @@ void cycleClockScreens() {
         case 11: displayClockWithDino(); break;
         case 16: displayClockWithTron(); break;
         case 18: displayClockWithLife(); break;
+        case 19: displayClockWithDragonBall(); break;
     }
 }
 
@@ -646,6 +649,9 @@ void loop() {
         break;
       case 18:
         displayClockWithLife();
+        break;
+      case 19:
+        displayClockWithDragonBall();
         break;
       default:
         displayStandardClock();

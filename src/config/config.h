@@ -55,7 +55,7 @@ struct MetricData {
 // ========== Settings Structure ========== 
 struct Settings {
   // Clock settings
-  uint8_t clockStyle;       // 0=Mario, 1=Standard, 2=Large, 3=Space Invader, 4=Space Ship, 5=Pong, 6=Pac-Man, 7=Snake, 8=Tetris, 9=Custom rotation, 10=Asteroids, 11=Dino Runner, 16=TRON, 18=Game of Life
+  uint8_t clockStyle;       // 0=Mario, 1=Standard, 2=Large, 3=Space Invader, 4=Space Ship, 5=Pong, 6=Pac-Man, 7=Snake, 8=Tetris, 9=Custom rotation, 10=Asteroids, 11=Dino Runner, 16=TRON, 18=Game of Life, 19=Dragon Ball
   char cycleConfig[128];    // Ordered style:seconds pairs used by style 9; 0 seconds disables
   int16_t gmtOffset;        // GMT offset in minutes (deprecated, kept for migration)
   bool daylightSaving;      // DST enabled (deprecated, kept for migration)
@@ -196,6 +196,9 @@ struct Settings {
   bool lifeSmallClock;          // Size-2 digits on a finer grid, more room for the colony
   bool lifeSmallCells;          // 2px colony cells with the large clock (small clock always uses them)
   uint8_t lifeClockPos;         // Small clock only: 0=Centre, 1=Top, 2=Bottom
+
+  // Dragon Ball clock settings
+  bool dragonIdleTricks;        // Afterimage teleports and power-ups between minutes
 
   // Metric configuration arrays
   char metricLabels[MAX_METRICS][METRIC_NAME_LEN];

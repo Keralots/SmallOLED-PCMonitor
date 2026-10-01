@@ -391,6 +391,7 @@ void loadSettings() {
   settings.lifeSmallClock = preferences.getBool("lifeSmall", false);
   settings.lifeSmallCells = preferences.getBool("lifeCells", false);
   settings.lifeClockPos = preferences.getUChar("lifePos", 0);
+  settings.dragonIdleTricks = preferences.getBool("dbTricks", true);
 
   bool brightnessSettingsSanitized = false;
   uint8_t sanitizedDisplayBrightness =
@@ -650,6 +651,7 @@ void saveSettings() {
   preferences.putBool("lifeSmall", settings.lifeSmallClock);
   preferences.putBool("lifeCells", settings.lifeSmallCells);
   preferences.putUChar("lifePos", settings.lifeClockPos);
+  preferences.putBool("dbTricks", settings.dragonIdleTricks);
 
   // Save network configuration
   preferences.putString("deviceName", settings.deviceName);

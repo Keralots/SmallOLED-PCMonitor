@@ -136,4 +136,9 @@ void displayClockWithLife();
 void resetLifeAnimation();
 bool lifeIsAnimating();
 
+// ========== Dragon Ball Clock ==========
+void displayClockWithDragonBall();
+void resetDragonBallAnimation();
+bool dragonBallIsAnimating();
+
 #endif // CLOCKS_H
