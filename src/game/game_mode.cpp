@@ -1,9 +1,9 @@
 /*
  * SmallOLED-PCMonitor - Game Mode
  *
- * Owns the pad lifecycle around the game: a pairing screen until a pad
- * connects, the game while it is connected, and a pause overlay while it is
- * gone. Gives up (and frees the radio) if no pad shows up, a lost pad
+ * Owns the pad lifecycle around the games: a pairing screen until a pad
+ * connects, then the game menu (last pick remembered) and the chosen game,
+ * with a pause overlay while the pad is gone. Gives up (and frees the radio) if no pad shows up, a lost pad
  * does not come back, or nobody touches the pad for gameIdleExitMin minutes.
  * The panel is held at normal brightness for the whole time (no night
  * schedule) and handed back to the schedule on exit.
@@ -16,6 +16,8 @@
 #include "../config/config.h"
 #include "../display/display.h"
 #include "game_mode.h"
+#include "game_common.h"
+#include <Preferences.h>
 
 #define GAME_PAIR_TIMEOUT_MS 120000UL
 #define GAME_LOST_TIMEOUT_MS 60000UL
@@ -29,6 +31,39 @@ static unsigned long lostAt = 0;
 static unsigned long lastInputAt = 0;
 static uint16_t lastButtons = 0;
 
+struct GameDef {
+  const char *name;
+  const char *hiKey;
+  void (*reset)();
+  bool (*frame)(const GamepadState &, bool);
+};
+static const GameDef GAMES[] = {
+    {"Falling Blocks", "blocksHi", blocksReset, blocksFrame},
+    {"Snake", "snakeHi", snakeReset, snakeFrame},
+    {"Bricks", "bricksHi", bricksReset, bricksFrame},
+    {"Space Rocks", "rocksHi", rocksReset, rocksFrame},
+    {"Runner", "runnerHi", runnerReset, runnerFrame},
+};
+static const uint8_t GAME_COUNT = sizeof(GAMES) / sizeof(GAMES[0]);
+
+static int8_t current = -1;  // running game, -1 = menu
+static uint8_t selected = 0;
+static uint32_t menuHi[GAME_COUNT];
+
+static void openMenu() {
+  current = -1;
+  for (uint8_t i = 0; i < GAME_COUNT; i++) menuHi[i] = gameLoadHi(GAMES[i].hiKey);
+}
+
+static void launchGame(uint8_t i) {
+  current = i;
+  GAMES[i].reset();
+  Preferences p;
+  p.begin("game", false);
+  p.putUChar("lastGame", i);
+  p.end();
+}
+
 void gameModeStart() {
   if (active) return;
   active = true;
@@ -38,7 +73,11 @@ void gameModeStart() {
   lastInputAt = enteredAt;
   lastButtons = 0;
   setDisplayGameOverride(true);
-  blocksReset();
+  Preferences p;
+  selected = p.begin("game", true) ? p.getUChar("lastGame", 0) : 0;
+  p.end();
+  if (selected >= GAME_COUNT) selected = 0;
+  openMenu();
   gamepadStart();
   Serial.println("Game mode: started");
 }
@@ -53,19 +92,14 @@ void gameModeStop() {
 
 bool gameModeActive() { return active; }
 
-static void printCentered(int y, const char *s) {
-  display.setCursor(64 - strlen(s) * 3, y);
-  display.print(s);
-}
-
 static void drawPairingScreen(GamepadLink link, unsigned long now) {
   display.setTextSize(1);
   display.setTextColor(DISPLAY_WHITE);
-  printCentered(0, "GAME MODE");
+  gamePrintCentered(0, "GAME MODE");
   display.drawFastHLine(0, 10, 128, DISPLAY_WHITE);
-  printCentered(14, "New pad: hold pair");
-  printCentered(24, "button for 3 s");
-  printCentered(34, "Paired: press Xbox");
+  gamePrintCentered(14, "New pad: hold pair");
+  gamePrintCentered(24, "button for 3 s");
+  gamePrintCentered(34, "Paired: press Xbox");
 
   char status[22];
   uint8_t dots = (now / 400) % 4;
@@ -77,6 +111,50 @@ static void drawPairingScreen(GamepadLink link, unsigned long now) {
   display.setCursor(104, 54);
   display.print(left);
   display.print("s");
+}
+
+// Game list under the band; d-pad picks, A starts, View leaves game mode.
+static bool menuFrame(const GamepadState &in, bool padLost) {
+  if (!padLost) {
+    if (in.pressed & GP_UP) selected = (selected + GAME_COUNT - 1) % GAME_COUNT;
+    if (in.pressed & GP_DOWN) selected = (selected + 1) % GAME_COUNT;
+    if (in.pressed & GP_VIEW) return false;
+    if (in.pressed & (GP_A | GP_MENU)) {
+      launchGame(selected);
+      return true;
+    }
+  }
+
+  display.setTextSize(1);
+  display.setTextColor(DISPLAY_WHITE);
+  display.setCursor(0, 1);
+  display.print("GAMES");
+  gameDrawClock();
+  display.drawFastHLine(0, 10, SCREEN_WIDTH, DISPLAY_WHITE);
+  for (uint8_t i = 0; i < GAME_COUNT; i++) {
+    int y = 12 + i * 10;
+    bool sel = i == selected;
+    if (sel) display.fillRect(0, y, SCREEN_WIDTH, 10, DISPLAY_WHITE);
+    display.setTextColor(sel ? DISPLAY_BLACK : DISPLAY_WHITE);
+    display.setCursor(3, y + 1);
+    display.print(GAMES[i].name);
+    if (menuHi[i]) {
+      char hi[11];
+      snprintf(hi, sizeof(hi), "%lu", (unsigned long)menuHi[i]);
+      display.setCursor(SCREEN_WIDTH - 3 - strlen(hi) * 6, y + 1);
+      display.print(hi);
+    }
+  }
+  display.setTextColor(DISPLAY_WHITE);
+  if (padLost) gameDrawOverlay(G_PAUSED, true, nullptr, nullptr, false);
+  return true;
+}
+
+// Runs the menu or the current game; a game handing back false returns to the menu.
+static bool runFrame(const GamepadState &in, bool padLost) {
+  if (current < 0) return menuFrame(in, padLost);
+  if (!GAMES[current].frame(in, padLost)) openMenu();
+  return true;
 }
 
 void displayGameMode() {
@@ -94,7 +172,7 @@ void displayGameMode() {
         in.rt > GAME_TRIGGER_ACTIVITY)
       lastInputAt = now;
     lastButtons = in.buttons;
-    if (!blocksFrame(in, false)) {
+    if (!runFrame(in, false)) {
       gameModeStop();
     } else if (settings.gameIdleExitMin &&
                now - lastInputAt >= settings.gameIdleExitMin * 60000UL) {
@@ -114,7 +192,7 @@ void displayGameMode() {
   }
 
   if (!lostAt) lostAt = now;
-  blocksFrame(in, true);
+  runFrame(in, true);
   if (now - lostAt >= GAME_LOST_TIMEOUT_MS) gameModeStop();
 }
 

@@ -1,10 +1,11 @@
 /*
  * SmallOLED-PCMonitor - Game Mode
  *
- * Forced display mode that pairs a BLE gamepad and runs a game on the OLED.
- * Entered via /api/game/start (or the web UI), left via the pad's View
- * button from the pause / game-over screen, a touch-button tap, or
- * /api/game/stop. Leaving stops BLE scanning and drops the pad.
+ * Forced display mode that pairs a BLE gamepad and runs games on the OLED.
+ * Entered via /api/game/start, the web UI or a touch triple tap; after the
+ * pad connects a menu picks the game. Left via View in the menu, a touch
+ * tap, /api/game/stop, or the idle / no-pad timeouts. Leaving stops BLE
+ * scanning and drops the pad.
  */
 
 #ifndef GAME_MODE_H
@@ -21,9 +22,16 @@ bool gameModeActive();
 // Draws one frame into the display buffer (caller clears and pushes it).
 void displayGameMode();
 
-// Falling Blocks
+// Each game: reset to its READY screen; run one frame, false = back to the menu.
 void blocksReset();
-// Advances the game by the input snapshot. Returns false once the player asked to quit.
 bool blocksFrame(const GamepadState &in, bool padLost);
+void snakeReset();
+bool snakeFrame(const GamepadState &in, bool padLost);
+void bricksReset();
+bool bricksFrame(const GamepadState &in, bool padLost);
+void rocksReset();
+bool rocksFrame(const GamepadState &in, bool padLost);
+void runnerReset();
+bool runnerFrame(const GamepadState &in, bool padLost);
 
 #endif // GAME_MODE_H

@@ -753,8 +753,8 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
             <p class="page-lede">Pair a Bluetooth gamepad and play on the OLED. A forced mode like the visualizer: it runs until you quit from the pad, tap the touch button or press Stop.</p>
           </div>
           <div class="card">
-            <h2 class="card-title">Falling Blocks</h2>
-            <p class="field-hint" style="margin-top:0">Play Falling Blocks on the OLED with an Xbox Wireless Controller over Bluetooth LE (model 1708 or newer, controller firmware 5.x). Start game mode here or triple-tap the touch button, then hold the pad's pair button for 3 seconds. A paired pad reconnects with the Xbox button. D-pad moves, Up drops, A/B rotate, Menu pauses, View quits from pause.</p>
+            <h2 class="card-title">Games</h2>
+            <p class="field-hint" style="margin-top:0">Falling Blocks, Snake, Bricks, Space Rocks and Runner on the OLED, played with an Xbox Wireless Controller over Bluetooth LE (model 1708 or newer, controller firmware 5.x). Start game mode here or triple-tap the touch button, then hold the pad's pair button for 3 seconds; a paired pad reconnects with the Xbox button. Pick a game with the d-pad and A. Menu pauses, View in the pause screen returns to the game list, View in the list leaves game mode.</p>
             <div class="btn-row" style="margin-top:12px">
               <button type="button" class="btn" id="gameStart">Start game mode</button>
               <button type="button" class="btn btn-ghost" id="gameStop">Stop</button>
@@ -766,7 +766,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
           <div class="card">
             <h2 class="card-title">Game settings</h2>
             <div class="field">
-              <label class="field-label" for="blocksStartLevel">Starting level</label>
+              <label class="field-label" for="blocksStartLevel">Falling Blocks starting level</label>
               <div class="range-row">
                 <input type="range" name="blocksStartLevel" id="blocksStartLevel" min="1" max="10" step="1" value="%V_BLOCKSSTARTLEVEL%">
                 <span class="range-val" data-for="blocksStartLevel">%V_BLOCKSSTARTLEVEL%</span>
@@ -776,12 +776,12 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               <label class="check-row">
                 <input type="checkbox" name="gameRumble" id="gameRumble" %CHK_GAMERUMBLE%>
                 <span class="check-box" aria-hidden="true"></span>
-                <span class="check-text"><strong>Rumble</strong><span class="ct-hint">Pad vibrates on drops, cleared lines and game over.</span></span>
+                <span class="check-text"><strong>Rumble</strong><span class="ct-hint">Pad vibrates on hits, drops, cleared lines and game over.</span></span>
               </label>
               <label class="check-row">
                 <input type="checkbox" name="blocksStickDrop" id="blocksStickDrop" %CHK_BLOCKSSTICKDROP%>
                 <span class="check-box" aria-hidden="true"></span>
-                <span class="check-text"><strong>Stick up hard-drops</strong><span class="ct-hint">Off: only d-pad up drops, so a nudge on the stick never slams a piece down.</span></span>
+                <span class="check-text"><strong>Falling Blocks: stick up hard-drops</strong><span class="ct-hint">Off: only d-pad up drops, so a nudge on the stick never slams a piece down.</span></span>
               </label>
             </div>
           </div>
