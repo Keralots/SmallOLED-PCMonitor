@@ -874,4 +874,4 @@ Created for monitoring PC stats on a small OLED display. Mario animation inspire
 
 ## Trademarks
 
-SmallOLED is an independent open-source project. It is not affiliated with, endorsed by or sponsored by Nintendo, Bandai Namco, Taito, The Tetris Company, Microsoft or any other company. Game and character names are used only to describe the style of an animation; all trademarks belong to their respective owners.
+SmallOLED is an independent open-source project. It is not affiliated with, endorsed by or sponsored by Nintendo, Bandai Namco, Taito, The Tetris Company, Microsoft or any other company. Game and character names are used only to describe the style of an animation; all trademarks belong to their respective owners. Every sprite and animation is original low-resolution pixel art drawn by the code in this repository; no artwork, sprite sheets, ROM data, fonts, sounds or music from any commercial game are copied or distributed here, and the firmware does not emulate any of those games.
