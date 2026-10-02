@@ -24,7 +24,7 @@
 #define RUN_W 8
 #define RUN_H 10
 #define DUCK_H 6
-#define GRAVITY 820.0f       // px/s^2
+#define RUNNER_GRAVITY 820.0f // px/s^2
 #define JUMP_V -180.0f
 #define HOLD_GRAVITY 0.6f    // gravity factor while jump is held and rising (20px tap, 33px held)
 #define FAST_FALL 2.2f
@@ -111,7 +111,7 @@ static void update(const GamepadState &in, float dt) {
     gameRumble(0, 15, 25);
   }
   if (airborne) {
-    float g = GRAVITY;
+    float g = RUNNER_GRAVITY;
     if (runVY < 0 && jumpHeld) g *= HOLD_GRAVITY;
     if (in.buttons & GP_DOWN) g *= FAST_FALL;
     runVY += g * dt;
