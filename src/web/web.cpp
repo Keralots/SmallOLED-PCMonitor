@@ -771,6 +771,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "CHK_DINOSHOWDATE")) { out = String(settings.dinoShowDate ? "checked" : ""); return true; }
   if (!strcmp(n, "GAME_HIDDEN")) { out = GAMEPAD_ENABLED ? "" : "hidden"; return true; }
   if (!strcmp(n, "CHK_GAMERUMBLE")) { out = String(settings.gameRumble ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_BLOCKSGHOST")) { out = String(settings.blocksGhost ? "checked" : ""); return true; }
   if (!strcmp(n, "CHK_BLOCKSSTICKDROP")) { out = String(settings.blocksStickDrop ? "checked" : ""); return true; }
   if (!strcmp(n, "V_BLOCKSSTARTLEVEL")) { out = String(settings.blocksStartLevel); return true; }
   if (!strncmp(n, "SEL_GAMEIDLE_", 13)) { out = String(settings.gameIdleExitMin == atoi(n + 13) ? "selected" : ""); return true; }
@@ -1391,6 +1392,7 @@ void handleSave() {
  settings.dinoShowDate = server.hasArg("dinoShowDate");
  settings.gameRumble = server.hasArg("gameRumble");
  settings.blocksStickDrop = server.hasArg("blocksStickDrop");
+ settings.blocksGhost = server.hasArg("blocksGhost");
  if (server.hasArg("blocksStartLevel")) {
  settings.blocksStartLevel = server.arg("blocksStartLevel").toInt();
  }
@@ -1760,6 +1762,7 @@ void handleExportConfig() {
  json += "\"blocksStartLevel\":" + String(settings.blocksStartLevel) + ",";
  json += "\"gameRumble\":" + String(settings.gameRumble ? "true" : "false") + ",";
  json += "\"blocksStickDrop\":" + String(settings.blocksStickDrop ? "true" : "false") + ",";
+ json += "\"blocksGhost\":" + String(settings.blocksGhost ? "true" : "false") + ",";
 #if GAMEPAD_ENABLED
  json += "\"gameHi\":{";
  for (uint8_t i = 0; i < gameCount(); i++) {
@@ -2071,6 +2074,7 @@ void handleImportConfig() {
  if (!doc["blocksStartLevel"].isNull()) settings.blocksStartLevel = doc["blocksStartLevel"];
  if (!doc["gameRumble"].isNull()) settings.gameRumble = doc["gameRumble"];
  if (!doc["blocksStickDrop"].isNull()) settings.blocksStickDrop = doc["blocksStickDrop"];
+ if (!doc["blocksGhost"].isNull()) settings.blocksGhost = doc["blocksGhost"];
 #if GAMEPAD_ENABLED
  for (uint8_t i = 0; i < gameCount(); i++) {
    JsonVariant hi = doc["gameHi"][gameHiKey(i)];

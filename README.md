@@ -560,6 +560,7 @@ while you play, even inside the night dimming window.
 | **Falling Blocks starting level** | 1-10 |
 | **Rumble** | Pad vibrates on hits, drops, cleared lines and game over |
 | **Falling Blocks: stick up hard-drops** | Off: only d-pad up drops, so a nudge on the stick never slams a piece down |
+| **Falling Blocks: landing preview** | Dots mark where the falling piece will land. Off by default |
 | **Auto exit** | Minutes without input before game mode ends (0 = never) |
 
 The same page shows the pad status and battery, lists the best scores with a

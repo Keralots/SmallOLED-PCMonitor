@@ -792,6 +792,11 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                 <span class="check-box" aria-hidden="true"></span>
                 <span class="check-text"><strong>Falling Blocks: stick up hard-drops</strong><span class="ct-hint">Off: only d-pad up drops, so a nudge on the stick never slams a piece down.</span></span>
               </label>
+              <label class="check-row">
+                <input type="checkbox" name="blocksGhost" id="blocksGhost" %CHK_BLOCKSGHOST%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Falling Blocks: landing preview</strong><span class="ct-hint">Dots mark where the falling piece will land. Default off.</span></span>
+              </label>
             </div>
           </div>
 

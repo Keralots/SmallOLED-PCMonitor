@@ -202,6 +202,7 @@ struct Settings {
   bool gameRumble;              // Pad vibration on game events (default: true)
   uint8_t blocksStartLevel;     // Falling Blocks starting level (1-10)
   bool blocksStickDrop;         // Left stick up hard-drops too (d-pad up always does)
+  bool blocksGhost;             // Falling Blocks landing preview (default off)
 
   // Dragon Ball clock settings
   bool dragonIdleTricks;        // Afterimage teleports and power-ups between minutes

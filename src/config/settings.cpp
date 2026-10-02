@@ -390,6 +390,7 @@ void loadSettings() {
   settings.gameRumble = preferences.getBool("gameRumble", true);
   settings.blocksStartLevel = preferences.getUChar("blkStartLvl", 1);
   settings.blocksStickDrop = preferences.getBool("blkStickDrop", true);
+  settings.blocksGhost = preferences.getBool("blkGhost", false);
   settings.lifeDensity = preferences.getUChar("lifeDensity", 1);
   settings.lifeShowDate = preferences.getBool("lifeDate", false);
   settings.lifeSmallClock = preferences.getBool("lifeSmall", false);
@@ -654,6 +655,7 @@ void saveSettings() {
   preferences.putBool("gameRumble", settings.gameRumble);
   preferences.putUChar("blkStartLvl", settings.blocksStartLevel);
   preferences.putBool("blkStickDrop", settings.blocksStickDrop);
+  preferences.putBool("blkGhost", settings.blocksGhost);
   preferences.putUChar("lifeDensity", settings.lifeDensity);
   preferences.putBool("lifeDate", settings.lifeShowDate);
   preferences.putBool("lifeSmall", settings.lifeSmallClock);

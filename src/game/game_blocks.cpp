@@ -8,7 +8,7 @@
  * level steps up every 5 lines instead of 10.
  *
  * 7-bag randomiser, delayed auto shift, lock delay with a capped number of
- * resets, simple wall kicks, ghost piece (centre dots), flashing line clears,
+ * resets, simple wall kicks, optional ghost piece (centre dots), flashing line clears,
  * hold (once per piece; drawn dotted until the next piece unlocks it), pad
  * rumble on drops, clears and game over.
  *
@@ -340,7 +340,7 @@ static void drawScene(unsigned long now) {
   if (phase != G_OVER && !clearing) {
     int gy = py;
     while (fits(cur, rot, px, gy + 1)) gy++;
-    if (gy != py) drawPiece(cur, rot, px, gy, true);
+    if (settings.blocksGhost && gy != py) drawPiece(cur, rot, px, gy, true);
     drawPiece(cur, rot, px, py, false);
   }
 
