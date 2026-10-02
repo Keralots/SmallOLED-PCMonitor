@@ -769,6 +769,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_DINOCACTUSFREQ_2")) { out = String(settings.dinoCactusFreq == 2 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWCLOUDS")) { out = String(settings.dinoShowClouds ? "checked" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWDATE")) { out = String(settings.dinoShowDate ? "checked" : ""); return true; }
+  if (!strcmp(n, "GAME_HIDDEN")) { out = GAMEPAD_ENABLED ? "" : "hidden"; return true; }
   if (!strcmp(n, "CHK_GAMERUMBLE")) { out = String(settings.gameRumble ? "checked" : ""); return true; }
   if (!strcmp(n, "CHK_BLOCKSSTICKDROP")) { out = String(settings.blocksStickDrop ? "checked" : ""); return true; }
   if (!strcmp(n, "V_BLOCKSSTARTLEVEL")) { out = String(settings.blocksStartLevel); return true; }

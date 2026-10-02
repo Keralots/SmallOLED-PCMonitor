@@ -12,7 +12,7 @@
 #include "user_config.h"
 
 // ========== Version ==========
-#define FIRMWARE_VERSION "1.7.0"
+#define FIRMWARE_VERSION "1.8.0"
 
 // ========== Constants ==========
 #define MAX_METRICS 20
