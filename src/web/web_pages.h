@@ -754,13 +754,22 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
           </div>
           <div class="card">
             <h2 class="card-title">Games</h2>
-            <p class="field-hint" style="margin-top:0">Falling Blocks, Snake, Bricks, Space Rocks and Runner on the OLED, played with an Xbox Wireless Controller over Bluetooth LE (model 1708 or newer, controller firmware 5.x). Start game mode here or triple-tap the touch button, then hold the pad's pair button for 3 seconds; a paired pad reconnects with the Xbox button. Pick a game with the d-pad and A. Menu pauses, View in the pause screen returns to the game list, View in the list leaves game mode.</p>
+            <p class="field-hint" style="margin-top:0">Falling Blocks, Snake, Bricks, Space Rocks, Runner and Defenders on the OLED, played with an Xbox Wireless Controller over Bluetooth LE (model 1708 or newer, controller firmware 5.x). Start game mode here or triple-tap the touch button, then hold the pad's pair button for 3 seconds; a paired pad reconnects with the Xbox button. Pick a game with the d-pad and A. Menu pauses, View in the pause screen returns to the game list, View in the list leaves game mode.</p>
             <div class="btn-row" style="margin-top:12px">
               <button type="button" class="btn" id="gameStart">Start game mode</button>
               <button type="button" class="btn btn-ghost" id="gameStop">Stop</button>
               <button type="button" class="btn btn-danger" id="gameForget">Forget paired pad</button>
             </div>
             <p class="field-hint" id="gameStatus">Pad status: ...</p>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">High scores</h2>
+            <div id="gameHiList" class="field-hint" style="margin-top:0">...</div>
+            <div class="btn-row" style="margin-top:12px">
+              <button type="button" class="btn btn-danger" id="gameHiResetAll">Reset all high scores</button>
+            </div>
+            <p class="field-hint">High scores are part of the configuration export, so a backup brings them back after a factory reset.</p>
           </div>
 
           <div class="card">
@@ -1704,8 +1713,29 @@ fetch('/api/game/status').then(function (r) { return r.json(); }).then(function 
 var t = 'Pad status: ' + d.link + (d.link === 'connected' ? ' (battery ' + d.battery + '%)' : '');
 t += ' · ' + (d.paired ? 'a pad is paired' : 'no pad paired') + ' · game mode ' + (d.active ? 'on' : 'off');
 gameStatusEl.textContent = t;
+renderGameHi(d.games || []);
 }).catch(function () {});
 }
+var gameHiList = $('#gameHiList'), gameHiKey = '';
+function renderGameHi(games) {
+if (!gameHiList) return;
+var key = JSON.stringify(games);
+if (key === gameHiKey) return;
+gameHiKey = key;
+gameHiList.innerHTML = games.map(function (g, i) {
+return '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0"><span>' + g.name + '</span><span>' + (g.hi || '-') +
+(g.hi ? ' <button type="button" class="btn btn-ghost" style="padding:2px 10px;margin-left:8px" data-hi="' + i + '">Reset</button>' : '') + '</span></div>';
+}).join('');
+}
+function resetGameHi(q) { fetch('/api/game/hiscore/reset' + q).then(function () { gameHiKey = ''; pollGameStatus(); }); }
+if (gameHiList) gameHiList.addEventListener('click', function (e) {
+var b = e.target.closest('[data-hi]');
+if (b && confirm('Reset this high score?')) resetGameHi('?id=' + b.getAttribute('data-hi'));
+});
+var gameHiAllBtn = $('#gameHiResetAll');
+if (gameHiAllBtn) gameHiAllBtn.addEventListener('click', function () {
+if (confirm('Reset every game high score?')) resetGameHi('');
+});
 setInterval(pollGameStatus, 2000);
 pollGameStatus();
 var ntpBtn = $('#ntpTestBtn');

@@ -290,7 +290,8 @@ bool rocksFrame(const GamepadState &in, bool padLost) {
   char info[16];
   snprintf(info, sizeof(info), phase == G_READY ? "HI %lu" : "%lu pts",
            (unsigned long)(phase == G_READY ? hiScore : score));
-  gameDrawOverlay(phase, padLost, "SPACE ROCKS", phase == G_PAUSED ? nullptr : info, newHi);
+  gameDrawOverlay(phase, padLost, "SPACE ROCKS", phase == G_PAUSED ? nullptr : info, newHi,
+                  "L/R turn, up thrust\nA or RB: fire");
   return true;
 }
 

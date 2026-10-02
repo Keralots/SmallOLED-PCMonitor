@@ -49,8 +49,25 @@ void gamePrintCentered(int y, const char *s) {
   display.print(s);
 }
 
+// READY with controls: a taller box over the whole field.
+static void drawReadyHelp(const char *title, const char *info, const char *help) {
+  char l1[21] = "", l2[21] = "";
+  const char *nl = strchr(help, '\n');
+  size_t n = nl ? (size_t)(nl - help) : strlen(help);
+  snprintf(l1, sizeof(l1), "%.*s", (int)n, help);
+  if (nl) snprintf(l2, sizeof(l2), "%s", nl + 1);
+  display.fillRect(4, GAME_TOP + 1, 120, SCREEN_HEIGHT - GAME_TOP - 1, DISPLAY_BLACK);
+  display.drawRect(4, GAME_TOP + 1, 120, SCREEN_HEIGHT - GAME_TOP - 1, DISPLAY_WHITE);
+  gamePrintCentered(15, title);
+  if (info) gamePrintCentered(25, info);
+  display.drawFastHLine(10, 34, 108, DISPLAY_WHITE);
+  gamePrintCentered(37, l1);
+  gamePrintCentered(46, l2);
+  if ((millis() / 500) % 3) gamePrintCentered(55, "A: start");
+}
+
 void gameDrawOverlay(GamePhase phase, bool padLost, const char *title, const char *info,
-                     bool newHi) {
+                     bool newHi, const char *help) {
   const char *l1, *l2 = info, *l3;
   if (padLost) {
     l1 = "PAD LOST";
@@ -59,6 +76,12 @@ void gameDrawOverlay(GamePhase phase, bool padLost, const char *title, const cha
   } else {
     switch (phase) {
       case G_READY:
+        if (help) {
+          display.setTextSize(1);
+          display.setTextColor(DISPLAY_WHITE);
+          drawReadyHelp(title, info, help);
+          return;
+        }
         l1 = title;
         l3 = "A: start";
         break;
@@ -82,6 +105,7 @@ void gameDrawOverlay(GamePhase phase, bool padLost, const char *title, const cha
   const char *ls[] = {l1, l2, l3};
   for (int i = 0; i < 3; i++)
     if (ls[i]) gamePrintCentered(22 + i * 10, ls[i]);
+  if (phase == G_PAUSED && !padLost) gameDrawBattery(92, 21);
 }
 
 void gameDrawScore(int x, uint32_t score) {
@@ -91,7 +115,23 @@ void gameDrawScore(int x, uint32_t score) {
   display.print(score);
 }
 
+void gameDrawBattery(int x, int y) {
+  uint8_t level = gamepadBattery();
+  if (!level) return;
+  display.fillRect(x - 1, y - 1, 15, 8, DISPLAY_BLACK);
+  display.drawRect(x, y, 12, 6, DISPLAY_WHITE);
+  display.fillRect(x + 12, y + 2, 1, 2, DISPLAY_WHITE);
+  int w = (level * 8 + 50) / 100;
+  if (w < 1) w = 1;
+  display.fillRect(x + 2, y + 2, w, 2, DISPLAY_WHITE);
+}
+
 void gameDrawClock() {
+  uint8_t level = gamepadBattery();
+  if (level && level <= 15 && (millis() / 700) % 3 == 0) {
+    if ((millis() / 350) % 2) gameDrawBattery(SCREEN_WIDTH - 22, 2);
+    return;
+  }
   struct tm t;
   if (!peekLocalTime(&t)) return;
   int h, m;
@@ -117,12 +157,17 @@ uint32_t gameLoadHi(const char *key) {
   return v;
 }
 
+void gameStoreHi(const char *key, uint32_t score) {
+  Preferences p;
+  if (!p.begin("game", false)) return;
+  if (score) p.putUInt(key, score);
+  else if (p.isKey(key)) p.remove(key);
+  p.end();
+}
+
 bool gameSubmitScore(const char *key, uint32_t score) {
   if (score <= gameLoadHi(key)) return false;
-  Preferences p;
-  p.begin("game", false);
-  p.putUInt(key, score);
-  p.end();
+  gameStoreHi(key, score);
   return true;
 }
 

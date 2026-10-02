@@ -43,8 +43,10 @@ static const GameDef GAMES[] = {
     {"Bricks", "bricksHi", bricksReset, bricksFrame},
     {"Space Rocks", "rocksHi", rocksReset, rocksFrame},
     {"Runner", "runnerHi", runnerReset, runnerFrame},
+    {"Defenders", "defendersHi", defendersReset, defendersFrame},
 };
 static const uint8_t GAME_COUNT = sizeof(GAMES) / sizeof(GAMES[0]);
+#define MENU_ROWS 5
 
 static int8_t current = -1;  // running game, -1 = menu
 static uint8_t selected = 0;
@@ -53,6 +55,18 @@ static uint32_t menuHi[GAME_COUNT];
 static void openMenu() {
   current = -1;
   for (uint8_t i = 0; i < GAME_COUNT; i++) menuHi[i] = gameLoadHi(GAMES[i].hiKey);
+}
+
+uint8_t gameCount() { return GAME_COUNT; }
+const char *gameName(uint8_t i) { return i < GAME_COUNT ? GAMES[i].name : ""; }
+const char *gameHiKey(uint8_t i) { return i < GAME_COUNT ? GAMES[i].hiKey : ""; }
+
+void gameResetHi(int i) {
+  for (uint8_t k = 0; k < GAME_COUNT; k++) {
+    if (i >= 0 && k != i) continue;
+    gameStoreHi(GAMES[k].hiKey, 0);
+    menuHi[k] = 0;
+  }
 }
 
 static void launchGame(uint8_t i) {
@@ -129,21 +143,29 @@ static bool menuFrame(const GamepadState &in, bool padLost) {
   display.setTextColor(DISPLAY_WHITE);
   display.setCursor(0, 1);
   display.print("GAMES");
+  gameDrawBattery(SCREEN_WIDTH - 50, 2);
   gameDrawClock();
   display.drawFastHLine(0, 10, SCREEN_WIDTH, DISPLAY_WHITE);
-  for (uint8_t i = 0; i < GAME_COUNT; i++) {
-    int y = 12 + i * 10;
+  uint8_t first = selected < MENU_ROWS ? 0 : selected - MENU_ROWS + 1;
+  for (uint8_t r = 0; r < MENU_ROWS && first + r < GAME_COUNT; r++) {
+    uint8_t i = first + r;
+    int y = 12 + r * 10;
     bool sel = i == selected;
-    if (sel) display.fillRect(0, y, SCREEN_WIDTH, 10, DISPLAY_WHITE);
+    if (sel) display.fillRect(0, y, SCREEN_WIDTH - 3, 10, DISPLAY_WHITE);
     display.setTextColor(sel ? DISPLAY_BLACK : DISPLAY_WHITE);
     display.setCursor(3, y + 1);
     display.print(GAMES[i].name);
     if (menuHi[i]) {
       char hi[11];
       snprintf(hi, sizeof(hi), "%lu", (unsigned long)menuHi[i]);
-      display.setCursor(SCREEN_WIDTH - 3 - strlen(hi) * 6, y + 1);
+      display.setCursor(SCREEN_WIDTH - 6 - strlen(hi) * 6, y + 1);
       display.print(hi);
     }
+  }
+  if (GAME_COUNT > MENU_ROWS) {
+    int h = 50 * MENU_ROWS / GAME_COUNT;
+    int y = 12 + (50 - h) * first / (GAME_COUNT - MENU_ROWS);
+    display.fillRect(SCREEN_WIDTH - 2, y, 2, h, DISPLAY_WHITE);
   }
   display.setTextColor(DISPLAY_WHITE);
   if (padLost) gameDrawOverlay(G_PAUSED, true, nullptr, nullptr, false);

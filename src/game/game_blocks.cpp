@@ -373,7 +373,8 @@ bool blocksFrame(const GamepadState &in, bool padLost) {
   if (phase == G_READY) snprintf(info, sizeof(info), "HI %lu", (unsigned long)hiScore);
   else if (phase == G_PAUSED) snprintf(info, sizeof(info), "%u ln  pad %u%%", lines, gamepadBattery());
   else snprintf(info, sizeof(info), "%u lines", lines);
-  gameDrawOverlay(phase, padLost, "FALLING BLOCKS", info, newHi);
+  gameDrawOverlay(phase, padLost, "FALLING BLOCKS", info, newHi,
+                  "move, up drop\nA/B turn  LB hold");
   return true;
 }
 

@@ -26,14 +26,20 @@ enum GameStep : uint8_t {
 };
 
 GameStep gameFlow(GamePhase &phase, const GamepadState &in, bool padLost);
-// Box over the field for every phase but PLAY. `info` is an optional second line.
+// Box over the field for every phase but PLAY. `info` is an optional second line;
+// `help` (up to two lines split by '\n', 19 chars each) adds the controls to READY.
 void gameDrawOverlay(GamePhase phase, bool padLost, const char *title, const char *info,
-                     bool newHi);
+                     bool newHi, const char *help = nullptr);
 void gameDrawScore(int x, uint32_t score);
+// HH:MM at the right of the band; a pad battery at 15% or less blinks in its place.
 void gameDrawClock();
+// 13x6 pad battery icon; nothing while the level is still unknown.
+void gameDrawBattery(int x, int y);
 void gamePrintCentered(int y, const char *s);
 void gameRumble(uint8_t strong, uint8_t weak, uint16_t ms);
 uint32_t gameLoadHi(const char *key);
+// Writes a best score as is; 0 removes it.
+void gameStoreHi(const char *key, uint32_t score);
 // Saves the score when it beats the stored best; returns true on a new best.
 bool gameSubmitScore(const char *key, uint32_t score);
 // Seconds since `last` (capped so a stall cannot teleport anything), updates `last`.

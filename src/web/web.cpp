@@ -17,6 +17,7 @@
 #include "../viz/visualizer.h"
 #if GAMEPAD_ENABLED
 #include "../game/game_mode.h"
+#include "../game/game_common.h"
 #endif
 #include "web_pages.h"
 #include <WebServer.h>
@@ -88,6 +89,7 @@ void setupWebServer() {
  server.on("/api/game/stop", HTTP_GET, handleGameStop);
  server.on("/api/game/status", HTTP_GET, handleGameStatus);
  server.on("/api/game/forget", HTTP_GET, handleGameForget);
+ server.on("/api/game/hiscore/reset", HTTP_GET, handleGameResetHi);
 #endif
  server.on("/api/reboot", HTTP_GET, handleReboot);
 
@@ -385,6 +387,12 @@ void handleGameStatus() {
  doc["link"] = LINKS[gamepadLink()];
  doc["battery"] = gamepadBattery();
  doc["paired"] = gamepadHasBond();
+ JsonArray games = doc["games"].to<JsonArray>();
+ for (uint8_t i = 0; i < gameCount(); i++) {
+   JsonObject g = games.add<JsonObject>();
+   g["name"] = gameName(i);
+   g["hi"] = gameLoadHi(gameHiKey(i));
+ }
  String out;
  serializeJson(doc, out);
  server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -395,6 +403,22 @@ void handleGameStatus() {
 void handleGameForget() {
  gamepadForget();
  server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true}");
+}
+
+// GET /api/game/hiscore/reset?id=N - clear one game's best score (index from
+// /api/game/status games[]); without id every game's.
+void handleGameResetHi() {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ int id = -1;
+ if (server.hasArg("id")) {
+   id = server.arg("id").toInt();
+   if (id < 0 || id >= gameCount()) {
+     server.send(400, "application/json", "{\"error\":\"Unknown game id\"}");
+     return;
+   }
+ }
+ gameResetHi(id);
  server.send(200, "application/json", "{\"success\":true}");
 }
 #endif
@@ -1735,6 +1759,14 @@ void handleExportConfig() {
  json += "\"blocksStartLevel\":" + String(settings.blocksStartLevel) + ",";
  json += "\"gameRumble\":" + String(settings.gameRumble ? "true" : "false") + ",";
  json += "\"blocksStickDrop\":" + String(settings.blocksStickDrop ? "true" : "false") + ",";
+#if GAMEPAD_ENABLED
+ json += "\"gameHi\":{";
+ for (uint8_t i = 0; i < gameCount(); i++) {
+   if (i) json += ",";
+   json += "\"" + String(gameHiKey(i)) + "\":" + String(gameLoadHi(gameHiKey(i)));
+ }
+ json += "},";
+#endif
  json += "\"lifeDensity\":" + String(settings.lifeDensity) + ",";
  json += "\"lifeClockPos\":" + String(settings.lifeClockPos) + ",";
  json += "\"tronBikeStyle\":" + String(settings.tronBikeStyle) + ",";
@@ -2038,6 +2070,12 @@ void handleImportConfig() {
  if (!doc["blocksStartLevel"].isNull()) settings.blocksStartLevel = doc["blocksStartLevel"];
  if (!doc["gameRumble"].isNull()) settings.gameRumble = doc["gameRumble"];
  if (!doc["blocksStickDrop"].isNull()) settings.blocksStickDrop = doc["blocksStickDrop"];
+#if GAMEPAD_ENABLED
+ for (uint8_t i = 0; i < gameCount(); i++) {
+   JsonVariant hi = doc["gameHi"][gameHiKey(i)];
+   if (hi.is<uint32_t>()) gameStoreHi(gameHiKey(i), hi.as<uint32_t>());
+ }
+#endif
  if (!doc["lifeDensity"].isNull()) settings.lifeDensity = doc["lifeDensity"];
  if (!doc["lifeClockPos"].isNull()) settings.lifeClockPos = doc["lifeClockPos"];
  if (!doc["tronBikeStyle"].isNull()) settings.tronBikeStyle = doc["tronBikeStyle"];

@@ -216,7 +216,8 @@ bool runnerFrame(const GamepadState &in, bool padLost) {
   char info[16];
   snprintf(info, sizeof(info), phase == G_READY ? "HI %lu" : "%lu m",
            (unsigned long)(phase == G_READY ? hiScore : score()));
-  gameDrawOverlay(phase, padLost, "RUNNER", phase == G_PAUSED ? nullptr : info, newHi);
+  gameDrawOverlay(phase, padLost, "RUNNER", phase == G_PAUSED ? nullptr : info, newHi,
+                  "A/up: jump (hold)\ndown: duck");
   return true;
 }
 

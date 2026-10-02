@@ -174,7 +174,8 @@ bool snakeFrame(const GamepadState &in, bool padLost) {
   char info[16];
   snprintf(info, sizeof(info), phase == G_READY ? "HI %lu" : "%lu pts",
            (unsigned long)(phase == G_READY ? hiScore : score));
-  gameDrawOverlay(phase, padLost, "SNAKE", phase == G_PAUSED ? nullptr : info, newHi);
+  gameDrawOverlay(phase, padLost, "SNAKE", phase == G_PAUSED ? nullptr : info, newHi,
+                  "d-pad/stick: steer\nfood grows+speeds");
   return true;
 }
 

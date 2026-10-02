@@ -22,6 +22,13 @@ bool gameModeActive();
 // Draws one frame into the display buffer (caller clears and pushes it).
 void displayGameMode();
 
+// Game registry for the web UI: name and Preferences key of each game's best score.
+uint8_t gameCount();
+const char *gameName(uint8_t i);
+const char *gameHiKey(uint8_t i);
+// Clears one game's best score, or every game's with -1.
+void gameResetHi(int i);
+
 // Each game: reset to its READY screen; run one frame, false = back to the menu.
 void blocksReset();
 bool blocksFrame(const GamepadState &in, bool padLost);
@@ -33,5 +40,7 @@ void rocksReset();
 bool rocksFrame(const GamepadState &in, bool padLost);
 void runnerReset();
 bool runnerFrame(const GamepadState &in, bool padLost);
+void defendersReset();
+bool defendersFrame(const GamepadState &in, bool padLost);
 
 #endif // GAME_MODE_H

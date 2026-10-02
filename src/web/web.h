@@ -59,6 +59,7 @@ void handleGameStart();
 void handleGameStop();
 void handleGameStatus();
 void handleGameForget();
+void handleGameResetHi();
 #endif
 void handleReboot();
 
