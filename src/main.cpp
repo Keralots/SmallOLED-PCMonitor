@@ -560,7 +560,6 @@ void loop() {
     gameModeStop();
     Serial.println("Touch button: Leaving game mode");
   } else if (taps >= 3) {
-    handleTemporaryDisplayWake();
     gameModeStart();
     Serial.println("Touch button: Triple tap -> game mode");
   } else

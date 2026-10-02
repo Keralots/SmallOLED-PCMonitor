@@ -386,6 +386,7 @@ void loadSettings() {
   settings.dinoShowDate =
       preferences.getBool("dinoDate", false); // Default: hidden (centred clock)
   settings.lifeSpeed = preferences.getUChar("lifeSpeed", 8);
+  settings.gameIdleExitMin = preferences.getUChar("gameIdleExit", 5);
   settings.lifeDensity = preferences.getUChar("lifeDensity", 1);
   settings.lifeShowDate = preferences.getBool("lifeDate", false);
   settings.lifeSmallClock = preferences.getBool("lifeSmall", false);
@@ -646,6 +647,7 @@ void saveSettings() {
   preferences.putBool("dinoClouds", settings.dinoShowClouds);
   preferences.putBool("dinoDate", settings.dinoShowDate);
   preferences.putUChar("lifeSpeed", settings.lifeSpeed);
+  preferences.putUChar("gameIdleExit", settings.gameIdleExitMin);
   preferences.putUChar("lifeDensity", settings.lifeDensity);
   preferences.putBool("lifeDate", settings.lifeShowDate);
   preferences.putBool("lifeSmall", settings.lifeSmallClock);

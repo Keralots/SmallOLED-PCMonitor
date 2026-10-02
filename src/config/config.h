@@ -197,6 +197,9 @@ struct Settings {
   bool lifeSmallCells;          // 2px colony cells with the large clock (small clock always uses them)
   uint8_t lifeClockPos;         // Small clock only: 0=Centre, 1=Top, 2=Bottom
 
+  // Game mode
+  uint8_t gameIdleExitMin;      // Leave game mode after this many minutes without input (0 = never)
+
   // Dragon Ball clock settings
   bool dragonIdleTricks;        // Afterimage teleports and power-ups between minutes
 

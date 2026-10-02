@@ -44,6 +44,9 @@ static uint16_t suppressedWakeCount = 0;
 // Provisioning is on screen - hold the panel readable until the reboot that
 // ends provisioning.
 static bool provisioningOverride = false;
+// Game mode is on screen - hold normal brightness and keep the schedule out
+// until the game ends.
+static bool gameOverride = false;
 
 #if TOUCH_BUTTON_ENABLED
 static bool temporaryWakeActive = false;
@@ -207,7 +210,7 @@ bool refreshDisplayBrightnessNow() {
   }
 #endif
 
-  if (displayForcedOff || provisioningOverride) {
+  if (displayForcedOff || provisioningOverride || gameOverride) {
     return true;
   }
 
@@ -236,7 +239,7 @@ void checkScheduledBrightness() {
   }
 #endif
 
-  if (displayForcedOff || provisioningOverride) {
+  if (displayForcedOff || provisioningOverride || gameOverride) {
     return;
   }
 
@@ -330,6 +333,25 @@ void ensureDisplayVisible() {
 
 // Number of wake-ups the confirmation step above has thrown away. Stays 0 on a
 // healthy device; anything else means the clock is being read wrong.
+// Starting a game is a deliberate act at the device, so it also lifts an HTTP
+// display-off and a temporary wake; leaving re-applies the schedule at once.
+void setDisplayGameOverride(bool on) {
+  if (gameOverride == on) return;
+  gameOverride = on;
+  if (!on) {
+    refreshDisplayBrightnessNow();
+    return;
+  }
+  displayForcedOff = false;
+  pendingBrightenValid = false;
+#if TOUCH_BUTTON_ENABLED
+  temporaryWakeActive = false;
+#endif
+  uint8_t brightness = sanitizeBrightnessValue(settings.displayBrightness);
+  if (brightness == 0) brightness = PROVISIONING_MIN_BRIGHTNESS;
+  applyBrightnessLevel(brightness);
+}
+
 uint16_t getSuppressedScheduleWakeCount() {
   return suppressedWakeCount;
 }

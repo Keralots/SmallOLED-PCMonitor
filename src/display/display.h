@@ -56,6 +56,8 @@ void applyDisplayBrightness();
 // Returns false when the scheduled target could not be resolved (no valid time).
 bool refreshDisplayBrightnessNow();
 void checkScheduledBrightness();
+// Hold normal brightness while game mode is on screen.
+void setDisplayGameOverride(bool on);
 
 // True when the schedule resolves to a dark panel, or when the boot hold is
 // keeping it dark because there is no clock yet to evaluate the schedule with.

@@ -3,8 +3,10 @@
  *
  * Owns the pad lifecycle around the game: a pairing screen until a pad
  * connects, the game while it is connected, and a pause overlay while it is
- * gone. Gives up (and frees the radio) if no pad shows up or a lost pad
- * does not come back.
+ * gone. Gives up (and frees the radio) if no pad shows up, a lost pad
+ * does not come back, or nobody touches the pad for gameIdleExitMin minutes.
+ * The panel is held at normal brightness for the whole time (no night
+ * schedule) and handed back to the schedule on exit.
  */
 
 #include "../config/user_config.h"
@@ -17,11 +19,15 @@
 
 #define GAME_PAIR_TIMEOUT_MS 120000UL
 #define GAME_LOST_TIMEOUT_MS 60000UL
+#define GAME_STICK_ACTIVITY 8000   // deflection that counts as input for the idle timer
+#define GAME_TRIGGER_ACTIVITY 100
 
 static bool active = false;
 static bool everConnected = false;
 static unsigned long enteredAt = 0;
 static unsigned long lostAt = 0;
+static unsigned long lastInputAt = 0;
+static uint16_t lastButtons = 0;
 
 void gameModeStart() {
   if (active) return;
@@ -29,6 +35,9 @@ void gameModeStart() {
   everConnected = false;
   lostAt = 0;
   enteredAt = millis();
+  lastInputAt = enteredAt;
+  lastButtons = 0;
+  setDisplayGameOverride(true);
   blocksReset();
   gamepadStart();
   Serial.println("Game mode: started");
@@ -38,6 +47,7 @@ void gameModeStop() {
   if (!active) return;
   active = false;
   gamepadStop();
+  setDisplayGameOverride(false);
   Serial.println("Game mode: stopped");
 }
 
@@ -76,9 +86,21 @@ void displayGameMode() {
   gamepadRead(&in);
 
   if (link == GP_LINK_CONNECTED) {
+    if (!everConnected || lostAt) lastInputAt = now;
     everConnected = true;
     lostAt = 0;
-    if (!blocksFrame(in, false)) gameModeStop();
+    if (in.pressed || in.buttons != lastButtons || abs(in.rx) > GAME_STICK_ACTIVITY ||
+        abs(in.ry) > GAME_STICK_ACTIVITY || in.lt > GAME_TRIGGER_ACTIVITY ||
+        in.rt > GAME_TRIGGER_ACTIVITY)
+      lastInputAt = now;
+    lastButtons = in.buttons;
+    if (!blocksFrame(in, false)) {
+      gameModeStop();
+    } else if (settings.gameIdleExitMin &&
+               now - lastInputAt >= settings.gameIdleExitMin * 60000UL) {
+      Serial.println("Game mode: idle timeout");
+      gameModeStop();
+    }
     return;
   }
 

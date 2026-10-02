@@ -117,7 +117,9 @@ void setupWebServer() {
  Update.printError(Serial);
  }
  } else if (upload.status == UPLOAD_FILE_WRITE) {
- // Write uploaded data
+ // The whole upload runs inside one handleClient() call: ~10 s on a good
+ // link, past the 15 s task WDT when BLE shares the radio.
+ esp_task_wdt_reset();
  if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
  Update.printError(Serial);
  }
@@ -720,6 +722,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_DINOCACTUSFREQ_2")) { out = String(settings.dinoCactusFreq == 2 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWCLOUDS")) { out = String(settings.dinoShowClouds ? "checked" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWDATE")) { out = String(settings.dinoShowDate ? "checked" : ""); return true; }
+  if (!strncmp(n, "SEL_GAMEIDLE_", 13)) { out = String(settings.gameIdleExitMin == atoi(n + 13) ? "selected" : ""); return true; }
   if (!strcmp(n, "V_LIFESPEED")) { out = String(settings.lifeSpeed); return true; }
   if (!strcmp(n, "SEL_LIFEDENSITY_0")) { out = String(settings.lifeDensity == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_LIFEDENSITY_1")) { out = String(settings.lifeDensity == 1 ? "selected" : ""); return true; }
@@ -1020,6 +1023,7 @@ void validateSettings() {
  clampSetting(settings.dinoSpeed, 5, 30, "dinoSpeed");
  clampSetting(settings.dinoCactusFreq, 0, 2, "dinoCactusFreq");
  clampSetting(settings.lifeSpeed, 2, 20, "lifeSpeed");
+ clampSetting(settings.gameIdleExitMin, 0, 60, "gameIdleExitMin");
  clampSetting(settings.lifeDensity, 0, 2, "lifeDensity");
  clampSetting(settings.lifeClockPos, 0, 2, "lifeClockPos");
 }
@@ -1333,6 +1337,9 @@ void handleSave() {
  }
  settings.dinoShowClouds = server.hasArg("dinoShowClouds");
  settings.dinoShowDate = server.hasArg("dinoShowDate");
+ if (server.hasArg("gameIdleExitMin")) {
+ settings.gameIdleExitMin = server.arg("gameIdleExitMin").toInt();
+ }
  if (server.hasArg("lifeSpeed")) {
  settings.lifeSpeed = server.arg("lifeSpeed").toInt();
  }
@@ -1692,6 +1699,7 @@ void handleExportConfig() {
  json += "\"dinoSpeed\":" + String(settings.dinoSpeed) + ",";
  json += "\"dinoCactusFreq\":" + String(settings.dinoCactusFreq) + ",";
  json += "\"lifeSpeed\":" + String(settings.lifeSpeed) + ",";
+ json += "\"gameIdleExitMin\":" + String(settings.gameIdleExitMin) + ",";
  json += "\"lifeDensity\":" + String(settings.lifeDensity) + ",";
  json += "\"lifeClockPos\":" + String(settings.lifeClockPos) + ",";
  json += "\"tronBikeStyle\":" + String(settings.tronBikeStyle) + ",";
@@ -1991,6 +1999,7 @@ void handleImportConfig() {
  if (!doc["dinoSpeed"].isNull()) settings.dinoSpeed = doc["dinoSpeed"];
  if (!doc["dinoCactusFreq"].isNull()) settings.dinoCactusFreq = doc["dinoCactusFreq"];
  if (!doc["lifeSpeed"].isNull()) settings.lifeSpeed = doc["lifeSpeed"];
+ if (!doc["gameIdleExitMin"].isNull()) settings.gameIdleExitMin = doc["gameIdleExitMin"];
  if (!doc["lifeDensity"].isNull()) settings.lifeDensity = doc["lifeDensity"];
  if (!doc["lifeClockPos"].isNull()) settings.lifeClockPos = doc["lifeClockPos"];
  if (!doc["tronBikeStyle"].isNull()) settings.tronBikeStyle = doc["tronBikeStyle"];

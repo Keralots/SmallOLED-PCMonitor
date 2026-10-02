@@ -760,6 +760,24 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
               <button type="button" class="btn btn-ghost" id="gameStop">Stop</button>
             </div>
           </div>
+
+          <div class="card">
+            <h2 class="card-title">Auto exit</h2>
+            <div class="field">
+              <label class="field-label" for="gameIdleExitMin">Leave game mode after no input for</label>
+              <div class="select-wrap">
+                <select name="gameIdleExitMin" id="gameIdleExitMin">
+                  <option value="2" %SEL_GAMEIDLE_2%>2 minutes</option>
+                  <option value="5" %SEL_GAMEIDLE_5%>5 minutes</option>
+                  <option value="10" %SEL_GAMEIDLE_10%>10 minutes</option>
+                  <option value="15" %SEL_GAMEIDLE_15%>15 minutes</option>
+                  <option value="30" %SEL_GAMEIDLE_30%>30 minutes</option>
+                  <option value="0" %SEL_GAMEIDLE_0%>Never</option>
+                </select>
+              </div>
+              <p class="field-hint">A paused or forgotten game frees the Bluetooth radio and hands the screen back to the clock. Any button or stick movement counts as input.</p>
+            </div>
+          </div>
         </section>
 
         <!-- DISPLAY -->
