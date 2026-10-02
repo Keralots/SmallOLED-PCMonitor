@@ -12,7 +12,7 @@
 #include "user_config.h"
 
 // ========== Version ==========
-#define FIRMWARE_VERSION "1.7.0"
+#define FIRMWARE_VERSION "1.8.0"
 
 // ========== Constants ==========
 #define MAX_METRICS 20
@@ -197,6 +197,13 @@ struct Settings {
   bool lifeSmallCells;          // 2px colony cells with the large clock (small clock always uses them)
   uint8_t lifeClockPos;         // Small clock only: 0=Centre, 1=Top, 2=Bottom
 
+  // Game mode
+  uint8_t gameIdleExitMin;      // Leave game mode after this many minutes without input (0 = never)
+  bool gameRumble;              // Pad vibration on game events (default: true)
+  uint8_t blocksStartLevel;     // Falling Blocks starting level (1-10)
+  bool blocksStickDrop;         // Left stick up hard-drops too (d-pad up always does)
+  bool blocksGhost;             // Falling Blocks landing preview (default off)
+
   // Dragon Ball clock settings
   bool dragonIdleTricks;        // Afterimage teleports and power-ups between minutes
 
@@ -218,7 +225,8 @@ struct Settings {
 // so the precedence lives in exactly one place (currentDisplayMode() in
 // main.cpp) instead of being spelled out at each call site.
 enum DisplayMode {
-  MODE_VIZ,      // Audio visualizer (forced, and actually fed or in grace)
+  MODE_GAME,     // Game mode (gamepad pairing / game)
+  MODE_VIZ,     // Audio visualizer (forced, and actually fed or in grace)
   MODE_METRICS,  // PC stats
   MODE_CLOCK,    // Clock / screensaver
 };

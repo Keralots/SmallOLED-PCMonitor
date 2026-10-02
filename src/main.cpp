@@ -44,6 +44,9 @@
 #include "utils/utils.h"
 #include "timezones.h"
 #include "viz/visualizer.h"
+#if GAMEPAD_ENABLED
+#include "game/game_mode.h"
+#endif
 
 // ========== External Objects ==========
 extern WiFiUDP udp;              // Defined in network.cpp
@@ -195,10 +198,74 @@ void advanceClockStyleFromTouch() {
 }
 #endif
 
+#if TOUCH_BUTTON_ENABLED
+// One resolved tap: wake a dark panel, or step metrics -> clock -> visualizer.
+void handleTouchTap() {
+  if (handleTemporaryDisplayWake()) return;
+  // Stops are metrics -> clock -> visualizer -> metrics, skipping the
+  // ones that have nothing to show. The visualizer only joins while sound
+  // is actually playing: packets keep arriving through silence, so
+  // offering it then would hand the user a flat line and, before this,
+  // swallowed the clock stop entirely. With clock the only stop left, a
+  // tap cycles clock styles as it always did.
+  bool vizStop = vizHasSignal(3000);
+  bool metricsStop = metricData.online;
+  if (httpForceViz) {
+    httpForceViz = false;
+    manualClockMode = !metricsStop;
+    Serial.println("Touch button: Leaving visualizer");
+  } else if (manualClockMode) {
+    if (vizStop) {
+      manualClockMode = false;
+      httpForceViz = true;
+      vizNoteForced();
+      Serial.println("Touch button: Clock -> visualizer");
+    } else if (metricsStop) {
+      manualClockMode = false;
+      Serial.println("Touch button: Clock -> metrics");
+    } else {
+      advanceClockStyleFromTouch();
+    }
+  } else if (metricsStop) {
+    manualClockMode = true;
+    Serial.println("Touch button: Metrics -> clock");
+  } else if (vizStop) {
+    httpForceViz = true;
+    vizNoteForced();
+    Serial.println("Touch button: Clock -> visualizer");
+  } else {
+    advanceClockStyleFromTouch();
+  }
+}
+
+#if GAMEPAD_ENABLED
+// Taps are counted and resolved once no further tap follows within the gap,
+// so three quick taps can start game mode. A third tap resolves at once.
+#define TOUCH_TAP_GAP_MS 350
+uint8_t pollTouchTaps() {
+  static uint8_t count = 0;
+  static unsigned long lastTap = 0;
+  if (checkTouchButtonPressed()) {
+    count++;
+    lastTap = millis();
+  }
+  if (!count || (count < 3 && millis() - lastTap <= TOUCH_TAP_GAP_MS)) return 0;
+  uint8_t n = count;
+  count = 0;
+  return n;
+}
+#else
+uint8_t pollTouchTaps() { return checkTouchButtonPressed() ? 1 : 0; }
+#endif
+#endif
+
 // Single source of truth for mode precedence. The visualizer outranks both
 // stats and clock: it is only ever on because something explicitly asked for
 // it, and it stops asking on its own once the stream dies.
 DisplayMode currentDisplayMode() {
+#if GAMEPAD_ENABLED
+  if (gameModeActive()) return MODE_GAME;
+#endif
   if (httpForceViz && vizShouldDisplay()) return MODE_VIZ;
 #if TOUCH_BUTTON_ENABLED
   if (metricData.online && !manualClockMode && !httpForceClock) return MODE_METRICS;
@@ -215,9 +282,13 @@ int getOptimalRefreshRate() {
   // should not freeze the bars. Capped rather than free-running - these
   // controllers have no double buffering, so pushing frames faster than the
   // panel scans them out shows up as tearing.
-  if (currentDisplayMode() == MODE_VIZ) {
+  DisplayMode mode = currentDisplayMode();
+  if (mode == MODE_VIZ) {
     return settings.vizRefreshHz;
   }
+#if GAMEPAD_ENABLED
+  if (mode == MODE_GAME) return GAME_REFRESH_HZ;
+#endif
 
   if (settings.refreshRateMode == 1) {
     // Manual mode - use user-specified rate
@@ -482,45 +553,18 @@ void loop() {
 #if LED_PWM_ENABLED
   handleTouchLED(); // Hold > 1s: ramp LED brightness up/down
 #endif
-  // Regular short press (mode toggle / clock style cycle)
-  if (checkTouchButtonPressed()) {
-    if (!handleTemporaryDisplayWake()) {
-      // Stops are metrics -> clock -> visualizer -> metrics, skipping the
-      // ones that have nothing to show. The visualizer only joins while sound
-      // is actually playing: packets keep arriving through silence, so
-      // offering it then would hand the user a flat line and, before this,
-      // swallowed the clock stop entirely. With clock the only stop left, a
-      // tap cycles clock styles as it always did.
-      bool vizStop = vizHasSignal(3000);
-      bool metricsStop = metricData.online;
-      if (httpForceViz) {
-        httpForceViz = false;
-        manualClockMode = !metricsStop;
-        Serial.println("Touch button: Leaving visualizer");
-      } else if (manualClockMode) {
-        if (vizStop) {
-          manualClockMode = false;
-          httpForceViz = true;
-          vizNoteForced();
-          Serial.println("Touch button: Clock -> visualizer");
-        } else if (metricsStop) {
-          manualClockMode = false;
-          Serial.println("Touch button: Clock -> metrics");
-        } else {
-          advanceClockStyleFromTouch();
-        }
-      } else if (metricsStop) {
-        manualClockMode = true;
-        Serial.println("Touch button: Metrics -> clock");
-      } else if (vizStop) {
-        httpForceViz = true;
-        vizNoteForced();
-        Serial.println("Touch button: Clock -> visualizer");
-      } else {
-        advanceClockStyleFromTouch();
-      }
-    }
-  }
+  // Taps: 1-2 step modes / clock styles, 3 start game mode, any leaves it
+  uint8_t taps = pollTouchTaps();
+#if GAMEPAD_ENABLED
+  if (taps && gameModeActive()) {
+    gameModeStop();
+    Serial.println("Touch button: Leaving game mode");
+  } else if (taps >= 3) {
+    gameModeStart();
+    Serial.println("Touch button: Triple tap -> game mode");
+  } else
+#endif
+  for (uint8_t i = 0; i < taps; i++) handleTouchTap();
 #endif
 
   // Check timeout
@@ -595,7 +639,11 @@ void loop() {
     bool showStats = mode == MODE_METRICS;
 
     // Show error status if PC is connected but LHM has issues
-    if (mode == MODE_VIZ) {
+    if (mode == MODE_GAME) {
+#if GAMEPAD_ENABLED
+      displayGameMode();
+#endif
+    } else if (mode == MODE_VIZ) {
       displayVisualizer();
     } else if (showStats && metricData.status != STATUS_OK && metricData.status != 0) {
       displayErrorStatus(metricData.status);

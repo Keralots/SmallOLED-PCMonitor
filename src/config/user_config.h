@@ -146,6 +146,13 @@
 #define BLE_SETUP_ENABLED 0              // 1 = BLE provisioning, 0 = AP mode (default)
 #define BLE_DEVICE_NAME "SmallOLED"      // BLE advertised name (shown in Android app scan)
 
+// ========== Game Mode (BLE gamepad) ==========
+// Pairs an Xbox Wireless Controller over BLE (model 1708 or 1914+ on pad
+// firmware 5.x - the C3 has no Bluetooth Classic) and runs Falling Blocks on the OLED.
+// Started from the web UI or /api/game/start; BLE is idle until then.
+// Pulls in NimBLE (~200KB flash), needs the min_spiffs.csv partition table.
+#define GAMEPAD_ENABLED 1                // 1 = game mode available, 0 = compiled out
+
 // ========== Improv-Serial WiFi Setup (Web Flasher) ==========
 // In-browser WiFi provisioning over USB serial, used by the web flasher at
 // docs/. After flashing, ESP Web Tools probes the device for

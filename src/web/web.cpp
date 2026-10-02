@@ -15,6 +15,10 @@
 #include "../display/display.h"
 #include "../timezones.h"
 #include "../viz/visualizer.h"
+#if GAMEPAD_ENABLED
+#include "../game/game_mode.h"
+#include "../game/game_common.h"
+#endif
 #include "web_pages.h"
 #include <WebServer.h>
 #include <Update.h>
@@ -80,6 +84,13 @@ void setupWebServer() {
 #endif
  server.on("/api/clock/style", HTTP_GET, handleSetClockStyle);
  server.on("/api/dragonball/demo", HTTP_GET, handleDragonBallDemo);
+#if GAMEPAD_ENABLED
+ server.on("/api/game/start", HTTP_GET, handleGameStart);
+ server.on("/api/game/stop", HTTP_GET, handleGameStop);
+ server.on("/api/game/status", HTTP_GET, handleGameStatus);
+ server.on("/api/game/forget", HTTP_GET, handleGameForget);
+ server.on("/api/game/hiscore/reset", HTTP_GET, handleGameResetHi);
+#endif
  server.on("/api/reboot", HTTP_GET, handleReboot);
 
  // OTA Firmware Update handlers
@@ -102,11 +113,17 @@ void setupWebServer() {
  HTTPUpload& upload = server.upload();
  if (upload.status == UPLOAD_FILE_START) {
  Serial.printf("Update: %s\n", upload.filename.c_str());
+#if GAMEPAD_ENABLED
+ // A BLE connect in flight can stall the upload long enough to trip the task WDT.
+ gameModeStop();
+#endif
  if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { // Start with max available size
  Update.printError(Serial);
  }
  } else if (upload.status == UPLOAD_FILE_WRITE) {
- // Write uploaded data
+ // The whole upload runs inside one handleClient() call: ~10 s on a good
+ // link, past the 15 s task WDT when BLE shares the radio.
+ esp_task_wdt_reset();
  if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
  Update.printError(Serial);
  }
@@ -195,7 +212,7 @@ void handleStatus() {
  // still the daytime value.
  doc["displayOn"] = !isDisplayForcedOff() && getLastAppliedBrightness() > 0;
  doc["forcedOff"] = isDisplayForcedOff();
- doc["mode"] = mode == MODE_VIZ ? "viz" : (mode == MODE_METRICS ? "metrics" : "clock");
+ doc["mode"] = mode == MODE_GAME ? "game" : mode == MODE_VIZ ? "viz" : (mode == MODE_METRICS ? "metrics" : "clock");
  doc["forcedClock"] = httpForceClock;
  doc["forcedViz"] = httpForceViz;
  // The companion derives a boot timestamp from this to notice a reboot and
@@ -325,6 +342,9 @@ void handleDebugFramebuffer() {
 
 // GET /api/mode/clock - force clock display even when the PC is online
 void handleModeClock() {
+#if GAMEPAD_ENABLED
+ gameModeStop();
+#endif
  httpForceClock = true;
  httpForceViz = false;  // the two overrides are mutually exclusive
  server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -334,12 +354,74 @@ void handleModeClock() {
 // GET /api/mode/viz - force the audio visualizer. Needs the companion's audio
 // stream; without it the panel says so and drops back after the grace window.
 void handleModeViz() {
+#if GAMEPAD_ENABLED
+ gameModeStop();
+#endif
  httpForceViz = true;
  httpForceClock = false;
  vizNoteForced();
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", "{\"success\":true,\"mode\":\"viz\"}");
 }
+
+#if GAMEPAD_ENABLED
+// GET /api/game/start - enter game mode: scan for a BLE gamepad, then Falling Blocks.
+void handleGameStart() {
+ gameModeStart();
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true,\"mode\":\"game\"}");
+}
+
+// GET /api/game/stop - leave game mode and release the pad.
+void handleGameStop() {
+ gameModeStop();
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true}");
+}
+
+// GET /api/game/status - game mode and pad link, for the web UI.
+void handleGameStatus() {
+ static const char *LINKS[] = {"off", "searching", "connecting", "connected"};
+ JsonDocument doc;
+ doc["active"] = gameModeActive();
+ doc["link"] = LINKS[gamepadLink()];
+ doc["battery"] = gamepadBattery();
+ doc["paired"] = gamepadHasBond();
+ JsonArray games = doc["games"].to<JsonArray>();
+ for (uint8_t i = 0; i < gameCount(); i++) {
+   JsonObject g = games.add<JsonObject>();
+   g["name"] = gameName(i);
+   g["hi"] = gameLoadHi(gameHiKey(i));
+ }
+ String out;
+ serializeJson(doc, out);
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", out);
+}
+
+// GET /api/game/forget - drop every paired pad (a connected one is disconnected).
+void handleGameForget() {
+ gamepadForget();
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true}");
+}
+
+// GET /api/game/hiscore/reset?id=N - clear one game's best score (index from
+// /api/game/status games[]); without id every game's.
+void handleGameResetHi() {
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ int id = -1;
+ if (server.hasArg("id")) {
+   id = server.arg("id").toInt();
+   if (id < 0 || id >= gameCount()) {
+     server.send(400, "application/json", "{\"error\":\"Unknown game id\"}");
+     return;
+   }
+ }
+ gameResetHi(id);
+ server.send(200, "application/json", "{\"success\":true}");
+}
+#endif
 
 // GET /api/viz/style?id=0-2 - switch the visualizer style at runtime.
 // Like /api/clock/style this mutates settings without persisting; a later
@@ -362,6 +444,9 @@ void handleSetVizStyle() {
 
 // GET /api/mode/auto - resume automatic mode (metrics when PC online, clock otherwise)
 void handleModeAuto() {
+#if GAMEPAD_ENABLED
+ gameModeStop();
+#endif
  httpForceClock = false;
  httpForceViz = false;
  server.sendHeader("Access-Control-Allow-Origin", "*");
@@ -684,6 +769,12 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_DINOCACTUSFREQ_2")) { out = String(settings.dinoCactusFreq == 2 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWCLOUDS")) { out = String(settings.dinoShowClouds ? "checked" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWDATE")) { out = String(settings.dinoShowDate ? "checked" : ""); return true; }
+  if (!strcmp(n, "GAME_HIDDEN")) { out = GAMEPAD_ENABLED ? "" : "hidden"; return true; }
+  if (!strcmp(n, "CHK_GAMERUMBLE")) { out = String(settings.gameRumble ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_BLOCKSGHOST")) { out = String(settings.blocksGhost ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_BLOCKSSTICKDROP")) { out = String(settings.blocksStickDrop ? "checked" : ""); return true; }
+  if (!strcmp(n, "V_BLOCKSSTARTLEVEL")) { out = String(settings.blocksStartLevel); return true; }
+  if (!strncmp(n, "SEL_GAMEIDLE_", 13)) { out = String(settings.gameIdleExitMin == atoi(n + 13) ? "selected" : ""); return true; }
   if (!strcmp(n, "V_LIFESPEED")) { out = String(settings.lifeSpeed); return true; }
   if (!strcmp(n, "SEL_LIFEDENSITY_0")) { out = String(settings.lifeDensity == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_LIFEDENSITY_1")) { out = String(settings.lifeDensity == 1 ? "selected" : ""); return true; }
@@ -984,6 +1075,8 @@ void validateSettings() {
  clampSetting(settings.dinoSpeed, 5, 30, "dinoSpeed");
  clampSetting(settings.dinoCactusFreq, 0, 2, "dinoCactusFreq");
  clampSetting(settings.lifeSpeed, 2, 20, "lifeSpeed");
+ clampSetting(settings.gameIdleExitMin, 0, 60, "gameIdleExitMin");
+ clampSetting(settings.blocksStartLevel, 1, 10, "blocksStartLevel");
  clampSetting(settings.lifeDensity, 0, 2, "lifeDensity");
  clampSetting(settings.lifeClockPos, 0, 2, "lifeClockPos");
 }
@@ -1297,6 +1390,15 @@ void handleSave() {
  }
  settings.dinoShowClouds = server.hasArg("dinoShowClouds");
  settings.dinoShowDate = server.hasArg("dinoShowDate");
+ settings.gameRumble = server.hasArg("gameRumble");
+ settings.blocksStickDrop = server.hasArg("blocksStickDrop");
+ settings.blocksGhost = server.hasArg("blocksGhost");
+ if (server.hasArg("blocksStartLevel")) {
+ settings.blocksStartLevel = server.arg("blocksStartLevel").toInt();
+ }
+ if (server.hasArg("gameIdleExitMin")) {
+ settings.gameIdleExitMin = server.arg("gameIdleExitMin").toInt();
+ }
  if (server.hasArg("lifeSpeed")) {
  settings.lifeSpeed = server.arg("lifeSpeed").toInt();
  }
@@ -1656,6 +1758,19 @@ void handleExportConfig() {
  json += "\"dinoSpeed\":" + String(settings.dinoSpeed) + ",";
  json += "\"dinoCactusFreq\":" + String(settings.dinoCactusFreq) + ",";
  json += "\"lifeSpeed\":" + String(settings.lifeSpeed) + ",";
+ json += "\"gameIdleExitMin\":" + String(settings.gameIdleExitMin) + ",";
+ json += "\"blocksStartLevel\":" + String(settings.blocksStartLevel) + ",";
+ json += "\"gameRumble\":" + String(settings.gameRumble ? "true" : "false") + ",";
+ json += "\"blocksStickDrop\":" + String(settings.blocksStickDrop ? "true" : "false") + ",";
+ json += "\"blocksGhost\":" + String(settings.blocksGhost ? "true" : "false") + ",";
+#if GAMEPAD_ENABLED
+ json += "\"gameHi\":{";
+ for (uint8_t i = 0; i < gameCount(); i++) {
+   if (i) json += ",";
+   json += "\"" + String(gameHiKey(i)) + "\":" + String(gameLoadHi(gameHiKey(i)));
+ }
+ json += "},";
+#endif
  json += "\"lifeDensity\":" + String(settings.lifeDensity) + ",";
  json += "\"lifeClockPos\":" + String(settings.lifeClockPos) + ",";
  json += "\"tronBikeStyle\":" + String(settings.tronBikeStyle) + ",";
@@ -1955,6 +2070,17 @@ void handleImportConfig() {
  if (!doc["dinoSpeed"].isNull()) settings.dinoSpeed = doc["dinoSpeed"];
  if (!doc["dinoCactusFreq"].isNull()) settings.dinoCactusFreq = doc["dinoCactusFreq"];
  if (!doc["lifeSpeed"].isNull()) settings.lifeSpeed = doc["lifeSpeed"];
+ if (!doc["gameIdleExitMin"].isNull()) settings.gameIdleExitMin = doc["gameIdleExitMin"];
+ if (!doc["blocksStartLevel"].isNull()) settings.blocksStartLevel = doc["blocksStartLevel"];
+ if (!doc["gameRumble"].isNull()) settings.gameRumble = doc["gameRumble"];
+ if (!doc["blocksStickDrop"].isNull()) settings.blocksStickDrop = doc["blocksStickDrop"];
+ if (!doc["blocksGhost"].isNull()) settings.blocksGhost = doc["blocksGhost"];
+#if GAMEPAD_ENABLED
+ for (uint8_t i = 0; i < gameCount(); i++) {
+   JsonVariant hi = doc["gameHi"][gameHiKey(i)];
+   if (hi.is<uint32_t>()) gameStoreHi(gameHiKey(i), hi.as<uint32_t>());
+ }
+#endif
  if (!doc["lifeDensity"].isNull()) settings.lifeDensity = doc["lifeDensity"];
  if (!doc["lifeClockPos"].isNull()) settings.lifeClockPos = doc["lifeClockPos"];
  if (!doc["tronBikeStyle"].isNull()) settings.tronBikeStyle = doc["tronBikeStyle"];

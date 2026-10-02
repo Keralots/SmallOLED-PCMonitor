@@ -60,6 +60,7 @@ There is now a 27 x 27 mm carrier PCB that holds the ESP32-C3 SuperMini, the OLE
   - **PC Online**: Real-time stats with customizable metrics and positions
   - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, TRON, Game of Life, Dragon Ball, Standard, or Large styles, plus a Cycle All mode)
 - **Audio Visualizer**: Live spectrum bars or an oscilloscope driven by whatever your PC is playing, streamed by the companion app
+- **Game Mode**: Six small games on the OLED (Falling Blocks, Snake, Bricks, Space Rocks, Runner, Defenders), played with an Xbox Wireless Controller over Bluetooth LE
 - **PC Companion App (v4, Windows + Linux)**:
   - Web-style config window that mirrors the device portal 1:1
   - Live 1:1 OLED preview with drag-and-drop layout
@@ -142,9 +143,12 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 
 | Gesture | Duration | Action |
 |---------|----------|--------|
-| Quick tap | < 500ms | **PC online:** Toggle metrics/clock. **PC offline:** Cycle clock styles |
+| Quick tap | < 500ms | **PC online:** Toggle metrics/clock. **PC offline:** Cycle clock styles. In game mode: leave it |
+| Triple tap | 3 quick taps | Start [game mode](#game-mode) |
 | Medium press | 500ms-1s, release | Toggle LED night light on/off |
 | Long hold | > 1s, keep holding | Ramp LED brightness up (if off) or down (if on). Release to keep. |
+
+Taps are counted until 350ms after the last release, so a single tap acts with that short delay.
 
 **Hardware Setup:**
 - Connect TTP223 signal pin to GPIO 7
@@ -507,6 +511,68 @@ The waveform is an extra 128 bytes appended to each packet. An older companion
 sends only the spectrum, and the oscilloscope will say *"Update PC companion
 for the waveform"*. The bar styles work with either.
 
+## Game Mode
+
+Pair a controller and play on the OLED. Like the visualizer, this is a
+**forced mode**: it takes over the display until you leave it, then the device
+goes back to its normal screen.
+
+| Game | Controls |
+|---|---|
+| **Falling Blocks** | Left/right move, up hard-drops, down soft-drops, A rotates one way, B or X the other, LB/RB hold |
+| **Snake** | D-pad or stick steers; every bite grows the snake and speeds it up |
+| **Bricks** | Stick or d-pad moves the paddle, A launches the ball |
+| **Space Rocks** | Left/right turn, up or RT thrusts, A or RB fires |
+| **Runner** | A or up jumps (hold for a higher jump), down ducks |
+| **Defenders** | Stick or d-pad moves, A, RB or RT fires; one shot in the air at a time |
+
+Every game shows its controls on the start screen. The Menu button pauses,
+View in the pause screen goes back to the game list, View in the list leaves
+game mode. Best scores are kept per game.
+
+### What you need
+
+- An **Xbox Wireless Controller** with Bluetooth LE: model 1708 (Xbox One S) or
+  the current Series X|S pad (1914), on **controller firmware 5.x or newer**.
+- The ESP32-C3 only speaks Bluetooth LE. Older pad firmware is Bluetooth Classic
+  only and the device will never see the pad. Update it once with the
+  **Xbox Accessories** app (Windows or Xbox console).
+
+### Playing
+
+1. Start game mode from the device web page (**Game mode** -> **Start game
+   mode**), with a **triple tap** on the touch button, or with
+   `/api/game/start`.
+2. The first time, hold the pad's **pair button** for 3 seconds. A paired pad
+   reconnects later with the Xbox button.
+3. Pick a game with the d-pad and press A.
+
+Game mode ends on its own if no pad connects within 2 minutes, if the pad is
+lost for 1 minute, or after a set time without input (5 minutes by default,
+configurable, or never). A quick tap on the touch button, `/api/game/stop` or
+any `/api/mode/*` call also ends it. The display stays at normal brightness
+while you play, even inside the night dimming window.
+
+### Settings (device web portal, *Game mode* page)
+
+| Setting | What it does |
+|---|---|
+| **Falling Blocks starting level** | 1-10 |
+| **Rumble** | Pad vibrates on hits, drops, cleared lines and game over |
+| **Falling Blocks: stick up hard-drops** | Off: only d-pad up drops, so a nudge on the stick never slams a piece down |
+| **Falling Blocks: landing preview** | Dots mark where the falling piece will land. Off by default |
+| **Auto exit** | Minutes without input before game mode ends (0 = never) |
+
+The same page shows the pad status and battery, lists the best scores with a
+reset button for each, and has **Forget paired pad**. Best scores are part of
+the configuration export, so a backup restores them.
+
+### Building without it
+
+Game mode pulls in the NimBLE Bluetooth stack (about 240 KB of flash). To leave
+it out, set `GAMEPAD_ENABLED` to `0` in `src/config/user_config.h`; the
+*Game mode* page then disappears from the web portal as well.
+
 ## HTTP Control API
 
 The firmware exposes a small set of HTTP endpoints for remote control and home automation (e.g. Home Assistant, Node-RED, or a simple `curl` from a script). This is handy for **turning the display off while you're away to extend OLED lifetime**, forcing the clock display, dimming on your own schedule, or rebooting the device remotely.
@@ -530,6 +596,11 @@ Replace `smalloled.local` in the examples with your device's mDNS name (configur
 | GET | `/api/clock/style?id=<id>` | Switch the clock animation |
 | GET | `/api/mode/viz` | Show the audio visualizer (needs the companion's audio stream) |
 | GET | `/api/viz/style?id=0-2` | Switch the visualizer style |
+| GET | `/api/game/start` | Start game mode (waits for a pad) |
+| GET | `/api/game/stop` | Leave game mode |
+| GET | `/api/game/status` | Pad link, battery, paired state and each game's best score |
+| GET | `/api/game/forget` | Forget the paired pad |
+| GET | `/api/game/hiscore/reset[?id=N]` | Clear one game's best score (index from `games[]` in the status), or all of them |
 | GET | `/api/reboot` | Soft-restart the device (does **not** erase settings) |
 
 **Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man, `7` = Snake, `8` = Tetris, `9` = Cycle All Styles, `10` = Asteroids, `11` = Dino Runner, `16` = TRON, `18` = Game of Life, `19` = Dragon Ball. (The ids are a fixed set, not a range - the gaps are reserved so style numbers stay aligned with the sister project.)
@@ -688,6 +759,7 @@ You can then call `rest_command.oled_display_off` / `oled_display_on` from an au
 - Adafruit SSD1306 / Adafruit SH110X
 - Adafruit GFX
 - ArduinoJson
+- NimBLE-Arduino (game mode controller link)
 
 **Companion app (Windows):**
 - psutil (system stats & network)
@@ -799,3 +871,7 @@ This project is open source. Feel free to modify and share!
 ## Credits
 
 Created for monitoring PC stats on a small OLED display. Mario animation inspired by classic pixel art.
+
+## Trademarks
+
+SmallOLED is an independent open-source project. It is not affiliated with, endorsed by or sponsored by Nintendo, Bandai Namco, Taito, The Tetris Company, Microsoft or any other company. Game and character names are used only to describe the style of an animation; all trademarks belong to their respective owners. Every sprite and animation is original low-resolution pixel art drawn by the code in this repository; no artwork, sprite sheets, ROM data, fonts, sounds or music from any commercial game are copied or distributed here, and the firmware does not emulate any of those games.
