@@ -57,6 +57,8 @@ void handleDragonBallDemo();
 #if GAMEPAD_ENABLED
 void handleGameStart();
 void handleGameStop();
+void handleGameStatus();
+void handleGameForget();
 #endif
 void handleReboot();
 

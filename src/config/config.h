@@ -199,6 +199,9 @@ struct Settings {
 
   // Game mode
   uint8_t gameIdleExitMin;      // Leave game mode after this many minutes without input (0 = never)
+  bool gameRumble;              // Pad vibration on game events (default: true)
+  uint8_t blocksStartLevel;     // Falling Blocks starting level (1-10)
+  bool blocksStickDrop;         // Left stick up hard-drops too (d-pad up always does)
 
   // Dragon Ball clock settings
   bool dragonIdleTricks;        // Afterimage teleports and power-ups between minutes

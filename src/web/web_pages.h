@@ -758,6 +758,31 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
             <div class="btn-row" style="margin-top:12px">
               <button type="button" class="btn" id="gameStart">Start game mode</button>
               <button type="button" class="btn btn-ghost" id="gameStop">Stop</button>
+              <button type="button" class="btn btn-danger" id="gameForget">Forget paired pad</button>
+            </div>
+            <p class="field-hint" id="gameStatus">Pad status: ...</p>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">Game settings</h2>
+            <div class="field">
+              <label class="field-label" for="blocksStartLevel">Starting level</label>
+              <div class="range-row">
+                <input type="range" name="blocksStartLevel" id="blocksStartLevel" min="1" max="10" step="1" value="%V_BLOCKSSTARTLEVEL%">
+                <span class="range-val" data-for="blocksStartLevel">%V_BLOCKSSTARTLEVEL%</span>
+              </div>
+            </div>
+            <div class="check-list">
+              <label class="check-row">
+                <input type="checkbox" name="gameRumble" id="gameRumble" %CHK_GAMERUMBLE%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Rumble</strong><span class="ct-hint">Pad vibrates on drops, cleared lines and game over.</span></span>
+              </label>
+              <label class="check-row">
+                <input type="checkbox" name="blocksStickDrop" id="blocksStickDrop" %CHK_BLOCKSSTICKDROP%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Stick up hard-drops</strong><span class="ct-hint">Off: only d-pad up drops, so a nudge on the stick never slams a piece down.</span></span>
+              </label>
             </div>
           </div>
 
@@ -1669,6 +1694,20 @@ if (vizAutoBtn) vizAutoBtn.addEventListener('click', function () { fetch('/api/m
 var gameStartBtn = $('#gameStart'), gameStopBtn = $('#gameStop');
 if (gameStartBtn) gameStartBtn.addEventListener('click', function () { fetch('/api/game/start'); });
 if (gameStopBtn) gameStopBtn.addEventListener('click', function () { fetch('/api/game/stop'); });
+var gameForgetBtn = $('#gameForget'), gameStatusEl = $('#gameStatus'), gamePage = $('[data-page="game"]');
+if (gameForgetBtn) gameForgetBtn.addEventListener('click', function () {
+if (confirm('Forget the paired pad? It will need its pair button held again.')) fetch('/api/game/forget');
+});
+function pollGameStatus() {
+if (!gameStatusEl || !gamePage || !gamePage.classList.contains('active')) return;
+fetch('/api/game/status').then(function (r) { return r.json(); }).then(function (d) {
+var t = 'Pad status: ' + d.link + (d.link === 'connected' ? ' (battery ' + d.battery + '%)' : '');
+t += ' · ' + (d.paired ? 'a pad is paired' : 'no pad paired') + ' · game mode ' + (d.active ? 'on' : 'off');
+gameStatusEl.textContent = t;
+}).catch(function () {});
+}
+setInterval(pollGameStatus, 2000);
+pollGameStatus();
 var ntpBtn = $('#ntpTestBtn');
 if (ntpBtn) ntpBtn.addEventListener('click', function () {
 var res = $('#ntpTestResult');

@@ -46,7 +46,10 @@ struct GamepadState {
   int16_t lx, ly;     // sticks, -32768..32767, +y = down
   int16_t rx, ry;
   uint16_t lt, rt;    // triggers, 0..1023
+  uint8_t hat;        // raw d-pad: 0 = none, 1 = up, clockwise to 8 = up-left
 };
+
+inline bool gamepadHatUp(uint8_t hat) { return hat == 8 || hat == 1 || hat == 2; }
 
 void gamepadStart();
 void gamepadStop();
@@ -54,5 +57,10 @@ GamepadLink gamepadLink();
 // Snapshot of the inputs; clears the `pressed` latch.
 void gamepadRead(GamepadState *out);
 uint8_t gamepadBattery();
+// Magnitudes 0-100; dropped unless a pad is connected.
+void gamepadRumble(uint8_t strong, uint8_t weak, uint16_t ms);
+// Forget every paired pad; the next one has to be paired with its pair button.
+void gamepadForget();
+bool gamepadHasBond();
 
 #endif // GAMEPAD_H

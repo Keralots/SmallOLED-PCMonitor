@@ -8,6 +8,13 @@
  *   13    A B - X Y - LB RB
  *   14    - - View Menu Xbox LS RS
  *   15    Share (Series pads only)
+ *
+ * Rumble output report (8 bytes, written to the writable 0x2A4D report):
+ *   enable (bit0 weak, bit1 strong, bit2 RT, bit3 LT), LT, RT, strong, weak
+ *   magnitudes 0-100, duration and start delay in 10 ms, loop count.
+ *
+ * Every BLE operation runs in the gamepad task; rumble and forget requests
+ * reach it through a queue, so nothing races a disconnect.
  */
 
 #include "../config/user_config.h"
@@ -17,14 +24,23 @@
 #include "gamepad.h"
 #include <NimBLEDevice.h>
 #include <WiFi.h>
+#include <nvs.h>
 
 #define GP_APPEARANCE_GAMEPAD 964
 #define GP_STICK_DIGITAL 16000  // stick deflection that counts as a d-pad press
 #define GP_TASK_STACK 6144
+#define GP_BOND_NAMESPACE "nimble_bond"  // NimBLE's NVS store
 
 static const NimBLEUUID UUID_HID((uint16_t)0x1812);
 static const NimBLEUUID UUID_BATTERY((uint16_t)0x180f);
 static const NimBLEUUID UUID_BATTERY_LEVEL((uint16_t)0x2a19);
+static const NimBLEUUID UUID_REPORT((uint16_t)0x2a4d);
+
+enum GpCmdType : uint8_t { GP_CMD_RUMBLE, GP_CMD_FORGET };
+struct GpCmd {
+  GpCmdType type;
+  uint8_t report[8];
+};
 
 static portMUX_TYPE gpMux = portMUX_INITIALIZER_UNLOCKED;
 static GamepadState gpState;
@@ -35,6 +51,8 @@ static volatile uint8_t gpBattery = 0;
 static NimBLEAddress gpFoundAddr;
 static NimBLEClient *gpClient = nullptr;
 static TaskHandle_t gpTask = nullptr;
+static QueueHandle_t gpCmdQ = nullptr;
+static NimBLERemoteCharacteristic *gpOutput = nullptr;
 
 static void clearState() {
   taskENTER_CRITICAL(&gpMux);
@@ -52,7 +70,7 @@ static void onReport(NimBLERemoteCharacteristic *, uint8_t *d, size_t len, bool)
   uint16_t rt = (d[10] | d[11] << 8) & 0x3ff;
 
   uint16_t b = 0;
-  uint8_t hat = d[12];
+  uint8_t hat = d[12] <= 8 ? d[12] : 0;
   if (hat == 8 || hat == 1 || hat == 2) b |= GP_UP;
   if (hat >= 2 && hat <= 4) b |= GP_RIGHT;
   if (hat >= 4 && hat <= 6) b |= GP_DOWN;
@@ -86,6 +104,7 @@ static void onReport(NimBLERemoteCharacteristic *, uint8_t *d, size_t len, bool)
   gpState.ry = ry;
   gpState.lt = lt;
   gpState.rt = rt;
+  gpState.hat = hat;
   taskEXIT_CRITICAL(&gpMux);
 }
 
@@ -128,6 +147,7 @@ static PadClientCallbacks clientCallbacks;
 static bool subscribeAll(NimBLERemoteService *svc, notify_callback cb) {
   bool any = false;
   for (auto *c : *svc->getCharacteristics(true)) {
+    if (c->getUUID() == UUID_REPORT && (c->canWrite() || c->canWriteNoResponse())) gpOutput = c;
     if (c->canRead()) c->readValue();
     if (c->canNotify() && c->subscribe(true, cb, true)) any = true;
   }
@@ -142,6 +162,7 @@ static bool connectPad(const NimBLEAddress &addr) {
   }
   // 15-30 ms interval keeps input latency below a frame without starving WiFi.
   gpClient->setConnectionParams(12, 24, 0, 400);
+  gpOutput = nullptr;
   if (!gpClient->connect(addr, true)) {
     Serial.println("Gamepad: connect failed");
     return false;
@@ -198,10 +219,23 @@ static void bleDown() {
   vTaskDelay(pdMS_TO_TICKS(200));  // let the disconnect finish
   NimBLEDevice::deinit(true);
   gpClient = nullptr;
+  gpOutput = nullptr;
   WiFi.setSleep(false);
 }
 
+static void runCommand(const GpCmd &cmd) {
+  bool connected = gpClient && gpClient->isConnected();
+  if (cmd.type == GP_CMD_RUMBLE) {
+    if (connected && gpOutput) gpOutput->writeValue(cmd.report, sizeof(cmd.report), false);
+    return;
+  }
+  if (connected) gpClient->disconnect();
+  NimBLEDevice::deleteAllBonds();
+  Serial.println("Gamepad: bonds cleared");
+}
+
 static void gamepadTask(void *) {
+  GpCmd cmd;
   for (;;) {
     while (!gpWanted) ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     bleUp();
@@ -209,9 +243,10 @@ static void gamepadTask(void *) {
 
     while (gpWanted) {
       if (gpClient && gpClient->isConnected()) {
-        vTaskDelay(pdMS_TO_TICKS(100));
+        if (xQueueReceive(gpCmdQ, &cmd, pdMS_TO_TICKS(100))) runCommand(cmd);
         continue;
       }
+      while (xQueueReceive(gpCmdQ, &cmd, 0)) runCommand(cmd);
 
       gpLink = GP_LINK_SCANNING;
       gpFound = false;
@@ -226,12 +261,14 @@ static void gamepadTask(void *) {
       }
     }
     bleDown();
+    xQueueReset(gpCmdQ);
   }
 }
 
 void gamepadStart() {
   gpWanted = true;
   if (!gpTask) {
+    gpCmdQ = xQueueCreate(4, sizeof(GpCmd));
     xTaskCreate(gamepadTask, "gamepad", GP_TASK_STACK, nullptr, 2, &gpTask);
   } else {
     xTaskNotifyGive(gpTask);
@@ -253,5 +290,37 @@ void gamepadRead(GamepadState *out) {
 }
 
 uint8_t gamepadBattery() { return gpBattery; }
+
+void gamepadRumble(uint8_t strong, uint8_t weak, uint16_t ms) {
+  if (!gpCmdQ || gpLink != GP_LINK_CONNECTED) return;
+  GpCmd cmd = {GP_CMD_RUMBLE,
+               {(uint8_t)((weak ? 0x01 : 0) | (strong ? 0x02 : 0)), 0, 0,
+                (uint8_t)min<int>(strong, 100), (uint8_t)min<int>(weak, 100),
+                (uint8_t)min<int>(ms / 10, 255), 0, 0}};
+  xQueueSend(gpCmdQ, &cmd, 0);  // drop it if the queue is full - rumble is a nicety
+}
+
+void gamepadForget() {
+  if (gpWanted && gpCmdQ) {
+    GpCmd cmd = {GP_CMD_FORGET, {}};
+    xQueueSend(gpCmdQ, &cmd, pdMS_TO_TICKS(100));
+    return;
+  }
+  // BLE is down, so NimBLE holds no cached copy - clear its store directly.
+  nvs_handle_t h;
+  if (nvs_open(GP_BOND_NAMESPACE, NVS_READWRITE, &h) == ESP_OK) {
+    nvs_erase_all(h);
+    nvs_commit(h);
+    nvs_close(h);
+  }
+  Serial.println("Gamepad: bonds cleared");
+}
+
+bool gamepadHasBond() {
+  nvs_iterator_t it = nvs_entry_find(NVS_DEFAULT_PART_NAME, GP_BOND_NAMESPACE, NVS_TYPE_ANY);
+  if (!it) return false;
+  nvs_release_iterator(it);
+  return true;
+}
 
 #endif // GAMEPAD_ENABLED

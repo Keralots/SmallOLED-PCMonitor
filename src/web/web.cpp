@@ -86,6 +86,8 @@ void setupWebServer() {
 #if GAMEPAD_ENABLED
  server.on("/api/game/start", HTTP_GET, handleGameStart);
  server.on("/api/game/stop", HTTP_GET, handleGameStop);
+ server.on("/api/game/status", HTTP_GET, handleGameStatus);
+ server.on("/api/game/forget", HTTP_GET, handleGameForget);
 #endif
  server.on("/api/reboot", HTTP_GET, handleReboot);
 
@@ -371,6 +373,27 @@ void handleGameStart() {
 // GET /api/game/stop - leave game mode and release the pad.
 void handleGameStop() {
  gameModeStop();
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", "{\"success\":true}");
+}
+
+// GET /api/game/status - game mode and pad link, for the web UI.
+void handleGameStatus() {
+ static const char *LINKS[] = {"off", "searching", "connecting", "connected"};
+ JsonDocument doc;
+ doc["active"] = gameModeActive();
+ doc["link"] = LINKS[gamepadLink()];
+ doc["battery"] = gamepadBattery();
+ doc["paired"] = gamepadHasBond();
+ String out;
+ serializeJson(doc, out);
+ server.sendHeader("Access-Control-Allow-Origin", "*");
+ server.send(200, "application/json", out);
+}
+
+// GET /api/game/forget - drop every paired pad (a connected one is disconnected).
+void handleGameForget() {
+ gamepadForget();
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", "{\"success\":true}");
 }
@@ -722,6 +745,9 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_DINOCACTUSFREQ_2")) { out = String(settings.dinoCactusFreq == 2 ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWCLOUDS")) { out = String(settings.dinoShowClouds ? "checked" : ""); return true; }
   if (!strcmp(n, "CHK_DINOSHOWDATE")) { out = String(settings.dinoShowDate ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_GAMERUMBLE")) { out = String(settings.gameRumble ? "checked" : ""); return true; }
+  if (!strcmp(n, "CHK_BLOCKSSTICKDROP")) { out = String(settings.blocksStickDrop ? "checked" : ""); return true; }
+  if (!strcmp(n, "V_BLOCKSSTARTLEVEL")) { out = String(settings.blocksStartLevel); return true; }
   if (!strncmp(n, "SEL_GAMEIDLE_", 13)) { out = String(settings.gameIdleExitMin == atoi(n + 13) ? "selected" : ""); return true; }
   if (!strcmp(n, "V_LIFESPEED")) { out = String(settings.lifeSpeed); return true; }
   if (!strcmp(n, "SEL_LIFEDENSITY_0")) { out = String(settings.lifeDensity == 0 ? "selected" : ""); return true; }
@@ -1024,6 +1050,7 @@ void validateSettings() {
  clampSetting(settings.dinoCactusFreq, 0, 2, "dinoCactusFreq");
  clampSetting(settings.lifeSpeed, 2, 20, "lifeSpeed");
  clampSetting(settings.gameIdleExitMin, 0, 60, "gameIdleExitMin");
+ clampSetting(settings.blocksStartLevel, 1, 10, "blocksStartLevel");
  clampSetting(settings.lifeDensity, 0, 2, "lifeDensity");
  clampSetting(settings.lifeClockPos, 0, 2, "lifeClockPos");
 }
@@ -1337,6 +1364,11 @@ void handleSave() {
  }
  settings.dinoShowClouds = server.hasArg("dinoShowClouds");
  settings.dinoShowDate = server.hasArg("dinoShowDate");
+ settings.gameRumble = server.hasArg("gameRumble");
+ settings.blocksStickDrop = server.hasArg("blocksStickDrop");
+ if (server.hasArg("blocksStartLevel")) {
+ settings.blocksStartLevel = server.arg("blocksStartLevel").toInt();
+ }
  if (server.hasArg("gameIdleExitMin")) {
  settings.gameIdleExitMin = server.arg("gameIdleExitMin").toInt();
  }
@@ -1700,6 +1732,9 @@ void handleExportConfig() {
  json += "\"dinoCactusFreq\":" + String(settings.dinoCactusFreq) + ",";
  json += "\"lifeSpeed\":" + String(settings.lifeSpeed) + ",";
  json += "\"gameIdleExitMin\":" + String(settings.gameIdleExitMin) + ",";
+ json += "\"blocksStartLevel\":" + String(settings.blocksStartLevel) + ",";
+ json += "\"gameRumble\":" + String(settings.gameRumble ? "true" : "false") + ",";
+ json += "\"blocksStickDrop\":" + String(settings.blocksStickDrop ? "true" : "false") + ",";
  json += "\"lifeDensity\":" + String(settings.lifeDensity) + ",";
  json += "\"lifeClockPos\":" + String(settings.lifeClockPos) + ",";
  json += "\"tronBikeStyle\":" + String(settings.tronBikeStyle) + ",";
@@ -2000,6 +2035,9 @@ void handleImportConfig() {
  if (!doc["dinoCactusFreq"].isNull()) settings.dinoCactusFreq = doc["dinoCactusFreq"];
  if (!doc["lifeSpeed"].isNull()) settings.lifeSpeed = doc["lifeSpeed"];
  if (!doc["gameIdleExitMin"].isNull()) settings.gameIdleExitMin = doc["gameIdleExitMin"];
+ if (!doc["blocksStartLevel"].isNull()) settings.blocksStartLevel = doc["blocksStartLevel"];
+ if (!doc["gameRumble"].isNull()) settings.gameRumble = doc["gameRumble"];
+ if (!doc["blocksStickDrop"].isNull()) settings.blocksStickDrop = doc["blocksStickDrop"];
  if (!doc["lifeDensity"].isNull()) settings.lifeDensity = doc["lifeDensity"];
  if (!doc["lifeClockPos"].isNull()) settings.lifeClockPos = doc["lifeClockPos"];
  if (!doc["tronBikeStyle"].isNull()) settings.tronBikeStyle = doc["tronBikeStyle"];
