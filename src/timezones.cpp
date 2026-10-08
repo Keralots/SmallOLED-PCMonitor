@@ -89,6 +89,10 @@ static const TimezoneRegion timezoneDatabase[] = {
   {"Nepal (Kathmandu - no DST)", "<+0545>-5:45", 345},
   {"Myanmar (Yangon - no DST)", "<+0630>-6:30", 390},
   {"Newfoundland (St. John's)", "NST3:30NDT,M3.2.0,M11.1.0", -210},
+
+  // Australian states without DST (appended - keep at end for index stability)
+  {"Australian Eastern (Brisbane, Queensland - no DST)", "AEST-10", 600},
+  {"Australian Central (Darwin, Northern Territory - no DST)", "ACST-9:30", 570},
 };
 
 // Total number of timezones in database

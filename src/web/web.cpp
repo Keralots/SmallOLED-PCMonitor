@@ -604,7 +604,20 @@ static bool resolvePlaceholder(const char* n, String& out) {
     size_t tzCount;
     const TimezoneRegion* regions = getSupportedTimezones(&tzCount);
     out += "<option value=\"\">-- Select Region --</option>\n";
-    for (size_t i = 0; i < tzCount; i++) {
+    // Listed by UTC offset (stable), so zones appended to the database for
+    // index stability still sit next to their neighbours.
+    uint8_t order[256];
+    if (tzCount > sizeof(order)) tzCount = sizeof(order);
+    for (size_t k = 0; k < tzCount; k++) {
+      size_t j = k;
+      while (j > 0 && regions[order[j - 1]].gmtOffsetMinutes > regions[k].gmtOffsetMinutes) {
+        order[j] = order[j - 1];
+        j--;
+      }
+      order[j] = (uint8_t)k;
+    }
+    for (size_t k = 0; k < tzCount; k++) {
+      size_t i = order[k];
       bool isSelected = (settings.timezoneIndex < 255) ? (i == settings.timezoneIndex)
                                                        : (strcmp(settings.timezoneString, regions[i].posixString) == 0);
       // Prefix each option with its UTC offset so users can find their zone by
