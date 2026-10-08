@@ -1,8 +1,8 @@
 // SmallOLED Web Flasher — client logic.
 // Builds an ESP Web Tools manifest on the fly from a single board map and keeps
-// the install button in sync with the chosen OLED. Three display variants share
-// two firmware images: SSD1306 (0.96") and SSD1309 (2.42") use the same binary;
-// SH1106 (1.3") needs its own.
+// the install button in sync with the chosen OLED. SSD1306 (0.96") and SSD1309
+// (2.42") use the same binary; SH1106 (1.3") and CH1116 (1.54") need their own.
+// Every image exists once per chip (C3, S3); the dropdown groups by chipFamily.
 
 const BOARDS = {
   ssd1306: {
@@ -32,6 +32,34 @@ const BOARDS = {
     firmware: 'ssd1306',                 // identical image to the 0.96"
     display: 'SSD1309 · 128×64',
     note: 'Shares the same firmware as the 0.96″ SSD1306 — TTP223 touch and the LED still work.',
+  },
+  'ssd1306-s3': {
+    label: 'ESP32-S3 · SSD1306 0.96″',
+    chipFamily: 'ESP32-S3',
+    firmware: 'ssd1306-s3',
+    display: 'SSD1306 · 128×64',
+    note: 'ESP32-S3 build (SuperMini or any S3 with 4MB+ flash). Same wiring as the C3: SDA GPIO 8, SCL GPIO 9.',
+  },
+  'sh1106-s3': {
+    label: 'ESP32-S3 · SH1106 1.3″',
+    chipFamily: 'ESP32-S3',
+    firmware: 'sh1106-s3',
+    display: 'SH1106 · 128×64',
+    note: 'ESP32-S3 build of the 1.3″ SH1106 image. Same wiring as the C3: SDA GPIO 8, SCL GPIO 9.',
+  },
+  'ch1116-s3': {
+    label: 'ESP32-S3 · CH1116 1.54″',
+    chipFamily: 'ESP32-S3',
+    firmware: 'ch1116-s3',
+    display: 'CH1116 · 128×64',
+    note: 'ESP32-S3 build of the 1.54″ CH1116 image. Same wiring as the C3: SDA GPIO 8, SCL GPIO 9.',
+  },
+  'ssd1309-s3': {
+    label: 'ESP32-S3 · SSD1309 2.42″',
+    chipFamily: 'ESP32-S3',
+    firmware: 'ssd1306-s3',              // identical image to the S3 0.96"
+    display: 'SSD1309 · 128×64',
+    note: 'Shares the same firmware as the S3 0.96″ SSD1306. Same wiring as the C3: SDA GPIO 8, SCL GPIO 9.',
   },
 };
 
@@ -83,11 +111,17 @@ function manifestBlobUrl(boardId, version) {
 
 function populateBoardSelect() {
   const sel = document.getElementById('board-select');
+  const groups = {};
   for (const [id, info] of Object.entries(BOARDS)) {
+    if (!groups[info.chipFamily]) {
+      groups[info.chipFamily] = document.createElement('optgroup');
+      groups[info.chipFamily].label = info.chipFamily;
+      sel.appendChild(groups[info.chipFamily]);
+    }
     const opt = document.createElement('option');
     opt.value = id;
     opt.textContent = info.label;
-    sel.appendChild(opt);
+    groups[info.chipFamily].appendChild(opt);
   }
   sel.value = DEFAULT_BOARD;
 }

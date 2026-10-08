@@ -104,7 +104,7 @@ For detailed instructions, keep reading below.
 ## Hardware Requirements
 
 ### ESP32 Setup
-- **ESP32-C3 Super Mini** (or compatible ESP32 board)
+- **ESP32-C3 Super Mini** or **ESP32-S3 Super Mini** (or any ESP32-C3 / ESP32-S3 board with 4MB+ flash). The S3 has its own firmware images, but the wiring below is identical for both chips.
 - **OLED Display** (128x64, I2C):
   - SSD1306 0.96" (most common)
   - SH1106 1.3" (larger, recommended)
@@ -171,8 +171,8 @@ Taps are counted until 350ms after the last release, so a single tap acts with t
 A dedicated browser flasher that picks the right firmware for your OLED, installs it over USB, and then hands your WiFi to the device in the same tab. No separate flashing tool and no captive portal needed.
 
 1. Open the **[SmallOLED Web Flasher](https://smalloled.stolaris.dev/)** in desktop **Chrome or Edge** (Web Serial is required, so Firefox, Safari and mobile won't work).
-2. Connect your ESP32-C3 via USB. If it constantly connects/disconnects, hold the **BOOT** button, connect to USB while still holding it, then release after connecting. Alternatively, hold **BOOT**, press **RESET** while holding **BOOT**, then release both buttons.
-3. Pick your OLED (0.96" SSD1306, 1.3" SH1106, 1.54" CH1116, or 2.42" SSD1309) and click **Install**. It erases and writes the full image at `0x0` in ~30 seconds.
+2. Connect your ESP32-C3 or ESP32-S3 via USB. If it constantly connects/disconnects, hold the **BOOT** button, connect to USB while still holding it, then release after connecting. Alternatively, hold **BOOT**, press **RESET** while holding **BOOT**, then release both buttons.
+3. Pick your OLED (0.96" SSD1306, 1.3" SH1106, 1.54" CH1116, or 2.42" SSD1309) from the **ESP32-C3** or **ESP32-S3** group, matching your board, and click **Install**. It erases and writes the full image at `0x0` in ~30 seconds.
 4. When the install finishes, use the **Configure WiFi** step to send your home network to the device over USB. If you miss it, join the **PCMonitor-Setup** hotspot and open `192.168.4.1` instead.
 5. The device reboots, joins your WiFi, and shows its IP address on the OLED.
 
@@ -186,10 +186,10 @@ Prefer to flash the raw binary with your own tool? Download it from the latest r
 
 **Generic web flasher (esptool-js):**
 1. Visit [ESP Web Flasher](https://espressif.github.io/esptool-js/)
-2. Connect your ESP32-C3 via USB (use the BOOT/RESET trick above if it won't stay connected).
+2. Connect your ESP32-C3 or ESP32-S3 via USB (use the BOOT/RESET trick above if it won't stay connected).
 3. Click **"Connect"** and select your port
 4. Click **"Choose File"** and select the full image for your display, e.g. `firmware-<version>-OLED_0.96inch.bin`
-5. Make sure you pick firmware for correct OLED size version! It may initially work but you will get black screen after you reconnect device.
+5. Make sure you pick firmware for correct OLED size version! It may initially work but you will get black screen after you reconnect device. ESP32-S3 boards need the `ESP32-S3` images, e.g. `firmware-<version>-ESP32-S3-OLED_0.96inch.bin`.
 6. Set **Flash Address** to `0x0`
 7. Click **"Program"** and wait ~30 seconds
 8. Done! Then set up WiFi via the **PCMonitor-Setup** hotspot (see below).
@@ -198,6 +198,7 @@ Prefer to flash the raw binary with your own tool? Download it from the latest r
 - **Windows**: Run `flash.bat` and follow prompts
 - **Linux/Mac**: Run `./flash.sh` and follow prompts
 - **Manual**: `esptool.py --chip esp32c3 --port COM3 --baud 460800 write_flash 0x0 firmware-<version>-OLED_0.96inch.bin`
+- **Manual (ESP32-S3)**: `esptool.py --chip esp32s3 --port COM3 --baud 460800 write_flash 0x0 firmware-<version>-ESP32-S3-OLED_0.96inch.bin`
 
 #### Option C: Build from Source
 

@@ -1107,7 +1107,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
           <div class="card">
             <h2 class="card-title">Update over the air</h2>
             <div class="crt oled-preview" style="max-width:360px">
-              <div class="oled-pv-head"><span class="ttl">installed</span><span class="meta">ESP32-C3 &middot; %DISPLAYMODEL%</span></div>
+              <div class="oled-pv-head"><span class="ttl">installed</span><span class="meta">%CHIPMODEL% &middot; %DISPLAYMODEL%</span></div>
               <dl class="sr-rows" style="position:relative;z-index:1">
                 <div class="sr-row"><dt>version</dt><dd>v%VER%</dd></div>
                 <div class="sr-row"><dt>built</dt><dd>%BUILT%</dd></div>

@@ -21,8 +21,12 @@ void assertBounds(int value, int minVal, int maxVal, const char* name);
 
 #if TOUCH_BUTTON_ENABLED
 // ========== Touch Button Functions ==========
-// Highest GPIO number on the ESP32-C3.
+// Highest GPIO number on the chip.
+#if CONFIG_IDF_TARGET_ESP32S3
+#define TOUCH_PIN_MAX 48
+#else
 #define TOUCH_PIN_MAX 21
+#endif
 
 void initTouchButton();
 bool checkTouchButtonPressed();

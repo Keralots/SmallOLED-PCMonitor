@@ -564,6 +564,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
     out = s; return true;
   }
   if (!strcmp(n, "HEAP")) { out = String(ESP.getFreeHeap() / 1024.0, 1); return true; }
+  if (!strcmp(n, "CHIPMODEL")) { out = ESP.getChipModel(); return true; }
   if (!strcmp(n, "DISPLAYMODEL")) {
     out = (DISPLAY_TYPE == 2) ? "CH1116" : (DISPLAY_TYPE == 1) ? "SH1106" : "SSD1306";
     return true;

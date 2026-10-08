@@ -5,23 +5,25 @@ End-to-end release builder for the SmallOLED-PCMonitor web flasher.
 Runs the whole release pipeline for the browser flasher at docs/:
     1. Reads FIRMWARE_VERSION from src/config/config.h  ->  v<ver>
     2. Locates the PlatformIO CLI (PATH, then the standard penv install)
-    3. Builds both OLED variants in a single PlatformIO invocation
-       (oled-096 = SSD1306/SSD1309, oled-13 = SH1106)
+    3. Builds every chip/OLED variant in a single PlatformIO invocation
+       (C3 and S3 x oled-096 = SSD1306/SSD1309, oled-13 = SH1106,
+       oled-154 = CH1116)
     4. Merges bootloader + partitions + app into a single "Full" image per
        variant (flashed at 0x0, what ESP Web Tools writes)
     5. Copies the Full.bin images into docs/firmware/latest/ as
        SmallOLED-<id>-v<ver>-Full.bin and writes the VERSION file the page reads
     6. Writes the GitHub Release images into release/v<ver>/ with screen-size
        names non-technical users recognise:
-         firmware-v<ver>-OLED_<size>.bin           (new device, full 0x0 image)
-         OTA_ONLY_firmware-v<ver>-OLED_<size>.bin  (existing device, web UI update)
+         firmware-v<ver>-<tag>.bin           (new device, full 0x0 image)
+         OTA_ONLY_firmware-v<ver>-<tag>.bin  (existing device, web UI update)
+       C3 tags stay OLED_<size> as before; S3 tags are ESP32-S3-OLED_<size>.
 
 The web flasher reads firmware id from the BOARDS map in docs/flasher.js:
 SSD1306 (0.96") and SSD1309 (2.42") deliberately share the `ssd1306` image;
-SH1106 (1.3") has its own `sh1106` image.
+SH1106 (1.3") has its own `sh1106` image. S3 ids carry a `-s3` suffix.
 
 Usage:
-    python release.py                 # build + package both variants
+    python release.py                 # build + package every variant
     python release.py --skip-build    # package whatever .pio/build already has
     python release.py v1.6.0          # override the version string
 """
@@ -35,17 +37,20 @@ import sys
 from pathlib import Path
 
 # Variants published by the web flasher.
-# (PlatformIO env, firmware id, screen-size token, label).
+# (PlatformIO env, firmware id, release name tag, label).
 # The firmware id must match the `firmware` field in docs/flasher.js (used for
-# the docs/ flasher images). The size token drives the user-facing release/
-# filenames (firmware-v<ver>-OLED_<size>.bin) that go on the GitHub Release.
+# the docs/ flasher images). The name tag drives the user-facing release/
+# filenames (firmware-v<ver>-<tag>.bin) that go on the GitHub Release.
 VARIANTS = [
-    ("oled-096", "ssd1306", "0.96inch", '0.96" SSD1306  (also 2.42" SSD1309)'),
-    ("oled-13",  "sh1106",  "1.3inch",  '1.3" SH1106'),
-    ("oled-154", "ch1116",  "1.54inch", '1.54" CH1116'),
+    ("oled-096",    "ssd1306",    "OLED_0.96inch",          'C3 0.96" SSD1306  (also 2.42" SSD1309)'),
+    ("oled-13",     "sh1106",     "OLED_1.3inch",           'C3 1.3" SH1106'),
+    ("oled-154",    "ch1116",     "OLED_1.54inch",          'C3 1.54" CH1116'),
+    ("oled-096-s3", "ssd1306-s3", "ESP32-S3-OLED_0.96inch", 'S3 0.96" SSD1306  (also 2.42" SSD1309)'),
+    ("oled-13-s3",  "sh1106-s3",  "ESP32-S3-OLED_1.3inch",  'S3 1.3" SH1106'),
+    ("oled-154-s3", "ch1116-s3",  "ESP32-S3-OLED_1.54inch", 'S3 1.54" CH1116'),
 ]
 
-# Flash offsets for the ESP32-C3 (bootloader starts at 0x0).
+# Flash offsets for the ESP32-C3 and ESP32-S3 (bootloader at 0x0 on both).
 BOOTLOADER_OFFSET = 0x0
 PARTITIONS_OFFSET = 0x8000
 FIRMWARE_OFFSET = 0x10000
@@ -194,7 +199,7 @@ def main():
 
     print("\n--- Web flasher images (docs/firmware/latest/) ---")
     full_names = []
-    for env, fid, _size, _label in VARIANTS:
+    for env, fid, _tag, _label in VARIANTS:
         out = DOCS_LATEST / f"SmallOLED-{fid}-{version}-Full.bin"
         merge_full_bin(env, out)
         full_names.append(out.name)
@@ -203,17 +208,17 @@ def main():
 
     print(f"\n--- GitHub Release images (release/{version}/) ---")
     rel_names = []
-    for env, fid, size, _label in VARIANTS:
+    for env, fid, tag, _label in VARIANTS:
         # Full 0x0 image for new devices - same bytes as the docs flasher image,
-        # named by screen size so non-technical users pick the right one.
+        # named by chip + screen size so non-technical users pick the right one.
         full_src = DOCS_LATEST / f"SmallOLED-{fid}-{version}-Full.bin"
-        full_out = ota_dir / f"firmware-{version}-OLED_{size}.bin"
+        full_out = ota_dir / f"firmware-{version}-{tag}.bin"
         full_out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(full_src, full_out)
         print(f"  Full: {full_out.relative_to(REPO_ROOT)} ({full_out.stat().st_size / 1024:.1f} KB)")
         rel_names.append(full_out.name)
         # OTA-only image for existing devices (web UI update).
-        ota_out = ota_dir / f"OTA_ONLY_firmware-{version}-OLED_{size}.bin"
+        ota_out = ota_dir / f"OTA_ONLY_firmware-{version}-{tag}.bin"
         copy_ota_bin(env, ota_out)
         rel_names.append(ota_out.name)
 

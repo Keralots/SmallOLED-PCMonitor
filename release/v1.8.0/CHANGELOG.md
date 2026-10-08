@@ -6,8 +6,10 @@
 |----------|------------------|
 | **New device** (first time flashing) | `firmware-v1.8.0-OLED_0.96inch.bin`, `firmware-v1.8.0-OLED_1.3inch.bin` or `firmware-v1.8.0-OLED_1.54inch.bin` |
 | **Existing device** (OTA update via web interface) | `OTA_ONLY_firmware-v1.8.0-OLED_0.96inch.bin`, `OTA_ONLY_firmware-v1.8.0-OLED_1.3inch.bin` or `OTA_ONLY_firmware-v1.8.0-OLED_1.54inch.bin` |
+| **New ESP32-S3 device** | `firmware-v1.8.0-ESP32-S3-OLED_0.96inch.bin`, `firmware-v1.8.0-ESP32-S3-OLED_1.3inch.bin` or `firmware-v1.8.0-ESP32-S3-OLED_1.54inch.bin` |
+| **Existing ESP32-S3 device** | `OTA_ONLY_firmware-v1.8.0-ESP32-S3-OLED_0.96inch.bin`, `OTA_ONLY_firmware-v1.8.0-ESP32-S3-OLED_1.3inch.bin` or `OTA_ONLY_firmware-v1.8.0-ESP32-S3-OLED_1.54inch.bin` |
 
-> 0.96" SSD1306 and 2.42" SSD1309 share the `0.96inch` image. 1.3" SH1106 and 1.54" CH1116 each have their own image - do not mix them up.
+> 0.96" SSD1306 and 2.42" SSD1309 share the `0.96inch` image. 1.3" SH1106 and 1.54" CH1116 each have their own image - do not mix them up. ESP32-S3 boards (SuperMini or any S3 with 4MB+ flash) take the `ESP32-S3` images only; the wiring is the same as on the C3.
 
 ## PC companion app
 
@@ -28,6 +30,7 @@ You can also flash directly from your browser (no tools to install): https://sma
 - **Custom clock rotation.** "Cycle All Styles" is now your own list: pick the clocks, their order and how long each one stays.
 - **Configurable touch pin.** The touch button GPIO is now a setting, no reflash needed.
 - **LED control over HTTP.** The night light can be switched and dimmed through the API.
+- **ESP32-S3 support.** Separate S3 images for every display, also in the browser flasher. Same wiring as the C3.
 
 ## Fixes
 

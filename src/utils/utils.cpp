@@ -105,9 +105,17 @@ static const unsigned long LONG_PRESS_THRESHOLD = 1000;
 // the default for a device that has never been configured.
 bool isValidTouchPin(int pin) {
   if (pin < 0 || pin > TOUCH_PIN_MAX) return false;
+#if CONFIG_IDF_TARGET_ESP32S3
+  if (pin >= 22 && pin <= 25) return false; // not bonded out
+  if (pin >= 26 && pin <= 37) return false; // SPI flash/PSRAM (33-37 on octal modules)
+#if ARDUINO_USB_CDC_ON_BOOT
+  if (pin == 19 || pin == 20) return false; // USB D-/D+ carries Serial and OTA-less reflashing
+#endif
+#else
   if (pin >= 11 && pin <= 17) return false; // SPI flash bus + VDD_SPI
 #if ARDUINO_USB_CDC_ON_BOOT
   if (pin == 18 || pin == 19) return false; // USB D-/D+ carries Serial and OTA-less reflashing
+#endif
 #endif
 #if DISPLAY_INTERFACE == 1
   if (pin == SPI_MOSI_PIN || pin == SPI_SCK_PIN || pin == SPI_CS_PIN ||
@@ -124,10 +132,17 @@ bool isValidTouchPin(int pin) {
 
 const char* touchPinNote(int pin) {
   switch (pin) {
+#if CONFIG_IDF_TARGET_ESP32S3
+    case 0: case 3: case 45: case 46: return "strapping";
+    case 19: case 20: return "USB";
+    case 43: return "UART0 TX";
+    case 44: return "UART0 RX";
+#else
     case 2: case 8: case 9: return "strapping";
     case 18: case 19: return "USB";
     case 20: return "UART0 RX";
     case 21: return "UART0 TX";
+#endif
     default: return "";
   }
 }
