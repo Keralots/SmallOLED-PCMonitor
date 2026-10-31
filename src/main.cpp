@@ -349,9 +349,11 @@ int getOptimalRefreshRate() {
 
 // Animated clocks fire their minute-change animation at :56 and it runs on into
 // the next minute, so switching the instant a duration expires clipped the
-// animation. Hold the switch back while one is in flight, with a cap so a stuck
-// animation can never wedge the rotation.
-const uint32_t CYCLE_ANIM_GRACE_MS = 6000;
+// animation. Hold the switch back while one is in flight. The cap counts from the
+// animation's own start, not from the end of the duration: an hour change runs
+// 10-20 s on Tetris, Dino and Snake (32 s for Snake at its slowest), and a stuck
+// animation still can't wedge the rotation.
+const uint32_t CYCLE_ANIM_MAX_MS = 45000;
 
 void cycleClockScreens() {
     static char previous[sizeof(settings.cycleConfig)] = "";
@@ -374,8 +376,8 @@ void cycleClockScreens() {
     lastRendered = now;
 
     uint32_t elapsed = now - started;
-    if (entries[index].seconds && elapsed >= entries[index].seconds * 1000UL &&
-        (!time_overridden || elapsed >= entries[index].seconds * 1000UL + CYCLE_ANIM_GRACE_MS)) {
+    bool animating = time_overridden && now - time_override_start < CYCLE_ANIM_MAX_MS;
+    if (entries[index].seconds && elapsed >= entries[index].seconds * 1000UL && !animating) {
         index = (index + 1) % CYCLE_COUNT;
         started = now;
     }
