@@ -238,10 +238,13 @@ def main():
     print(f'  git commit -m "release {version}"')
     print(f"  gh release create {version} release/{version}/*.bin --notes \"...\"")
     print("  git push")
-    print("\nCompanion app (only if it changed since the last release):")
-    print("  cd PC-Companion-App-v4/win-companion && build_exe.bat")
-    print(f"  gh release upload {version} "
+    print("\nCompanion app (EVERY release - docs link to releases/latest/download/):")
+    print("  changed:   cd PC-Companion-App-v4/win-companion && build_exe.bat")
+    print(f"             gh release upload {version} "
           "PC-Companion-App-v4/win-companion/dist/pc_stats_monitor_v4.exe")
+    print("  unchanged: gh release download <previous-tag> "
+          "--pattern pc_stats_monitor_v4.exe --dir <tmp>")
+    print(f"             gh release upload {version} <tmp>/pc_stats_monitor_v4.exe")
 
 
 if __name__ == "__main__":
