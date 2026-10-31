@@ -51,17 +51,34 @@ extern float measuredFps;
 extern bool manualClockMode;
 #endif
 
+// Any web page the user has open can make the browser send a form POST or a
+// multipart upload here without a CORS preflight. A custom header or a JSON
+// content type needs a preflight, which this server never answers, so only the
+// device's own page (or a non-browser client) can get these requests through.
+static bool fromOwnPage() {
+ return server.header("X-SmallOLED") == "1";
+}
+
+static bool rejectForeign(bool jsonBodyOk = false) {
+ if (fromOwnPage()) return false;
+ if (jsonBodyOk && server.header("Content-Type").startsWith("application/json")) return false;
+ server.send(403, "text/plain", "Forbidden: send the X-SmallOLED: 1 header");
+ return true;
+}
+
+static bool otaAllowed = false;
+
 // ========== Web Server Setup ==========
 void setupWebServer() {
  server.on("/", handleRoot);
  server.on("/portal.css", HTTP_GET, handlePortalCss);
  server.on("/portal.js", HTTP_GET, handlePortalJs);
- server.on("/save", HTTP_POST, handleSave);
- server.on("/reset", handleReset);
+ server.on("/save", HTTP_POST, []() { if (!rejectForeign()) handleSave(); });
+ server.on("/reset", HTTP_POST, []() { if (!rejectForeign()) handleReset(); });
  server.on("/metrics", handleMetricsAPI);
  server.on("/api/info", HTTP_GET, handleDeviceInfo);
  server.on("/api/export", HTTP_GET, handleExportConfig);
- server.on("/api/import", HTTP_POST, handleImportConfig);
+ server.on("/api/import", HTTP_POST, []() { if (!rejectForeign(true)) handleImportConfig(); });
  server.on("/api/rename", HTTP_POST, handleRename);
  server.on("/api/ntptest", HTTP_GET, handleNtpTest);
 
@@ -95,6 +112,10 @@ void setupWebServer() {
 
  // OTA Firmware Update handlers
  server.on("/update", HTTP_POST, []() {
+ if (!otaAllowed) {
+   server.send(403, "text/plain", "Forbidden: send the X-SmallOLED: 1 header");
+   return;
+ }
  if (Update.hasError()) {
    // Surface the real reason (non-200 so the UI knows it failed). The common
    // case once the firmware outgrows an older default partition table is a
@@ -111,6 +132,8 @@ void setupWebServer() {
  ESP.restart();
  }, []() {
  HTTPUpload& upload = server.upload();
+ if (upload.status == UPLOAD_FILE_START) otaAllowed = fromOwnPage();
+ if (!otaAllowed) return;
  if (upload.status == UPLOAD_FILE_START) {
  Serial.printf("Update: %s\n", upload.filename.c_str());
 #if GAMEPAD_ENABLED
@@ -136,6 +159,8 @@ void setupWebServer() {
  }
  });
 
+ const char* headerKeys[] = {"X-SmallOLED", "Content-Type"};
+ server.collectHeaders(headerKeys, 2);
  server.begin();
 }
 

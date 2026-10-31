@@ -608,6 +608,12 @@ Replace `smalloled.local` in the examples with your device's mDNS name (configur
 
 **Visualizer style IDs:** `0` = Classic EQ, `1` = Oscilloscope, `2` = Mirror EQ.
 
+**Write endpoints used by the web page** (`/save`, `/reset`, `/update`, `/api/import`) only accept POST requests that carry the header `X-SmallOLED: 1` (`/api/import` also accepts any request sent as `Content-Type: application/json`). This stops other websites open in your browser from changing settings or flashing firmware behind your back. Scripts just add the header, for example:
+
+```bash
+curl -H "X-SmallOLED: 1" -F "firmware=@firmware.bin" http://smalloled.local/update
+```
+
 ### Examples
 
 ```bash

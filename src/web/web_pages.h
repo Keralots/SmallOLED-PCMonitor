@@ -1659,7 +1659,7 @@ saveFormState();
 var btn = $('#saveBtn'); var orig = btn.textContent;
 btn.disabled = true; btn.textContent = 'Saving...';
 var body = new URLSearchParams(new FormData(form));
-fetch('/save', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+fetch('/save', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-SmallOLED': '1' }, body: body })
 .then(function (r) { return r.json(); })
 .then(function (d) {
 btn.disabled = false; btn.textContent = orig;
@@ -1676,7 +1676,9 @@ setTimeout(function () { window.location.href = '/'; }, 3000);
 $('#resetBtn').addEventListener('click', function () {
 if (!confirm('Have you exported a backup of your settings?\n\nUse "Export config" first if not.\n\nOK to continue with factory reset, Cancel to go back.')) return;
 if (!confirm('ARE YOU SURE?\n\nThis permanently erases ALL settings:\n- WiFi credentials\n- Display & clock config\n- Metric labels & layout\n- Network settings\n\nThe device restarts into AP setup mode. This cannot be undone.')) return;
-window.location.href = '/reset';
+fetch('/reset', { method: 'POST', headers: { 'X-SmallOLED': '1' } }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+.then(function (t) { document.open(); document.write(t); document.close(); })
+.catch(function (err) { alert('Factory reset failed: ' + err); });
 });
 $('#exportBtn').addEventListener('click', function () {
 fetch('/api/export').then(function (r) { return r.json(); }).then(function (data) {
@@ -1770,7 +1772,7 @@ var reader = new FileReader();
 reader.onload = function (e) {
 var cfg;
 try { cfg = JSON.parse(e.target.result); } catch (err) { alert('Invalid configuration file: ' + err); return; }
-fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg) })
+fetch('/api/import', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SmallOLED': '1' }, body: JSON.stringify(cfg) })
 .then(function (r) { return r.json(); })
 .then(function (d) {
 if (d.success) { alert('Configuration imported. Reloading...'); location.reload(); }
@@ -1800,7 +1802,7 @@ else { pct.textContent = (xhr.responseText || 'Upload failed - please try again.
 });
 xhr.addEventListener('error', function () { pct.textContent = 'Upload error - please try again.'; });
 var fd = new FormData(); fd.append('firmware', file);
-xhr.open('POST', '/update'); xhr.send(fd);
+xhr.open('POST', '/update'); xhr.setRequestHeader('X-SmallOLED', '1'); xhr.send(fd);
 }
 function fmtUptime(sec) {
 var d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
