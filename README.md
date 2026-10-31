@@ -384,7 +384,7 @@ Every clock below is captured at the 09:59 -> 10:00 rollover, the busiest case, 
 | ![Pac-Man Clock](img/clocks/pacman.gif)<br>**Pac-Man** | ![Snake Clock](img/clocks/snake.gif)<br>**Snake** | ![Tetris Clock](img/clocks/tetris.gif)<br>**Tetris** |
 | ![Asteroids Clock](img/clocks/asteroids.gif)<br>**Asteroids** | ![Dino Runner Clock](img/clocks/dino.gif)<br>**Dino Runner** | ![TRON Clock](img/clocks/tron.gif)<br>**TRON** |
 | ![Game of Life Clock](img/clocks/life.gif)<br>**Game of Life** | ![Dragon Ball Clock](img/clocks/dragonball.gif)<br>**Dragon Ball** | ![Standard Clock](img/clocks/standard.gif)<br>**Standard** |
-| ![Large Clock](img/clocks/large.gif)<br>**Large** | | |
+| ![Large Clock](img/clocks/large.gif)<br>**Large** | ![Weather Clock](img/clocks/weather.gif)<br>**Weather** | |
 
 - **Mario Clock**: Animated pixel Mario that jumps to "hit" digits when time changes
 - **Space Invaders Clock**: Invader/ship shoots lasers to change digits
@@ -650,7 +650,9 @@ A `/api/status` response looks like:
   "forcedClock": true,
   "brightness": 100,
   "clockStyle": 0,
-  "pcOnline": false
+  "pcOnline": false,
+  "weatherValid": true,
+  "weatherAgeSeconds": 212
 }
 ```
 
@@ -663,6 +665,8 @@ A `/api/status` response looks like:
 | `brightness` | Current brightness, 0-100% |
 | `clockStyle` | Active clock style ID (see list above) |
 | `pcOnline` | `true` if the PC sender is currently sending stats |
+| `weatherValid` | `true` once the Weather clock has fetched data for the saved location |
+| `weatherAgeSeconds` | Seconds since that fetch (only present when `weatherValid` is `true`) |
 
 ### Home Assistant example
 
@@ -870,7 +874,7 @@ Automatically dim the display during nighttime hours. Configured via the web int
 
 ### OTA Firmware Updates
 
-Upload new firmware wirelessly through the web interface at `http://<device-ip>/update`. No need to physically connect USB after the initial flash.
+Upload new firmware wirelessly through the web interface at `http://<device-ip>/update`. No need to physically connect USB after the initial flash. When a newer release is out, the web page shows a badge in the top bar and names the matching `OTA_ONLY` file on the Maintenance page (your browser checks GitHub, the device does not).
 
 ## License
 
