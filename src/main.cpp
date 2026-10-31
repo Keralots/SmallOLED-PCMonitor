@@ -117,6 +117,7 @@ int getOptimalRefreshRate();
 #include "metrics/metrics.h"
 #include "network/network.h"
 #include "web/web.h"
+#include "weather/weather.h"
 
 
 // ========== Helper Functions ==========
@@ -169,7 +170,7 @@ bool getTimeWithTimeout(struct tm *timeinfo, unsigned long timeout_ms) {
 // AnimatedPixelClock so a style ported later keeps the same number on both
 // devices; 4 is a legacy alias for 3 and 12-15 are that project's styles we
 // have not ported, so neither appears here.
-const uint8_t CLOCK_STYLES[] = {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 16, 18, 19};
+const uint8_t CLOCK_STYLES[] = {0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11, 14, 16, 18, 19};
 const uint8_t CLOCK_STYLE_COUNT = sizeof(CLOCK_STYLES) / sizeof(CLOCK_STYLES[0]);
 
 bool isValidClockStyle(uint8_t id) {
@@ -178,9 +179,15 @@ bool isValidClockStyle(uint8_t id) {
   return false;
 }
 
+// Weather is skipped until a location is set, it has nothing to show before.
 uint8_t nextClockStyle(uint8_t current) {
-  for (uint8_t i = 0; i < CLOCK_STYLE_COUNT; i++)
-    if (CLOCK_STYLES[i] == current) return CLOCK_STYLES[(i + 1) % CLOCK_STYLE_COUNT];
+  for (uint8_t i = 0; i < CLOCK_STYLE_COUNT; i++) {
+    if (CLOCK_STYLES[i] != current) continue;
+    uint8_t next = CLOCK_STYLES[(i + 1) % CLOCK_STYLE_COUNT];
+    if (next == WEATHER_STYLE_ID && !weatherConfigured())
+      next = CLOCK_STYLES[(i + 2) % CLOCK_STYLE_COUNT];
+    return next;
+  }
   return CLOCK_STYLES[0];
 }
 
@@ -328,9 +335,9 @@ int getOptimalRefreshRate() {
         settings.clockStyle == 6 || settings.clockStyle == 7 ||
         settings.clockStyle == 8 || settings.clockStyle == 9 ||
         settings.clockStyle == 10 || settings.clockStyle == 11 ||
-        settings.clockStyle == 16 || settings.clockStyle == 18 ||
-        settings.clockStyle == 19) {
-      // Animated clocks (Mario, Space Invaders, Space Ship, Pong, Pac-Man, Snake, Tetris, Cycle, Asteroids, Dino, TRON, Life, Dragon Ball)
+        settings.clockStyle == 14 || settings.clockStyle == 16 ||
+        settings.clockStyle == 18 || settings.clockStyle == 19) {
+      // Animated clocks (Mario, Space Invaders, Space Ship, Pong, Pac-Man, Snake, Tetris, Cycle, Asteroids, Dino, Weather, TRON, Life, Dragon Ball)
       return 20; // 20 Hz keeps character movement smooth
     } else {
       // Static clocks (Standard, Large)
@@ -382,8 +389,10 @@ void cycleClockScreens() {
         started = now;
     }
 
-    // Skip disabled entries. parseCycleConfig guarantees at least one is left.
-    for (unsigned n = 0; n < CYCLE_COUNT && !entries[index].seconds; ++n) {
+    // Skip disabled entries, and weather until a location is set.
+    // parseCycleConfig guarantees at least one is enabled.
+    for (unsigned n = 0; n < CYCLE_COUNT && (!entries[index].seconds ||
+         (entries[index].style == WEATHER_STYLE_ID && !weatherConfigured())); ++n) {
         index = (index + 1) % CYCLE_COUNT;
         started = now;
     }
@@ -405,6 +414,7 @@ void cycleClockScreens() {
         case 8: displayClockWithTetris(); break;
         case 10: displayClockWithAsteroids(); break;
         case 11: displayClockWithDino(); break;
+        case 14: displayClockWithWeather(); break;
         case 16: displayClockWithTron(); break;
         case 18: displayClockWithLife(); break;
         case 19: displayClockWithDragonBall(); break;
@@ -546,6 +556,8 @@ void loop() {
 
   // Handle web server requests
   server.handleClient();
+
+  weatherLoop();
 
   // Handle UDP packets - always process to track PC online status accurately
   handleUDP();
@@ -693,6 +705,9 @@ void loop() {
         break;
       case 11:
         displayClockWithDino();
+        break;
+      case 14:
+        displayClockWithWeather();
         break;
       case 16:
         displayClockWithTron();

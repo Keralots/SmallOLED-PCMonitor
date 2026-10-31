@@ -131,6 +131,9 @@ bool tronIsAnimating();
 void displayClockWithDino();
 void resetDinoAnimation();
 
+// ========== Weather Clock ==========
+void displayClockWithWeather();
+
 // ========== Game of Life Clock ==========
 void displayClockWithLife();
 void resetLifeAnimation();

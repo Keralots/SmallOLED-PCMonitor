@@ -58,7 +58,7 @@ There is now a 27 x 27 mm carrier PCB that holds the ESP32-C3 SuperMini, the OLE
 
 - **Dual Display Modes:**
   - **PC Online**: Real-time stats with customizable metrics and positions
-  - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, TRON, Game of Life, Dragon Ball, Standard, or Large styles, plus a Cycle All mode)
+  - **PC Offline**: Animated clock (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, TRON, Game of Life, Dragon Ball, Weather, Standard, or Large styles, plus a Cycle All mode)
 - **Audio Visualizer**: Live spectrum bars or an oscilloscope driven by whatever your PC is playing, streamed by the companion app
 - **Game Mode**: Six small games on the OLED (Falling Blocks, Snake, Bricks, Space Rocks, Runner, Defenders), played with an Xbox Wireless Controller over Bluetooth LE
 - **PC Companion App (v4, Windows + Linux)**:
@@ -231,7 +231,7 @@ Once connected to WiFi, access the full configuration page:
 ![ESP32 Web Portal - Clock Settings](img/ESP-WEBPortal1.png)
 
 2. **Clock Settings:**
-   - Idle clock style (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, TRON, Game of Life, Dragon Ball, Standard, or Large, plus a Cycle All mode)
+   - Idle clock style (Mario, Space Invaders, Arkanoid, Pac-Man, Snake, Tetris, Asteroids, Dino Runner, TRON, Game of Life, Dragon Ball, Weather, Standard, or Large, plus a Cycle All mode)
    - Time format (12/24 hour)
    - Date format (DD/MM/YYYY, MM/DD/YYYY, or YYYY-MM-DD)
 
@@ -396,6 +396,7 @@ Every clock below is captured at the 09:59 -> 10:00 rollover, the busiest case, 
 - **Dino Runner Clock**: A Chrome T-Rex homage - the dino runs and auto-jumps cacti over a scrolling ground with parallax clouds; at the minute change a pterodactyl swoops in, carries off the old digit, and the new one drops in from above. Optional clouds and date row.
 - **TRON Clock**: Two light cycles duel around the digits, leaving trails behind them (one solid, one dotted, so you can tell them apart). At the minute change one cycle is dispatched to retrace the changed digit stroke by stroke. Optional arena grid and border, and a choice of side-profile or overhead bike sprite.
 - **Game of Life Clock**: Conway's Game of Life runs around the digits. At the minute change the old digit dissolves into the colony, evolves for a moment, and the surviving cells fly back together into the new digit, which then fires off a glider. Long-lived cells erode and fresh gliders keep arriving, so nothing burns in. Adjustable speed and density, optional date row, and a small-clock mode (top, centre or bottom) that leaves most of the screen to the colony.
+- **Weather Clock**: Current conditions from [Open-Meteo](https://open-meteo.com/) (free, no account or API key). Five layouts: classic (clock, animated icon - sun and moon with stars, drifting clouds, rain, snow, fog, lightning, gusts when it is windy - temperature, and today's high/low and humidity alternating with sunrise/sunset), or current weather on the left with a forecast on the right: three days as rows, three days as columns, a 12-hour temperature curve over rain chances, or tomorrow in focus. Same layouts as on AnimatedPixelClock. Find your city in the web settings (the lookup runs in your browser), Celsius or Fahrenheit. The device fetches every 10 minutes, only while the clock is on screen or in the rotation.
 - **Dragon Ball Clock**: Goku lives on the ground below the time - he walks, runs kata, spars with his afterimage, rides the Flying Nimbus, collects Dragon Balls (seven summon Shenron) and now and then fights a visiting Vegeta or Piccolo. At the minute change he fires a Kamehameha that eats the old digit from below; when three or four digits change he goes Super Saiyan, the old digits crumble and lightning strikes in the new ones. Idle tricks can be switched off, leaving him to just walk.
 - **Standard Clock**: Simple centered clock with date and day of week
 - **Large Clock**: Extra-large time display with date
@@ -604,7 +605,7 @@ Replace `smalloled.local` in the examples with your device's mDNS name (configur
 | GET | `/api/game/hiscore/reset[?id=N]` | Clear one game's best score (index from `games[]` in the status), or all of them |
 | GET | `/api/reboot` | Soft-restart the device (does **not** erase settings) |
 
-**Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man, `7` = Snake, `8` = Tetris, `9` = Cycle All Styles, `10` = Asteroids, `11` = Dino Runner, `16` = TRON, `18` = Game of Life, `19` = Dragon Ball. (The ids are a fixed set, not a range - the gaps are reserved so style numbers stay aligned with the sister project.)
+**Clock style IDs:** `0` = Mario, `1` = Standard, `2` = Large, `3` = Space Invaders, `5` = Arkanoid/Pong, `6` = Pac-Man, `7` = Snake, `8` = Tetris, `9` = Cycle All Styles, `10` = Asteroids, `11` = Dino Runner, `14` = Weather, `16` = TRON, `18` = Game of Life, `19` = Dragon Ball. (The ids are a fixed set, not a range - the gaps are reserved so style numbers stay aligned with the sister project.)
 
 **Visualizer style IDs:** `0` = Classic EQ, `1` = Oscilloscope, `2` = Mirror EQ.
 

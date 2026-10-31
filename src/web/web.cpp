@@ -15,6 +15,7 @@
 #include "../display/display.h"
 #include "../timezones.h"
 #include "../viz/visualizer.h"
+#include "../weather/weather.h"
 #if GAMEPAD_ENABLED
 #include "../game/game_mode.h"
 #include "../game/game_common.h"
@@ -249,6 +250,9 @@ void handleStatus() {
  // Wake-ups the dim schedule refused to act on because a second check
  // disagreed. Non-zero means the device is being handed a wrong time (#59).
  doc["dimWakesIgnored"] = getSuppressedScheduleWakeCount();
+ WeatherData weather = getWeather();
+ doc["weatherValid"] = weather.valid;
+ if (weather.valid) doc["weatherAgeSeconds"] = (millis() - weather.fetchedAt) / 1000;
 #if VIZ_DEBUG_FB
  doc["fps"] = measuredFps;
 #endif
@@ -698,6 +702,7 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "SEL_CLOCKSTYLE_10")) { out = String(settings.clockStyle == 10 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_11")) { out = String(settings.clockStyle == 11 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_16")) { out = String(settings.clockStyle == 16 ? "selected" : ""); return true; }
+  if (!strcmp(n, "SEL_CLOCKSTYLE_14")) { out = String(settings.clockStyle == 14 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_18")) { out = String(settings.clockStyle == 18 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_CLOCKSTYLE_19")) { out = String(settings.clockStyle == 19 ? "selected" : ""); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_0")) { out = String(settings.clockStyle == 0 ? "block" : "none"); return true; }
@@ -781,6 +786,11 @@ static bool resolvePlaceholder(const char* n, String& out) {
   if (!strcmp(n, "DSP_CLOCKSTYLE_16")) { out = String(settings.clockStyle == 16 ? "block" : "none"); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_18")) { out = String(settings.clockStyle == 18 ? "block" : "none"); return true; }
   if (!strcmp(n, "DSP_CLOCKSTYLE_19")) { out = String(settings.clockStyle == 19 ? "block" : "none"); return true; }
+  if (!strcmp(n, "DSP_CLOCKSTYLE_14")) { out = String(settings.clockStyle == 14 ? "block" : "none"); return true; }
+  if (!strcmp(n, "V_WEATHERLAT")) { out = weatherConfigured() ? String(settings.weatherLat, 4) : String(""); return true; }
+  if (!strcmp(n, "V_WEATHERLON")) { out = weatherConfigured() ? String(settings.weatherLon, 4) : String(""); return true; }
+  if (!strcmp(n, "CHK_WEATHERF")) { out = String(settings.weatherUseFahrenheit ? "checked" : ""); return true; }
+  if (!strncmp(n, "SEL_WEATHERLAY_", 15)) { out = String(settings.weatherLayout == atoi(n + 15) ? "selected" : ""); return true; }
   if (!strcmp(n, "CHK_DRAGONIDLETRICKS")) { out = String(settings.dragonIdleTricks ? "checked" : ""); return true; }
   if (!strcmp(n, "SEL_TRONBIKESTYLE_0")) { out = String(settings.tronBikeStyle == 0 ? "selected" : ""); return true; }
   if (!strcmp(n, "SEL_TRONBIKESTYLE_1")) { out = String(settings.tronBikeStyle == 1 ? "selected" : ""); return true; }
@@ -1118,6 +1128,7 @@ void validateSettings() {
  clampSetting(settings.blocksStartLevel, 1, 10, "blocksStartLevel");
  clampSetting(settings.lifeDensity, 0, 2, "lifeDensity");
  clampSetting(settings.lifeClockPos, 0, 2, "lifeClockPos");
+ clampSetting(settings.weatherLayout, 0, 4, "weatherLayout");
 }
 
 void handleSave() {
@@ -1448,6 +1459,18 @@ void handleSave() {
  settings.lifeSmallClock = server.hasArg("lifeSmallClock");
  settings.lifeSmallCells = server.hasArg("lifeSmallCells");
  settings.dragonIdleTricks = server.hasArg("dragonIdleTricks");
+ if (server.hasArg("weatherLat") && server.hasArg("weatherLon")) {
+ // Empty fields clear the location (0,0 is the "unset" marker)
+ float lat = server.arg("weatherLat").toFloat();
+ float lon = server.arg("weatherLon").toFloat();
+ if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+ settings.weatherLat = lat;
+ settings.weatherLon = lon;
+ }
+ settings.weatherUseFahrenheit = server.hasArg("weatherFahrenheit");
+ if (server.hasArg("weatherLayout")) settings.weatherLayout = server.arg("weatherLayout").toInt();
+ weatherSettingsChanged();
+ }
  if (server.hasArg("lifeClockPos")) {
  settings.lifeClockPos = server.arg("lifeClockPos").toInt();
  }
@@ -1839,6 +1862,10 @@ void handleExportConfig() {
  json += "\"lifeSmallClock\":" + String(settings.lifeSmallClock ? "true" : "false") + ",";
  json += "\"lifeSmallCells\":" + String(settings.lifeSmallCells ? "true" : "false") + ",";
  json += "\"dragonIdleTricks\":" + String(settings.dragonIdleTricks ? "true" : "false") + ",";
+ json += "\"weatherLat\":" + String(settings.weatherLat, 4) + ",";
+ json += "\"weatherLon\":" + String(settings.weatherLon, 4) + ",";
+ json += "\"weatherUseFahrenheit\":" + String(settings.weatherUseFahrenheit ? "true" : "false") + ",";
+ json += "\"weatherLayout\":" + String(settings.weatherLayout) + ",";
  json += "\"tronShowGrid\":" + String(settings.tronShowGrid ? "true" : "false") + ",";
  json += "\"tronShowBorder\":" + String(settings.tronShowBorder ? "true" : "false") + ",";
  json += "\"vizPeakDots\":" + String(settings.vizPeakDots ? "true" : "false") + ",";
@@ -2149,6 +2176,16 @@ void handleImportConfig() {
  if (!doc["lifeSmallClock"].isNull()) settings.lifeSmallClock = doc["lifeSmallClock"];
  if (!doc["lifeSmallCells"].isNull()) settings.lifeSmallCells = doc["lifeSmallCells"];
  if (!doc["dragonIdleTricks"].isNull()) settings.dragonIdleTricks = doc["dragonIdleTricks"];
+ if (doc["weatherLat"].is<float>() && doc["weatherLon"].is<float>()) {
+ float lat = doc["weatherLat"], lon = doc["weatherLon"];
+ if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+ settings.weatherLat = lat;
+ settings.weatherLon = lon;
+ }
+ }
+ if (!doc["weatherUseFahrenheit"].isNull()) settings.weatherUseFahrenheit = doc["weatherUseFahrenheit"];
+ if (!doc["weatherLayout"].isNull()) settings.weatherLayout = doc["weatherLayout"];
+ weatherSettingsChanged();
  if (!doc["tronShowGrid"].isNull()) settings.tronShowGrid = doc["tronShowGrid"];
  if (!doc["tronShowBorder"].isNull()) settings.tronShowBorder = doc["tronShowBorder"];
  if (!doc["vizPeakDots"].isNull()) settings.vizPeakDots = doc["vizPeakDots"];
