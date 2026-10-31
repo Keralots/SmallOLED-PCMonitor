@@ -397,6 +397,11 @@ void loadSettings() {
   settings.lifeSmallCells = preferences.getBool("lifeCells", false);
   settings.lifeClockPos = preferences.getUChar("lifePos", 0);
   settings.dragonIdleTricks = preferences.getBool("dbTricks", true);
+  settings.weatherLat = preferences.getFloat("weatherLat", 0);
+  settings.weatherLon = preferences.getFloat("weatherLon", 0);
+  settings.weatherUseFahrenheit = preferences.getBool("weatherF", false);
+  settings.weatherLayout = preferences.getUChar("weatherLay", 0);
+  if (settings.weatherLayout > 4) settings.weatherLayout = 0;
 
   bool brightnessSettingsSanitized = false;
   uint8_t sanitizedDisplayBrightness =
@@ -662,6 +667,10 @@ void saveSettings() {
   preferences.putBool("lifeCells", settings.lifeSmallCells);
   preferences.putUChar("lifePos", settings.lifeClockPos);
   preferences.putBool("dbTricks", settings.dragonIdleTricks);
+  preferences.putFloat("weatherLat", settings.weatherLat);
+  preferences.putFloat("weatherLon", settings.weatherLon);
+  preferences.putBool("weatherF", settings.weatherUseFahrenheit);
+  preferences.putUChar("weatherLay", settings.weatherLayout);
 
   // Save network configuration
   preferences.putString("deviceName", settings.deviceName);

@@ -207,6 +207,12 @@ struct Settings {
   // Dragon Ball clock settings
   bool dragonIdleTricks;        // Afterimage teleports and power-ups between minutes
 
+  // Weather clock (style 14, Open-Meteo)
+  float weatherLat;             // Location latitude (0,0 = unset)
+  float weatherLon;             // Location longitude
+  bool weatherUseFahrenheit;    // false = Celsius (and km/h)
+  uint8_t weatherLayout;        // 0=Classic; forecast on the right: 1=day rows, 2=day columns, 3=next 12 hours, 4=tomorrow
+
   // Metric configuration arrays
   char metricLabels[MAX_METRICS][METRIC_NAME_LEN];
   char metricNames[MAX_METRICS][METRIC_NAME_LEN];

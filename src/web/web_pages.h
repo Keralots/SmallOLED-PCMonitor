@@ -125,6 +125,7 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                   <option value="8" %SEL_CLOCKSTYLE_8%>Tetris</option>
                   <option value="10" %SEL_CLOCKSTYLE_10%>Asteroids</option>
                   <option value="11" %SEL_CLOCKSTYLE_11%>Dino Runner</option>
+                  <option value="14" %SEL_CLOCKSTYLE_14%>Weather</option>
                   <option value="16" %SEL_CLOCKSTYLE_16%>TRON</option>
                   <option value="18" %SEL_CLOCKSTYLE_18%>Game of Life</option>
                   <option value="19" %SEL_CLOCKSTYLE_19%>Dragon Ball</option>
@@ -554,6 +555,46 @@ static const char PAGE_HTML[] PROGMEM = R"PAGE(<!doctype html>
                 <span class="check-box" aria-hidden="true"></span>
                 <span class="check-text"><strong>Show date</strong><span class="ct-hint">Off centres the clock above the runner. Default off.</span></span>
               </label>
+            </div>
+
+            <!-- Weather (style 14) -->
+            <div class="subcard" id="weatherSettings" style="display:%DSP_CLOCKSTYLE_14%">
+              <div class="field">
+                <label class="field-label" for="weatherCity">Find your location</label>
+                <div style="display:flex;gap:8px;max-width:520px">
+                  <input type="text" id="weatherCity" placeholder="City name..." style="flex:1">
+                  <button type="button" class="btn" id="weatherGeoBtn">Search</button>
+                </div>
+                <p class="field-hint" id="weatherGeoStatus">Search fills in the coordinates below. The lookup runs in your browser.</p>
+              </div>
+              <div class="grid-2">
+                <div class="field" style="margin-bottom:0">
+                  <label class="field-label" for="weatherLat">Latitude</label>
+                  <input type="number" name="weatherLat" id="weatherLat" step="any" min="-90" max="90" value="%V_WEATHERLAT%">
+                </div>
+                <div class="field" style="margin-bottom:0">
+                  <label class="field-label" for="weatherLon">Longitude</label>
+                  <input type="number" name="weatherLon" id="weatherLon" step="any" min="-180" max="180" value="%V_WEATHERLON%">
+                </div>
+              </div>
+              <div class="field" style="margin-top:16px">
+                <label class="field-label" for="weatherLayout">Layout</label>
+                <div class="select-wrap">
+                  <select name="weatherLayout" id="weatherLayout">
+                    <option value="0" %SEL_WEATHERLAY_0%>Classic &middot; current weather</option>
+                    <option value="1" %SEL_WEATHERLAY_1%>Forecast &middot; three days as rows</option>
+                    <option value="2" %SEL_WEATHERLAY_2%>Forecast &middot; three days as columns</option>
+                    <option value="3" %SEL_WEATHERLAY_3%>Forecast &middot; next 12 hours</option>
+                    <option value="4" %SEL_WEATHERLAY_4%>Forecast &middot; tomorrow in focus</option>
+                  </select>
+                </div>
+              </div>
+              <label class="check-row standalone">
+                <input type="checkbox" name="weatherFahrenheit" id="weatherFahrenheit" %CHK_WEATHERF%>
+                <span class="check-box" aria-hidden="true"></span>
+                <span class="check-text"><strong>Fahrenheit</strong><span class="ct-hint">Also shows wind in mph. Default off (Celsius, km/h).</span></span>
+              </label>
+              <p class="field-hint">Weather data by <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>, refreshed every 10 minutes while this clock is on screen or in the rotation. Needs internet access.</p>
             </div>
 
             <!-- Dragon Ball (style 19) -->
@@ -1259,8 +1300,8 @@ var lifeSmall = $('#lifeSmallClock');
 if (lifeSmall) { var fl = function () { toggle($('#lifePosFields'), lifeSmall.checked); }; lifeSmall.addEventListener('change', fl); fl(); }
 var marioEnc = $('#marioIdleEncounters');
 if (marioEnc) { var fe = function () { toggle($('#marioEncFields'), marioEnc.checked); }; marioEnc.addEventListener('change', fe); fe(); }
-var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','9':'cycleSettings','10':'asteroidsSettings','11':'dinoSettings','16':'tronSettings','18':'lifeSettings','19':'dragonSettings' };
-var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings','tronSettings','lifeSettings','dragonSettings','cycleSettings'];
+var STYLE_PANELS = { '0':'marioSettings','3':'spaceSettings','4':'spaceSettings','5':'pongSettings','6':'pacmanSettings','7':'snakeSettings','8':'tetrisSettings','9':'cycleSettings','10':'asteroidsSettings','11':'dinoSettings','14':'weatherSettings','16':'tronSettings','18':'lifeSettings','19':'dragonSettings' };
+var ALL_PANELS = ['marioSettings','spaceSettings','pongSettings','pacmanSettings','snakeSettings','tetrisSettings','asteroidsSettings','dinoSettings','weatherSettings','tronSettings','lifeSettings','dragonSettings','cycleSettings'];
 var clockStyle = $('#clockStyle');
 function syncClockPanels() {
 ALL_PANELS.forEach(function (id) { var el = document.getElementById(id); if (el) el.style.display = 'none'; });
@@ -1269,7 +1310,7 @@ if (show) { var e = document.getElementById(show); if (e) e.style.display = ''; 
 }
 if (clockStyle) { clockStyle.addEventListener('change', syncClockPanels); syncClockPanels(); }
 var cycleInput = $('#cycleConfig'), cycleRows = $('#cycleRows');
-var cycleNames = {0:'Mario',1:'Standard',2:'Large',3:'Space Invaders',5:'Arkanoid',6:'Pac-Man',7:'Snake',8:'Tetris',10:'Asteroids',11:'Dino Runner',16:'TRON',18:'Game of Life',19:'Dragon Ball'};
+var cycleNames = {0:'Mario',1:'Standard',2:'Large',3:'Space Invaders',5:'Arkanoid',6:'Pac-Man',7:'Snake',8:'Tetris',10:'Asteroids',11:'Dino Runner',14:'Weather',16:'TRON',18:'Game of Life',19:'Dragon Ball'};
 if (cycleInput && cycleRows) {
 var cycleItems = cycleInput.value.split(',').map(function (v) { var p = v.split(':'); return { id: Number(p[0]), seconds: Number(p[1]), enabled: Number(p[1]) > 0 }; });
 Object.keys(cycleNames).forEach(function (k) { var id = Number(k); if (!cycleItems.some(function (v) { return v.id === id; })) cycleItems.push({ id: id, seconds: 300, enabled: false }); });
@@ -1290,6 +1331,21 @@ cycleRows.appendChild(row);
 }
 drawCycle();
 }
+var wgBtn = $('#weatherGeoBtn');
+if (wgBtn) wgBtn.addEventListener('click', function () {
+var q = $('#weatherCity').value.trim(); if (!q) return;
+var st = $('#weatherGeoStatus'); st.textContent = 'Searching...';
+fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' + encodeURIComponent(q))
+.then(function (r) { return r.json(); })
+.then(function (d) {
+if (d.results && d.results.length) {
+var g = d.results[0];
+['weatherLat', 'weatherLon'].forEach(function (id, i) { var el = $('#' + id); el.value = (i ? g.longitude : g.latitude).toFixed(4); el.dispatchEvent(new Event('input', { bubbles: true })); });
+st.textContent = 'Found: ' + g.name + (g.admin1 ? ', ' + g.admin1 : '') + (g.country ? ', ' + g.country : '') + '. Save to apply.';
+} else { st.textContent = 'No match found. Try a bigger nearby city.'; }
+})
+.catch(function () { st.textContent = 'Lookup failed (no internet?). Enter the coordinates manually.'; });
+});
 var dn = $('#deviceName');
 if (dn) dn.addEventListener('input', function () {
 var v = dn.value.toLowerCase() || 'smalloled';
