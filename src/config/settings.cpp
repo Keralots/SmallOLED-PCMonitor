@@ -567,6 +567,13 @@ void saveClockStyle() {
   preferences.end();
 }
 
+void saveLedState() {
+  preferences.begin("pcmonitor", false);
+  preferences.putBool("ledEnabled", settings.ledEnabled);
+  preferences.putUChar("ledBright", settings.ledBrightness);
+  preferences.end();
+}
+
 void saveSettings() {
   sanitizeBrightnessSettings();
   preferences.begin("pcmonitor", false); // Read-write

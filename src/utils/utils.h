@@ -29,7 +29,7 @@ void assertBounds(int value, int minVal, int maxVal, const char* name);
 #endif
 
 void initTouchButton();
-bool checkTouchButtonPressed();
+bool checkTouchButtonPressed(unsigned long *when = nullptr);
 void resetTouchButtonState();
 
 // True when `pin` can physically host the touch input on this build: rejects

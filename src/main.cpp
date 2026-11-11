@@ -262,16 +262,23 @@ void handleTouchTap() {
 // Every tap acts at once. Waiting out the triple-tap gap first made a single
 // tap feel laggy, so the third tap of a quick run instead undoes what the
 // first two did and starts game mode.
-#define TOUCH_TAP_GAP_MS 350
+#define TOUCH_TAP_GAP_MS 400
+static void handleTouchTapAt(unsigned long now);
+
 void pollTouchTaps() {
-  if (!checkTouchButtonPressed()) return;
+  unsigned long when;
+  while (checkTouchButtonPressed(&when)) handleTouchTapAt(when);
+}
+
+// `now` is the release time the interrupt stamped, so the gap between taps is
+// measured on the finger, not on how busy the loop was.
+static void handleTouchTapAt(unsigned long now) {
   nextDisplayUpdate = 0; // draw the result now, not at the next frame slot
 #if GAMEPAD_ENABLED
   static uint8_t count = 0;
   static unsigned long lastTap = 0;
   static uint8_t snapStyle = 0;
   static bool snapManual = false, snapViz = false;
-  unsigned long now = millis();
   if (gameModeActive()) {
     gameModeStop();
     count = 0;

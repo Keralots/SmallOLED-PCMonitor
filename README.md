@@ -146,7 +146,7 @@ The firmware supports an optional **TTP223 capacitive touch sensor** for physica
 | Quick tap | < 500ms | **PC online:** Toggle metrics/clock. **PC offline:** Cycle clock styles. In game mode: leave it |
 | Triple tap | 3 quick taps | Start [game mode](#game-mode) |
 | Medium press | 500ms-1s, release | Toggle LED night light on/off |
-| Long hold | > 1s, keep holding | Ramp LED brightness up (if off) or down (if on). Release to keep. |
+| Long hold | > 1s, keep holding | Ramp LED brightness: up if off, otherwise each hold reverses the previous one (first hold dims). Release to keep. |
 
 Taps are counted until 350ms after the last release, so a single tap acts with that short delay.
 

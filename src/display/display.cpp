@@ -10,6 +10,8 @@
 #include "../config/settings.h"
 #include <time.h>
 
+bool peekLocalTime(struct tm *info); // main.cpp
+
 // Track last applied brightness to avoid unnecessary updates
 static uint8_t lastAppliedBrightness = 255;
 // How often the schedule is re-evaluated. Ten seconds, not a minute: a single
@@ -104,10 +106,9 @@ static bool resolveScheduledBrightness(uint8_t &targetBrightness,
   }
 
   struct tm timeinfo;
-  // Timeout 0: read the clock once and report. The default is a 5-second
-  // blocking wait for time to become valid, which would stall the loop on
-  // every 2s retry while NTP is still unsynced.
-  if (!getLocalTime(&timeinfo, 0)) {
+  // One non-blocking read. getLocalTime(info, 0) can make zero attempts and
+  // report failure on a valid clock.
+  if (!peekLocalTime(&timeinfo)) {
     return false;
   }
 

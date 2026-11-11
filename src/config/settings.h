@@ -16,8 +16,9 @@ void loadSettings();
 // Save current settings to NVS
 void saveSettings();
 
-// Persist only the clock style (fast path for the touch button)
+// Persist single items without the ~220 ms full rewrite
 void saveClockStyle();
+void saveLedState();
 
 // Brightness helpers
 uint8_t sanitizeBrightnessValue(uint8_t value);

@@ -192,7 +192,7 @@ void handleMetricsAPI() {
  doc["online"] = metricData.online;
  struct tm ti;
  char ts[6] = "--:--";
- if (getLocalTime(&ti, 0)) strftime(ts, sizeof(ts), "%H:%M", &ti);
+ if (peekLocalTime(&ti)) strftime(ts, sizeof(ts), "%H:%M", &ti);
  doc["time"] = ts;
 
  String json;
@@ -296,7 +296,7 @@ void handleSetBrightness() {
 // GET /api/led/on - turn the filament night light on at its stored brightness
 void handleLedOn() {
  enableLED(true);
- saveSettings();
+ saveLedState();
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json",
              "{\"success\":true,\"ledOn\":true,\"brightness\":" +
@@ -306,7 +306,7 @@ void handleLedOn() {
 // GET /api/led/off - turn the filament night light off
 void handleLedOff() {
  enableLED(false);
- saveSettings();
+ saveLedState();
  server.sendHeader("Access-Control-Allow-Origin", "*");
  server.send(200, "application/json", "{\"success\":true,\"ledOn\":false}");
 }
@@ -330,7 +330,7 @@ void handleLedBrightness() {
  settings.ledBrightness = raw ? (uint8_t)value : (uint8_t)((value * 255) / 100);
  settings.ledEnabled = settings.ledBrightness > 0;
  setLEDBrightness(settings.ledBrightness);
- if (!server.hasArg("save") || server.arg("save") != "0") saveSettings();
+ if (!server.hasArg("save") || server.arg("save") != "0") saveLedState();
  server.send(200, "application/json",
              "{\"success\":true,\"ledOn\":" +
              String(settings.ledEnabled ? "true" : "false") +
