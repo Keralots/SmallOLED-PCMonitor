@@ -194,14 +194,28 @@ uint8_t nextClockStyle(uint8_t current) {
 #if TOUCH_BUTTON_ENABLED
 // A style picked with the touch button is a real choice, so persist it the way
 // the web form does - it used to live in RAM only and was lost on the next
-// reboot. Preferences skips writing a value that has not changed, so this costs
-// one key per tap.
+// reboot. The write is held back until the taps stop, so stepping through the
+// styles costs one flash write and never stalls the frame that shows the pick.
+#define TOUCH_STYLE_SAVE_DELAY_MS 2000
+static bool touchStyleSavePending = false;
+static uint8_t touchStyleToSave = 0;
+static unsigned long touchStyleSaveAt = 0;
+
 void advanceClockStyleFromTouch() {
   settings.clockStyle = nextClockStyle(settings.clockStyle);
   resetClockAnimationState();
-  saveSettings();
+  touchStyleSavePending = true;
+  touchStyleToSave = settings.clockStyle;
+  touchStyleSaveAt = millis();
   Serial.print("Touch button: Clock style -> ");
   Serial.println(settings.clockStyle);
+}
+
+// Dropped if the style changed again by other means (HTTP, demo, undo).
+void flushTouchStyleSave() {
+  if (!touchStyleSavePending || millis() - touchStyleSaveAt < TOUCH_STYLE_SAVE_DELAY_MS) return;
+  touchStyleSavePending = false;
+  if (settings.clockStyle == touchStyleToSave) saveClockStyle();
 }
 #endif
 
@@ -245,25 +259,47 @@ void handleTouchTap() {
   }
 }
 
-#if GAMEPAD_ENABLED
-// Taps are counted and resolved once no further tap follows within the gap,
-// so three quick taps can start game mode. A third tap resolves at once.
+// Every tap acts at once. Waiting out the triple-tap gap first made a single
+// tap feel laggy, so the third tap of a quick run instead undoes what the
+// first two did and starts game mode.
 #define TOUCH_TAP_GAP_MS 350
-uint8_t pollTouchTaps() {
+void pollTouchTaps() {
+  if (!checkTouchButtonPressed()) return;
+  nextDisplayUpdate = 0; // draw the result now, not at the next frame slot
+#if GAMEPAD_ENABLED
   static uint8_t count = 0;
   static unsigned long lastTap = 0;
-  if (checkTouchButtonPressed()) {
-    count++;
-    lastTap = millis();
+  static uint8_t snapStyle = 0;
+  static bool snapManual = false, snapViz = false;
+  unsigned long now = millis();
+  if (gameModeActive()) {
+    gameModeStop();
+    count = 0;
+    Serial.println("Touch button: Leaving game mode");
+    return;
   }
-  if (!count || (count < 3 && millis() - lastTap <= TOUCH_TAP_GAP_MS)) return 0;
-  uint8_t n = count;
-  count = 0;
-  return n;
-}
-#else
-uint8_t pollTouchTaps() { return checkTouchButtonPressed() ? 1 : 0; }
+  if (!count || now - lastTap > TOUCH_TAP_GAP_MS) {
+    count = 0;
+    snapStyle = settings.clockStyle;
+    snapManual = manualClockMode;
+    snapViz = httpForceViz;
+  }
+  lastTap = now;
+  if (++count >= 3) {
+    count = 0;
+    if (settings.clockStyle != snapStyle) {
+      settings.clockStyle = snapStyle;
+      resetClockAnimationState();
+    }
+    manualClockMode = snapManual;
+    httpForceViz = snapViz;
+    gameModeStart();
+    Serial.println("Touch button: Triple tap -> game mode");
+    return;
+  }
 #endif
+  handleTouchTap();
+}
 #endif
 
 // Single source of truth for mode precedence. The visualizer outranks both
@@ -568,17 +604,8 @@ void loop() {
   handleTouchLED(); // Hold > 1s: ramp LED brightness up/down
 #endif
   // Taps: 1-2 step modes / clock styles, 3 start game mode, any leaves it
-  uint8_t taps = pollTouchTaps();
-#if GAMEPAD_ENABLED
-  if (taps && gameModeActive()) {
-    gameModeStop();
-    Serial.println("Touch button: Leaving game mode");
-  } else if (taps >= 3) {
-    gameModeStart();
-    Serial.println("Touch button: Triple tap -> game mode");
-  } else
-#endif
-  for (uint8_t i = 0; i < taps; i++) handleTouchTap();
+  pollTouchTaps();
+  flushTouchStyleSave();
 #endif
 
   // Check timeout

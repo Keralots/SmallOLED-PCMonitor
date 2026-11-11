@@ -560,6 +560,13 @@ void loadSettings() {
   Serial.println("Settings loaded (v2.0 - Compact Grid Layout)");
 }
 
+// saveSettings() rewrites every key and blocks for ~220 ms.
+void saveClockStyle() {
+  preferences.begin("pcmonitor", false);
+  preferences.putInt("clockStyle", settings.clockStyle);
+  preferences.end();
+}
+
 void saveSettings() {
   sanitizeBrightnessSettings();
   preferences.begin("pcmonitor", false); // Read-write
